@@ -1,6 +1,88 @@
 # Changelog
 
 
+### 2.5.6
+
+* `Producer.cpp`: Remove `UpdateRtpParameters()`. It was broken since Consumers
+  were not notified about profile removed and so on, so they may crash.
+* `Producer.cpp: Remove some maps and simplify streams handling by having a
+  single `mapSsrcRtpStreamInfo`. Just keep `mapActiveProfiles` because
+  `GetActiveProfiles()` method needs it.
+* `Producer::MayNeedNewStream()`: Ignore new media streams with new SSRC if
+  its RID is already in use by other media stream (fixes #235).
+* Fix a bad memory access when using two byte RTP header extensions.
+
+
+### 2.5.5
+
+* `Server.js`: If a worker crashes make sure `_latestWorkerIdx` becomes 0.
+
+
+### 2.5.4
+
+* `server.Room()`: Assign workers incrementally or explicitely via new `workerIdx` argument.
+* Add `server.numWorkers` getter.
+
+
+### 2.5.3
+
+* Don't announce `muxId` nor RTP MID extension support in `Consumer` RTP parameters.
+
+
+### 2.5.2
+
+* Enable RTP MID extension again.
+
+
+### 2.5.1
+
+* Disable RTP MID extension until [#230](https://github.com/versatica/mediasoup/issues/230) is fixed.
+
+
+### 2.5.0
+
+* Add RTP MID extension support.
+
+### 2.4.6
+
+* Do not close `Transport` on ICE disconnected (as it would prevent ICE restart on "recv" TCP transports).
+
+
+### 2.4.5
+
+* Improve codec matching.
+
+
+### 2.4.4
+
+* Fix audio codec matching when `channels` parameter is not given.
+
+
+### 2.4.3
+
+* Make `PlainRtpTransport` not leak if port allocation fails (related issue [#224](https://github.com/versatica/mediasoup/issues/224)).
+
+
+### 2.4.2
+
+* Fix a crash in when no more RTP ports were available (see related issue [#222](https://github.com/versatica/mediasoup/issues/222)).
+
+
+### 2.4.1
+
+* Update dependencies.
+
+
+### 2.4.0
+
+* Allow non WebRTC peers to create plain RTP transports (no ICE/DTLS/SRTP but just plain RTP and RTCP) for sending and receiving media.
+
+
+### 2.3.3
+
+* Fix C++ syntax to avoid an error when building the worker with clang 8.0.0 (OSX 10.11.6).
+
+
 ### 2.3.2
 
 * `Channel.js`: Upgrade `REQUEST_TIMEOUT` to 20 seconds to avoid timeout errors when the the Node or worker thread usage is too high (related to this [issue](https://github.com/versatica/mediasoup-client/issues/48)).

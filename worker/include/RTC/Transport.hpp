@@ -49,6 +49,7 @@ namespace RTC
 		struct HeaderExtensionIds
 		{
 			uint8_t absSendTime{ 0 }; // 0 means no abs-send-time id.
+			uint8_t mid{ 0 };         // 0 means no MID id.
 			uint8_t rid{ 0 };         // 0 means no RID id.
 		};
 
@@ -96,7 +97,6 @@ namespace RTC
 		/* Pure virtual methods inherited from RTC::ProducerListener. */
 	public:
 		void OnProducerClosed(RTC::Producer* producer) override;
-		void OnProducerRtpParametersUpdated(RTC::Producer* producer) override;
 		void OnProducerPaused(RTC::Producer* producer) override;
 		void OnProducerResumed(RTC::Producer* producer) override;
 		void OnProducerRtpPacket(

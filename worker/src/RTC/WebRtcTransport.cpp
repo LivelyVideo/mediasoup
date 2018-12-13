@@ -163,7 +163,23 @@ namespace RTC
 		// Ensure there is at least one IP:port binding.
 		if (this->udpSockets.empty() && this->tcpServers.empty())
 		{
-			delete this;
+			// NOTE: We must manually delete above allocated objects. We cannot call `delete this`
+			// here since it would call the parent ~Transport destructor, and it would be called
+			// again after throwing the exception here.
+			//
+			// See: https://github.com/versatica/mediasoup/issues/222
+
+			this->iceServer->Destroy();
+
+			for (auto* socket : this->udpSockets)
+			{
+				socket->Destroy();
+			}
+
+			for (auto* server : this->tcpServers)
+			{
+				server->Destroy();
+			}
 
 			MS_THROW_ERROR("could not open any IP:port");
 		}
@@ -239,6 +255,7 @@ namespace RTC
 		static const Json::StaticString JsonStringFailed{ "failed" };
 		static const Json::StaticString JsonStringHeaderExtensionIds{ "headerExtensionIds" };
 		static const Json::StaticString JsonStringAbsSendTime{ "absSendTime" };
+		static const Json::StaticString JsonStringMid{ "mid" };
 		static const Json::StaticString JsonStringRid{ "rid" };
 		static const Json::StaticString JsonStringRtpListener{ "rtpListener" };
 
@@ -329,6 +346,9 @@ namespace RTC
 		if (this->headerExtensionIds.absSendTime != 0u)
 			jsonHeaderExtensionIds[JsonStringAbsSendTime] = this->headerExtensionIds.absSendTime;
 
+		if (this->headerExtensionIds.mid != 0u)
+			jsonHeaderExtensionIds[JsonStringMid] = this->headerExtensionIds.mid;
+
 		if (this->headerExtensionIds.rid != 0u)
 			jsonHeaderExtensionIds[JsonStringRid] = this->headerExtensionIds.rid;
 
@@ -344,7 +364,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		static const std::string type("transport");
+		static const std::string Type("transport");
 		static const Json::StaticString JsonStringType{ "type" };
 		static const Json::StaticString JsonStringTimestamp{ "timestamp" };
 		static const Json::StaticString JsonStringId{ "id" };
@@ -373,7 +393,7 @@ namespace RTC
 
 		Json::Value json(Json::objectValue);
 
-		json[JsonStringType]      = type;
+		json[JsonStringType]      = Type;
 		json[JsonStringTimestamp] = Json::UInt64{ DepLibUV::GetTime() };
 		json[JsonStringId]        = Json::UInt{ this->transportId };
 
@@ -840,15 +860,19 @@ namespace RTC
 		}
 
 		// Apply the Transport RTP header extension ids so the RTP listener can use them.
-		if (this->headerExtensionIds.rid != 0u)
-		{
-			packet->AddExtensionMapping(
-			  RtpHeaderExtensionUri::Type::RTP_STREAM_ID, this->headerExtensionIds.rid);
-		}
 		if (this->headerExtensionIds.absSendTime != 0u)
 		{
 			packet->AddExtensionMapping(
 			  RtpHeaderExtensionUri::Type::ABS_SEND_TIME, this->headerExtensionIds.absSendTime);
+		}
+		if (this->headerExtensionIds.mid != 0u)
+		{
+			packet->AddExtensionMapping(RtpHeaderExtensionUri::Type::MID, this->headerExtensionIds.mid);
+		}
+		if (this->headerExtensionIds.rid != 0u)
+		{
+			packet->AddExtensionMapping(
+			  RtpHeaderExtensionUri::Type::RTP_STREAM_ID, this->headerExtensionIds.rid);
 		}
 
 		// Feed the remote bitrate estimator (REMB).
@@ -1064,9 +1088,6 @@ namespace RTC
 		// Notify.
 		eventData[JsonStringIceState] = JsonStringDisconnected;
 		this->notifier->Emit(this->transportId, "icestatechange", eventData);
-
-		// This is a fatal error so close the transport.
-		Destroy();
 	}
 
 	void WebRtcTransport::OnDtlsConnecting(const RTC::DtlsTransport* /*dtlsTransport*/)

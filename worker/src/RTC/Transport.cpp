@@ -160,14 +160,13 @@ namespace RTC
 		// and add them to the Transport.
 
 		if (producer->GetTransportHeaderExtensionIds().absSendTime != 0u)
-		{
 			this->headerExtensionIds.absSendTime = producer->GetTransportHeaderExtensionIds().absSendTime;
-		}
+
+		if (producer->GetTransportHeaderExtensionIds().mid != 0u)
+			this->headerExtensionIds.mid = producer->GetTransportHeaderExtensionIds().mid;
 
 		if (producer->GetTransportHeaderExtensionIds().rid != 0u)
-		{
 			this->headerExtensionIds.rid = producer->GetTransportHeaderExtensionIds().rid;
-		}
 	}
 
 	void Transport::HandleConsumer(RTC::Consumer* consumer)
@@ -523,15 +522,6 @@ namespace RTC
 
 		// Remove it from the RtpListener.
 		this->rtpListener.RemoveProducer(producer);
-	}
-
-	void Transport::OnProducerRtpParametersUpdated(RTC::Producer* producer)
-	{
-		MS_TRACE();
-
-		// Update our RtpListener.
-		// NOTE: This may throw.
-		this->rtpListener.AddProducer(producer);
 	}
 
 	void Transport::OnProducerPaused(RTC::Producer* /*producer*/)

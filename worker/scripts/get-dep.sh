@@ -78,7 +78,7 @@ function get_netstring()
 function get_libuv()
 {
 	GIT_REPO="https://github.com/libuv/libuv.git"
-	GIT_TAG="v1.23.1"
+	GIT_TAG="v1.24.0"
 	DEST="deps/libuv"
 
 	get_dep "${GIT_REPO}" "${GIT_TAG}" "${DEST}"
@@ -102,14 +102,14 @@ function get_libsrtp()
 function get_catch()
 {
 	GIT_REPO="https://github.com/philsquared/Catch.git"
-	GIT_TAG="v1.12.2"
+	GIT_TAG="v2.5.0"
 	DEST="deps/catch"
 
 	get_dep "${GIT_REPO}" "${GIT_TAG}" "${DEST}"
 
 	echo ">>> [INFO] copying include file to test/include/ directory ..."
 	cd ${WORKER_PWD}
-	cp ${DEST}/single_include/catch.hpp test/include/
+	cp ${DEST}/single_include/catch2/catch.hpp test/include/
 }
 
 function get_lcov()
