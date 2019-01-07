@@ -5,15 +5,18 @@ This document is intended for **mediasoup** developers.
 
 ## Makefile
 
-The root folder of the project contains a `Makefile` to build the mediasoup worker subproject (under the `worker/` folder).
+The `worker` folder contains a `Makefile` to build the mediasoup worker subproject.
+
 
 ### `make`
 
 The default task runs the `Release` task unless the environment `MEDIASOUP_BUILDTYPE` is set to `Debug` (if so it runs the `Debug` task).
 
+
 ### `make Release`
 
 Builds the production ready mediasoup worker binary at `worker/out/Release/`. This is the binary used in production when installing the **mediasoup** NPM module with `npm install mediasoup`.
+
 
 ### `make Debug`
 
@@ -27,25 +30,59 @@ In order to instruct the **mediasoup** Node.js module to use the `Debug` mediaso
 $ MEDIASOUP_BUILDTYPE=Debug node myapp.js
 ```
 
+
 ### `make test`
 
 Runs the `test-Release` task unless the environment `MEDIASOUP_BUILDTYPE` is set to `Debug` (if so it runs the `test-Debug` task).
+
 
 ### `make test-Release`
 
 Builds the `mediasoup-worker-test` test unit binary at `worker/out/Release/`.
 
+
 ### `make test-Debug`
 
 Builds the `mediasoup-worker-test` test unit binary in `Debug` mode at `worker/out/Debug/`.
+
+
+### `fuzzer`
+
+Builds the `mediasoup-worker-fuzzer` target (which uses [libFuzzer](http://llvm.org/docs/LibFuzzer.html)) and generates the `worker/out/Release/mediasoup-worker-fuzzer` binary.
+
+* Linux is required with `fuzzer` capable `clang++`.
+* `CC` environment variable must point to `clang`.
+* `CXX` environment variable must point to `clang++`.
+
+Read the [Fuzzer](Fuzzer.md) documentation to run the fuzzer binary.
+
+
+### `fuzzer-docker-build`
+
+Builds a Linux image with `fuzzer` capable `clang++`.
+
+**NOTE:** Before running this command, a specific version of Linux `clang` must be downloaded. To get it, run:
+
+```bash
+$ cd worker
+$ ./scripts/get-dep.sh clang-fuzzer
+```
+
+
+### `fuzzer-docker-run`
+
+Runs a container of the Docker image created with `fuzzer-docker-build`. It automatically executes a `bash` session in the `/mediasoup/worker` directory, which is a Docker volume that points to the real `mediasoup/worker` directory (so we can do `make fuzzer`, etc).
+
 
 ### `make xcode`
 
 Builds a Xcode project for the mediasoup worker subproject.
 
+
 ### `make clean`
 
 Cleans objects and binaries related to the mediasoup worker.
+
 
 ### `make clean-all`
 
@@ -62,37 +99,42 @@ In order to tun these tasks, `gulp-cli` (version >= 1.2.2) must be globally inst
 $ npm install -g gulp-cli
 ```
 
+
 ### `gulp`
 
 The default task runs the `gulp:lint` and `gulp:test` tasks.
 
-### `gulp rtpcapabilities`
-
-Reads **mediasoup** [supported RTP capabilities](https://github.com/versatica/mediasoup/blob/master/lib/supportedRtpCapabilities.js) and inserts them into the worker C++ code. After that, `make Release` and/or `make Debug` must be called.
 
 ### `gulp lint`
 
 Runs both the `lint:node` and `lint:worker` gulp tasks.
 
+
 ### `gulp lint:node`
 
 Validates the Node.js JavaScript code/syntax.
+
 
 ### `gulp lint:worker`
 
 Validates the worker C++ code/syntax using [clang-format](https://clang.llvm.org/docs/ClangFormat.html) following `worker/.clang-format` rules.
 
+
 ### `gulp format`
 
 Runs the `format:worker` gulp task.
+
 
 ### `gulp format:worker`
 
 Rewrites worker source and include files using [clang-format](https://clang.llvm.org/docs/ClangFormat.html).
 
+
 ### `gulp tidy`
 
+
 Runs the `tidy:worker` gulp task.
+
 
 ### `gulp tidy:worker`
 
@@ -115,13 +157,15 @@ Replace the references of the current directory by the keywork 'PATH':
 $  sed -i "s|$PWD|PATH|g" compile_commands.json
 ```
 
-Edit the file and remove the entry related to Utils/IP.cpp compilation unit, which is automatically created and does not follow the clang-tidy rules.
+Edit the file and remove the entry related to `Utils/IP.cpp` compilation unit, which is automatically created and does not follow the clang-tidy rules.
 
 *NOTE:* It just works on Linux and OSX.
+
 
 ### `gulp test`
 
 Runs both the `test:node` and `test:worker` gulp tasks.
+
 
 ### `gulp test:node`
 
@@ -132,6 +176,7 @@ In order to run the JavaScript test units with the mediasoup worker in `Debug` m
 ```bash
 $ MEDIASOUP_BUILDTYPE=Debug gulp test:node
 ```
+
 
 ### `gulp test:worker`
 

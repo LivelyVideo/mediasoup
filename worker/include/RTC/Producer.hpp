@@ -57,13 +57,9 @@ namespace RTC
 		  RTC::RtpParameters& rtpParameters,
 		  struct RtpMapping& rtpMapping,
 		  bool paused);
+		~Producer();
 
 	public:
-		// Must be public because Router needs to call it.
-		virtual ~Producer();
-
-	public:
-		void Destroy();
 		Json::Value ToJson() const;
 		Json::Value GetStats() const;
 		void AddListener(RTC::ProducerListener* listener);
@@ -78,8 +74,6 @@ namespace RTC
 		void ReceiveRtpPacket(RTC::RtpPacket* packet);
 		void ReceiveRtcpSenderReport(RTC::RTCP::SenderReport* report);
 		void GetRtcp(RTC::RTCP::CompoundPacket* packet, uint64_t now);
-		void ReceiveRtcpFeedback(RTC::RTCP::FeedbackPsPacket* packet) const;
-		void ReceiveRtcpFeedback(RTC::RTCP::FeedbackRtpPacket* packet) const;
 		void RequestKeyFrame(bool force = false);
 		const std::map<RTC::RtpEncodingParameters::Profile, const RTC::RtpStream*>& GetActiveProfiles() const;
 

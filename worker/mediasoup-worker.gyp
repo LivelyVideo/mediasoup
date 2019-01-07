@@ -261,55 +261,83 @@
     },
     {
       'target_name': 'mediasoup-worker-test',
-      'defines': [ 'MS_TEST', 'MS_LOG_STD' ],
+      'defines': [ 'MS_LOG_STD' ],
       'sources':
       [
         # C++ source files
-        'test/tests.cpp',
-        'test/RTC/TestRtpStreamSend.cpp',
-        'test/RTC/TestNackGenerator.cpp',
-        'test/RTC/TestRtpPacket.cpp',
-        'test/RTC/TestRtpDataCounter.cpp',
-        'test/RTC/TestRtpMonitor.cpp',
-        'test/RTC/TestRtpStreamRecv.cpp',
-        'test/RTC/TestSeqManager.cpp',
-        'test/RTC/Codecs/TestVP8.cpp',
-        'test/RTC/RTCP/TestFeedbackPsAfb.cpp',
-        'test/RTC/RTCP/TestFeedbackPsFir.cpp',
-        'test/RTC/RTCP/TestFeedbackPsLei.cpp',
-        'test/RTC/RTCP/TestFeedbackPsPli.cpp',
-        'test/RTC/RTCP/TestFeedbackPsRemb.cpp',
-        'test/RTC/RTCP/TestFeedbackPsRpsi.cpp',
-        'test/RTC/RTCP/TestFeedbackPsSli.cpp',
-        'test/RTC/RTCP/TestFeedbackPsTst.cpp',
-        'test/RTC/RTCP/TestFeedbackPsVbcm.cpp',
-        'test/RTC/RTCP/TestFeedbackRtpEcn.cpp',
-        'test/RTC/RTCP/TestFeedbackRtpNack.cpp',
-        'test/RTC/RTCP/TestFeedbackRtpSrReq.cpp',
-        'test/RTC/RTCP/TestFeedbackRtpTllei.cpp',
-        'test/RTC/RTCP/TestFeedbackRtpTmmb.cpp',
-        'test/RTC/RTCP/TestBye.cpp',
-        'test/RTC/RTCP/TestReceiverReport.cpp',
-        'test/RTC/RTCP/TestSdes.cpp',
-        'test/RTC/RTCP/TestSenderReport.cpp',
-        'test/RTC/RTCP/TestPacket.cpp',
+        'test/src/tests.cpp',
+        'test/src/RTC/TestRtpStreamSend.cpp',
+        'test/src/RTC/TestNackGenerator.cpp',
+        'test/src/RTC/TestRtpPacket.cpp',
+        'test/src/RTC/TestRtpDataCounter.cpp',
+        'test/src/RTC/TestRtpMonitor.cpp',
+        'test/src/RTC/TestRtpStreamRecv.cpp',
+        'test/src/RTC/TestSeqManager.cpp',
+        'test/src/RTC/Codecs/TestVP8.cpp',
+        'test/src/RTC/RTCP/TestFeedbackPsAfb.cpp',
+        'test/src/RTC/RTCP/TestFeedbackPsFir.cpp',
+        'test/src/RTC/RTCP/TestFeedbackPsLei.cpp',
+        'test/src/RTC/RTCP/TestFeedbackPsPli.cpp',
+        'test/src/RTC/RTCP/TestFeedbackPsRemb.cpp',
+        'test/src/RTC/RTCP/TestFeedbackPsRpsi.cpp',
+        'test/src/RTC/RTCP/TestFeedbackPsSli.cpp',
+        'test/src/RTC/RTCP/TestFeedbackPsTst.cpp',
+        'test/src/RTC/RTCP/TestFeedbackPsVbcm.cpp',
+        'test/src/RTC/RTCP/TestFeedbackRtpEcn.cpp',
+        'test/src/RTC/RTCP/TestFeedbackRtpNack.cpp',
+        'test/src/RTC/RTCP/TestFeedbackRtpSrReq.cpp',
+        'test/src/RTC/RTCP/TestFeedbackRtpTllei.cpp',
+        'test/src/RTC/RTCP/TestFeedbackRtpTmmb.cpp',
+        'test/src/RTC/RTCP/TestBye.cpp',
+        'test/src/RTC/RTCP/TestReceiverReport.cpp',
+        'test/src/RTC/RTCP/TestSdes.cpp',
+        'test/src/RTC/RTCP/TestSenderReport.cpp',
+        'test/src/RTC/RTCP/TestPacket.cpp',
         # C++ include files
-        'include/catch.hpp',
-        'include/helpers.hpp'
+        'test/include/catch.hpp',
+        'test/include/helpers.hpp'
       ],
       'include_dirs':
       [
         'test/include'
       ],
-     'xcode_settings':
-     {
-       'OTHER_CPLUSPLUSFLAGS': [
-         '--coverage'
-       ],
-       'OTHER_LDFLAGS': [
-         '--coverage'
-       ]
-     }
+      'xcode_settings':
+      {
+        'OTHER_CPLUSPLUSFLAGS':
+        [
+          '--coverage'
+        ],
+        'OTHER_LDFLAGS': [
+          '--coverage'
+        ]
+      }
+    },
+    {
+      'target_name': 'mediasoup-worker-fuzzer',
+      'defines': [ 'DEBUG', 'MS_LOG_STD' ],
+      'sources':
+      [
+        # C++ source files
+        'fuzzer/src/fuzzer.cpp',
+        'fuzzer/src/RTC/FuzzerStunMessage.cpp',
+        'fuzzer/src/RTC/FuzzerRtpPacket.cpp',
+        'fuzzer/src/RTC/RTCP/FuzzerPacket.cpp',
+        # C++ include files
+        'fuzzer/include/RTC/FuzzerStunMessage.hpp',
+        'fuzzer/include/RTC/FuzzerRtpPacket.hpp',
+        'fuzzer/include/RTC/RTCP/FuzzerPacket.hpp'
+      ],
+      'include_dirs':
+      [
+        'fuzzer/include'
+      ],
+      'conditions':
+      [
+        [ 'OS == "linux"', {
+          'cflags': [ '-g', '-O0', '-fsanitize=address,fuzzer' ],
+          'ldflags': [ '-fsanitize=address,fuzzer' ]
+        }]
+      ]
     }
   ]
 }

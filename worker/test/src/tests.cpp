@@ -6,7 +6,7 @@
 #include "Logger.hpp"
 #include "Settings.hpp"
 #include "Utils.hpp"
-#include "include/catch.hpp"
+#include "catch.hpp"
 #include <string>
 
 static void init();
@@ -14,7 +14,7 @@ static void destroy();
 
 int main(int argc, char* argv[])
 {
-	Settings::configuration.logLevel = LogLevel::LOG_DEBUG;
+	Settings::configuration.logLevel = LogLevel::LOG_NONE;
 
 	std::string loggerId = "tests";
 

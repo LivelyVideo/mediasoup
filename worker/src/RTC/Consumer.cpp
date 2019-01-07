@@ -39,11 +39,6 @@ namespace RTC
 
 		delete this->rtpStream;
 		delete this->rtpMonitor;
-	}
-
-	void Consumer::Destroy()
-	{
-		MS_TRACE();
 
 		for (auto& listener : this->listeners)
 		{
@@ -51,8 +46,6 @@ namespace RTC
 		}
 
 		this->notifier->Emit(this->consumerId, "close");
-
-		delete this;
 	}
 
 	Json::Value Consumer::ToJson() const
@@ -666,7 +659,6 @@ namespace RTC
 
 			default:
 				MS_ASSERT(false, "invalid messageType");
-				break;
 		}
 
 		RequestKeyFrame();

@@ -97,22 +97,29 @@ namespace RTC
 		switch (addressFamily)
 		{
 			case AF_INET:
+			{
 				availablePorts = &RTC::TcpServer::availableIPv4Ports;
 				bindAddr       = RTC::TcpServer::sockaddrStorageIPv4;
 				listenIp       = Settings::configuration.rtcIPv4.c_str();
+
 				break;
+			}
 
 			case AF_INET6:
+			{
 				availablePorts = &RTC::TcpServer::availableIPv6Ports;
 				bindAddr       = RTC::TcpServer::sockaddrStorageIPv6;
 				listenIp       = Settings::configuration.rtcIPv6.c_str();
 				// Don't also bind into IPv4 when listening in IPv6.
 				flags |= UV_TCP_IPV6ONLY;
+
 				break;
+			}
 
 			default:
+			{
 				MS_THROW_ERROR("invalid address family given");
-				break;
+			}
 		}
 
 		// Choose a random first port to start from.
@@ -155,6 +162,7 @@ namespace RTC
 				case AF_INET:
 					(reinterpret_cast<struct sockaddr_in*>(&bindAddr))->sin_port = htons(iteratingPort);
 					break;
+
 				case AF_INET6:
 					(reinterpret_cast<struct sockaddr_in6*>(&bindAddr))->sin6_port = htons(iteratingPort);
 					break;
@@ -221,6 +229,17 @@ namespace RTC
 		MS_TRACE();
 	}
 
+	TcpServer::~TcpServer()
+	{
+		MS_TRACE();
+
+		// Mark the port as available again.
+		if (this->localAddr.ss_family == AF_INET)
+			RTC::TcpServer::availableIPv4Ports[this->localPort] = true;
+		else if (this->localAddr.ss_family == AF_INET6)
+			RTC::TcpServer::availableIPv6Ports[this->localPort] = true;
+	}
+
 	void TcpServer::UserOnTcpConnectionAlloc(::TcpConnection** connection)
 	{
 		MS_TRACE();
@@ -235,31 +254,14 @@ namespace RTC
 
 		// Allow just MaxTcpConnectionsPerServer.
 		if (GetNumConnections() > MaxTcpConnectionsPerServer)
-			connection->Destroy();
+			delete connection;
 	}
 
 	void TcpServer::UserOnTcpConnectionClosed(::TcpConnection* connection, bool isClosedByPeer)
 	{
 		MS_TRACE();
 
-		// Notify the listener.
-		// NOTE: Don't do it if closing (since at this point the listener is already freed).
-		// At the end, this is just called if the connection was remotely closed.
-		if (!IsClosing())
-		{
-			this->listener->OnRtcTcpConnectionClosed(
-			  this, dynamic_cast<RTC::TcpConnection*>(connection), isClosedByPeer);
-		}
-	}
-
-	void TcpServer::UserOnTcpServerClosed()
-	{
-		MS_TRACE();
-
-		// Mark the port as available again.
-		if (this->localAddr.ss_family == AF_INET)
-			RTC::TcpServer::availableIPv4Ports[this->localPort] = true;
-		else if (this->localAddr.ss_family == AF_INET6)
-			RTC::TcpServer::availableIPv6Ports[this->localPort] = true;
+		this->listener->OnRtcTcpConnectionClosed(
+		  this, dynamic_cast<RTC::TcpConnection*>(connection), isClosedByPeer);
 	}
 } // namespace RTC

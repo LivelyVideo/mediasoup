@@ -579,19 +579,6 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		if (this->ssl != nullptr)
-		{
-			SSL_free(this->ssl);
-			this->ssl               = nullptr;
-			this->sslBioFromNetwork = nullptr;
-			this->sslBioToNetwork   = nullptr;
-		}
-	}
-
-	void DtlsTransport::Destroy()
-	{
-		MS_TRACE();
-
 		if (IsRunning())
 		{
 			// Send close alert to the peer.
@@ -599,25 +586,31 @@ namespace RTC
 			SendPendingOutgoingDtlsData();
 		}
 
-		// Destroy the DTLS timer.
-		this->timer->Destroy();
+		if (this->ssl != nullptr)
+		{
+			SSL_free(this->ssl);
+			this->ssl               = nullptr;
+			this->sslBioFromNetwork = nullptr;
+			this->sslBioToNetwork   = nullptr;
+		}
 
-		delete this;
+		// Close the DTLS timer.
+		delete this->timer;
 	}
 
 	void DtlsTransport::Dump() const
 	{
 		MS_TRACE();
 
-		MS_DUMP("<DtlsTransport>");
-		MS_DUMP(
+		MS_DEBUG_DEV("<DtlsTransport>");
+		MS_DEBUG_DEV(
 		  "  [role:%s, running:%s, handshake done:%s, connected:%s]",
 		  (this->localRole == Role::SERVER ? "server"
 		                                   : (this->localRole == Role::CLIENT ? "client" : "none")),
 		  IsRunning() ? "yes" : "no",
 		  this->handshakeDone ? "yes" : "no",
 		  this->state == DtlsState::CONNECTED ? "yes" : "no");
-		MS_DUMP("</DtlsTransport>");
+		MS_DEBUG_DEV("</DtlsTransport>");
 	}
 
 	void DtlsTransport::Run(Role localRole)
@@ -655,23 +648,31 @@ namespace RTC
 		switch (this->localRole)
 		{
 			case Role::CLIENT:
+			{
 				MS_DEBUG_TAG(dtls, "running [role:client]");
 
 				SSL_set_connect_state(this->ssl);
 				SSL_do_handshake(this->ssl);
 				SendPendingOutgoingDtlsData();
 				SetTimeout();
+
 				break;
+			}
 
 			case Role::SERVER:
+			{
 				MS_DEBUG_TAG(dtls, "running [role:server]");
 
 				SSL_set_accept_state(this->ssl);
 				SSL_do_handshake(this->ssl);
+
 				break;
+			}
 
 			default:
+			{
 				MS_ABORT("invalid local DTLS role");
+			}
 		}
 	}
 
@@ -1166,15 +1167,16 @@ namespace RTC
 				srtpRemoteSalt = srtpLocalKey + SrtpMasterKeyLength;
 				srtpLocalSalt  = srtpRemoteSalt + SrtpMasterSaltLength;
 				break;
+
 			case Role::CLIENT:
 				srtpLocalKey   = srtpMaterial;
 				srtpRemoteKey  = srtpLocalKey + SrtpMasterKeyLength;
 				srtpLocalSalt  = srtpRemoteKey + SrtpMasterKeyLength;
 				srtpRemoteSalt = srtpLocalSalt + SrtpMasterSaltLength;
 				break;
+
 			default:
 				MS_ABORT("no DTLS role set");
-				break;
 		}
 
 		// Create the SRTP local master key.
