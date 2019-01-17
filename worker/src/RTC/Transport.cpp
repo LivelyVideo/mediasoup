@@ -8,7 +8,11 @@
 #include "Utils.hpp"
 #include "RTC/Consumer.hpp"
 #include "RTC/Producer.hpp"
+#include "RTC/RTCP/FeedbackPs.hpp"
+#include "RTC/RTCP/FeedbackPsAfb.hpp"
 #include "RTC/RTCP/FeedbackPsRemb.hpp"
+#include "RTC/RTCP/FeedbackRtp.hpp"
+#include "RTC/RTCP/FeedbackRtpNack.hpp"
 #include "RTC/RtpDictionaries.hpp"
 
 /* Consts. */
@@ -29,19 +33,6 @@ namespace RTC
 	Transport::~Transport()
 	{
 		MS_TRACE();
-
-		if (!this->closed)
-			Close();
-	}
-
-	void Transport::Close()
-	{
-		MS_TRACE();
-
-		if (this->closed)
-			return;
-
-		this->closed = true;
 
 		// Close all the handled Producers.
 		for (auto it = this->producers.begin(); it != this->producers.end();)

@@ -594,9 +594,9 @@ namespace RTC
 					return;
 				}
 
-				delete transport;
-
 				MS_DEBUG_DEV("Transport closed [transportId:%" PRIu32 "]", transport->transportId);
+
+				delete transport;
 
 				request->Accept();
 
@@ -992,9 +992,9 @@ namespace RTC
 					return;
 				}
 
-				delete producer;
-
 				MS_DEBUG_DEV("Producer closed [producerId:%" PRIu32 "]", producer->producerId);
+
+				delete producer;
 
 				request->Accept();
 
@@ -1163,6 +1163,8 @@ namespace RTC
 
 					return;
 				}
+
+				MS_DEBUG_DEV("Consumer closed [consumerId:%" PRIu32 "]", consumer->consumerId);
 
 				delete consumer;
 

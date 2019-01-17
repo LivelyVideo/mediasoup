@@ -6,8 +6,6 @@
 #include "RTC/ConsumerListener.hpp"
 #include "RTC/ProducerListener.hpp"
 #include "RTC/RTCP/CompoundPacket.hpp"
-#include "RTC/RTCP/FeedbackPsAfb.hpp"
-#include "RTC/RTCP/FeedbackPsRemb.hpp"
 #include "RTC/RTCP/Packet.hpp"
 #include "RTC/RTCP/ReceiverReport.hpp"
 #include "RTC/RtpListener.hpp"
@@ -70,7 +68,6 @@ namespace RTC
 		virtual ~Transport();
 
 	public:
-		void Close();
 		virtual Json::Value ToJson() const   = 0;
 		virtual Json::Value GetStats() const = 0;
 		void HandleProducer(RTC::Producer* producer);
@@ -82,7 +79,6 @@ namespace RTC
 
 	protected:
 		void HandleRtcpPacket(RTC::RTCP::Packet* packet);
-		void ReceiveRtcpRemb(RTC::RTCP::FeedbackPsRembPacket* remb);
 
 	private:
 		virtual bool IsConnected() const = 0;
@@ -132,8 +128,6 @@ namespace RTC
 		Timer* rtcpTimer{ nullptr };
 		RTC::UdpSocket* mirrorSocket{ nullptr };
 		RTC::TransportTuple* mirrorTuple{ nullptr };
-		// Others.
-		bool closed{ false };
 		// Others (Producers and Consumers).
 		std::unordered_set<RTC::Producer*> producers;
 		std::unordered_set<RTC::Consumer*> consumers;
