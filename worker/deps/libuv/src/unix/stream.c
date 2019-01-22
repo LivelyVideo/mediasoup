@@ -961,18 +961,6 @@ static void uv__write_callbacks(uv_stream_t* stream) {
     /* Pop a req off write_completed_queue. */
     q = QUEUE_HEAD(&pq);
     req = QUEUE_DATA(q, uv_write_t, queue);
-
-    //L@@K: check that if req->error is set (it is -32 or -110 in the scenarios that we are debugging)
-    // then (req->handle == stream) and update req->error with some unlikely value for easier postmortem
-    if (req->handle != stream) {
-      if (req->error == -32)
-        req->error = -81; // ELIBSCN as if https://www.thegeekstuff.com/2010/10/linux-error-codes/
-      else if (req->error == -110)
-        req->error = -82; // ELIBMAX
-      else
-        req->error = -83; // ELIBEXEC
-    }
-
     QUEUE_REMOVE(q);
     uv__req_unregister(stream->loop, req);
 
@@ -981,16 +969,6 @@ static void uv__write_callbacks(uv_stream_t* stream) {
       if (req->bufs != req->bufsml)
         uv__free(req->bufs);
       req->bufs = NULL;
-    }
-
-    //L@@K: repeat the same check hopefully narrowing down the problem
-    if (req->handle != stream) {
-      if (req->error == -32)
-        req->error = -35; // EDEADLK
-      else if (req->error == -110)
-        req->error = -36; // ENAMETOOLONG
-      else
-        req->error = -37; // ENOLCK
     }
 
     /* NOTE: call callback AFTER freeing the request data. */

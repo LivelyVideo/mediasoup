@@ -26,12 +26,24 @@ inline static void onWrite(uv_write_t* req, int status)
 	auto* writeData           = static_cast<TcpConnection::UvWriteData*>(req->data);
 	TcpConnection* connection = writeData->connection;
 
+	//L@@K: if OnUvWriteError() is going to be called, check uvHandle values here and recheck after std::free() call
+	uv_stream_t* casted= reinterpret_cast<uv_stream_t*>(connection->GetUvHandle());
+	if (status != 0 && casted != req->handle) {
+		MS_ERROR("onWrite() uvHandle mismatch: req=0x%" PRIx64 " connection=0x%" PRIx64, req->handle, casted);
+	}
+
 	// Delete the UvWriteData struct (which includes the uv_req_t and the store char[]).
 	std::free(writeData);
-
+	
 	// Just notify the TcpConnection when error.
-	if (status != 0)
+	if (status != 0) {
+		//L@@K:
+		uv_stream_t* casted2 = reinterpret_cast<uv_stream_t*>(connection->GetUvHandle());
+		if (status != 0) {
+			MS_ERROR("onWrite() uvHandle check: req=0x%" PRIx64 " connection=0x%" PRIx64, req->handle, casted2);
+		}
 		connection->OnUvWriteError(status);
+	}
 }
 
 inline static void onClose(uv_handle_t* handle)
@@ -414,9 +426,8 @@ inline void TcpConnection::OnUvWriteError(int error)
 
 	if (error != UV_EPIPE && error != UV_ENOTCONN)
 		this->hasError = true;
-		
-	// L@@K: temporarily replaced MS_WARN_DEV with MS_ERROR
-  MS_ERROR("write error, closing the connection: %d %s", error, uv_strerror(error));
+
+  MS_WARN_DEV("write error, closing the connection: %d %s", error, uv_strerror(error));
 
 	Close();
 }
