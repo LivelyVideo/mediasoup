@@ -428,7 +428,7 @@ inline void TcpConnection::OnUvWriteError(int error)
 	if (error != UV_EPIPE && error != UV_ENOTCONN)
 		this->hasError = true;
 
-  MS_WARN_DEV("write error, closing the connection: %d %s", error, uv_strerror(error));
+  MS_ERROR("write error, closing the connection: %d %s", error, uv_strerror(error));
 
 	Close();
 }
