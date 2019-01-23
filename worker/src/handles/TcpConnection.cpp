@@ -25,10 +25,11 @@ inline static void onWrite(uv_write_t* req, int status)
 {
 	auto* writeData           = static_cast<TcpConnection::UvWriteData*>(req->data);
 	TcpConnection* connection = writeData->connection;
+	bool connectionClosed = connection->IsClosed();
 
 	//L@@K: if OnUvWriteError() is going to be called, check uvHandle values here and recheck after std::free() call
 	uv_stream_t* casted= reinterpret_cast<uv_stream_t*>(connection->GetUvHandle());
-	if (status != 0 && casted != req->handle) {
+	if (status != 0 && !connectionClosed && casted != req->handle) {
 		MS_ERROR("onWrite() uvHandle mismatch: err=%d req=0x%" PRIx64 " connection=0x%" PRIx64, status, req->handle, casted);
 	}
 
@@ -39,7 +40,7 @@ inline static void onWrite(uv_write_t* req, int status)
 	if (status != 0) {
 		//L@@K:
 		uv_stream_t* casted2 = reinterpret_cast<uv_stream_t*>(connection->GetUvHandle());
-		if (casted2 != req->handle) {
+		if (!connectionClosed && casted2 != req->handle) {
 			MS_ERROR("onWrite() uvHandle check: err=%d req=0x%" PRIx64 " connection=0x%" PRIx64, status, req->handle, casted2);
 		}
 		connection->OnUvWriteError(status);
