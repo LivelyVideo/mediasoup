@@ -24,14 +24,26 @@ inline static void onRead(uv_stream_t* handle, ssize_t nread, const uv_buf_t* bu
 inline static void onWrite(uv_write_t* req, int status)
 {
 	auto* writeData           = static_cast<TcpConnection::UvWriteData*>(req->data);
-	TcpConnection* connection = writeData->connection;
-	bool connectionClosed = connection->IsClosed();
 
-	//L@@K: if OnUvWriteError() is going to be called, check uvHandle values here and recheck after std::free() call
-	uv_stream_t* casted= reinterpret_cast<uv_stream_t*>(connection->GetUvHandle());
-	if (status != 0 && !connectionClosed && casted != req->handle) {
-		MS_ERROR("onWrite() uvHandle mismatch: err=%d req=0x%" PRIx64 " connection=0x%" PRIx64, status, req->handle, casted);
-	}
+	// Delete the UvWriteData struct (which includes the uv_req_t and the store char[]).
+	std::free(writeData);
+
+	// Here our TcpConnection instance may already been deleted (and this write
+	// call failed due to it), so check it and don't attampt to use the instance if
+	// deleted.
+	auto* handle = req->handle;
+
+	// So if uv_close() was called don't access the TcpConnetion instance.
+	if (uv_is_closing(reinterpret_cast<uv_handle_t*>(handle)))
+		return;
+
+	// TODO: This is not enough since we may have called uv_shutdown() instead, so
+	// uv_is_closing() may have not been called yet (but our TcpConnection was already
+	// deleted anyway).
+	//
+	// POSSIBLE WORKAROUD: Never call uv_shutdown() but just uv_close().
+
+	TcpConnection* connection = writeData->connection;
 
 	// Delete the UvWriteData struct (which includes the uv_req_t and the store char[]).
 	std::free(writeData);
@@ -39,6 +51,7 @@ inline static void onWrite(uv_write_t* req, int status)
 	// Just notify the TcpConnection when error.
 	if (status != 0) {
 		//L@@K:
+ 		bool connectionClosed = connection->IsClosed();
 		uv_stream_t* casted2 = reinterpret_cast<uv_stream_t*>(connection->GetUvHandle());
 		if (!connectionClosed && casted2 != req->handle) {
 			MS_ERROR("onWrite() uvHandle check: err=%d req=0x%" PRIx64 " connection=0x%" PRIx64, status, req->handle, casted2);
@@ -101,6 +114,7 @@ void TcpConnection::Close()
 		MS_ABORT("uv_read_stop() failed: %s", uv_strerror(err));
 
 	// If there is no error and the peer didn't close its connection side then close gracefully.
+	/*
 	if (!this->hasError && !this->isClosedByPeer)
 	{
 		// Use uv_shutdown() so pending data to be written will be sent to the peer
@@ -114,9 +128,9 @@ void TcpConnection::Close()
 	}
 	// Otherwise directly close the socket.
 	else
-	{
+	{*/
 		uv_close(reinterpret_cast<uv_handle_t*>(this->uvHandle), static_cast<uv_close_cb>(onClose));
-	}
+	/*}*/
 
 	// Notify the listener.
 	this->listener->OnTcpConnectionClosed(this, this->isClosedByPeer);
