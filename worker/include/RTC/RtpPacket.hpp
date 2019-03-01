@@ -117,7 +117,7 @@ namespace RTC
 		uint8_t* GetExtension(RTC::RtpHeaderExtensionUri::Type uri, uint8_t* len) const;
 		bool ReadAudioLevel(uint8_t* volume, bool* voice) const;
 		bool ReadAbsSendTime(uint32_t* time) const;
-		bool ReadVideoOrientation(const uint8_t** rotation) const;
+		bool ReadVideoOrientation(const uint8_t** data, size_t* len) const;
 		bool ReadMid(const uint8_t** data, size_t* len) const;
 		bool ReadRid(const uint8_t** data, size_t* len) const;
 		uint8_t* GetPayload() const;
@@ -343,7 +343,7 @@ namespace RTC
 		return true;
 	}
 
-	inline bool RtpPacket::ReadVideoOrientation(const uint8_t** rotation) const
+	inline bool RtpPacket::ReadVideoOrientation(const uint8_t** rotation, size_t* len) const
 	{
 		uint8_t extenLen;
 		uint8_t* extenValue;

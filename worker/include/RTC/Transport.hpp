@@ -48,9 +48,10 @@ namespace RTC
 		// maps them to the corresponding ids in the room).
 		struct HeaderExtensionIds
 		{
-			uint8_t absSendTime{ 0 }; // 0 means no abs-send-time id.
-			uint8_t mid{ 0 };         // 0 means no MID id.
-			uint8_t rid{ 0 };         // 0 means no RID id.
+			uint8_t absSendTime{ 0 }; 		// 0 means no abs-send-time id.
+			uint8_t mid{ 0 };        		// 0 means no MID id.
+			uint8_t rid{ 0 };         		// 0 means no RID id.
+			uint8_t videoOrientation{ 0 };  // 0 means no RID id.
 		};
 
 	public:
