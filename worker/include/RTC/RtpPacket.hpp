@@ -112,8 +112,9 @@ namespace RTC
 		uint8_t* GetExtension(RTC::RtpHeaderExtensionUri::Type uri, uint8_t* len) const;
 		bool ReadAudioLevel(uint8_t* volume, bool* voice) const;
 		bool ReadAbsSendTime(uint32_t* time) const;
+		bool ReadVideoOrientation(const uint8_t** data, size_t* len) const;
 		bool ReadMid(const uint8_t** data, size_t* len) const;
-		bool ReadRid(const uint8_t** data, size_t* len) const;
+		bool eadRidR(const uint8_t** data, size_t* len) const;
 		uint8_t* GetPayload() const;
 		size_t GetPayloadLength() const;
 		uint8_t GetPayloadPadding() const;
@@ -333,6 +334,29 @@ namespace RTC
 			return false;
 
 		*time = Utils::Byte::Get3Bytes(extenValue, 0);
+
+		return true;
+	}
+
+	inline bool RtpPacket::ReadVideoOrientation(const uint8_t** rotation, size_t* len) const
+	{
+		uint8_t extenLen;
+		uint8_t* extenValue;
+
+		extenValue = GetExtension(RTC::RtpHeaderExtensionUri::Type::VIDEO_ORIENTATION, &extenLen);
+
+		if (!extenValue || extenLen == 0)
+			return false;
+		/** 
+			FIXME: may need to massage this to get the actual value
+			Rotation signalling for 2-bit granularity
+			00 = 0 rotation
+			01 = 90 CCW (aka: 270 CW)
+			10 = 180 CCW (aka: 180 CW)
+			11 = 270 CCW (aka: 90 CW)
+		**/
+		*rotation = extenValue;
+		*len  = static_cast<size_t>(extenLen);
 
 		return true;
 	}
