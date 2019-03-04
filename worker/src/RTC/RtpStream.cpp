@@ -63,6 +63,7 @@ namespace RTC
 		static const Json::StaticString JsonStringBitRate{ "bitrate" };
 		static const Json::StaticString JsonStringPacketsLost{ "packetsLost" };
 		static const Json::StaticString JsonStringFractionLost{ "fractionLost" };
+		static const Json::StaticString JsonStringVideoOrientation{ "videoOrientation" };
 		static const Json::StaticString JsonStringPacketsDiscarded{ "packetsDiscarded" };
 		static const Json::StaticString JsonStringPacketsRepaired{ "packetsRepaired" };
 		static const Json::StaticString JsonStringFirCount{ "firCount" };
@@ -73,17 +74,18 @@ namespace RTC
 		Json::Value json(Json::objectValue);
 		uint64_t now = DepLibUV::GetTime();
 
-		json[JsonStringId]          = this->rtpStreamId;
-		json[JsonStringTimestamp]   = Json::UInt64{ now };
-		json[JsonStringSsrc]        = Json::UInt{ this->params.ssrc };
-		json[JsonStringMediaType]   = RtpCodecMimeType::type2String[this->params.mimeType.type];
-		json[JsonStringKind]        = RtpCodecMimeType::type2String[this->params.mimeType.type];
-		json[JsonStringMimeType]    = this->params.mimeType.ToString();
-		json[JsonStringPacketCount] = static_cast<Json::UInt>(this->transmissionCounter.GetPacketCount());
-		json[JsonStringByteCount]   = static_cast<Json::UInt>(this->transmissionCounter.GetBytes());
-		json[JsonStringBitRate]     = Json::UInt{ this->transmissionCounter.GetRate(now) };
+		json[JsonStringId]         		 = this->rtpStreamId;
+		json[JsonStringTimestamp]   	 = Json::UInt64{ now };
+		json[JsonStringSsrc]        	 = Json::UInt{ this->params.ssrc };
+		json[JsonStringMediaType]   	 = RtpCodecMimeType::type2String[this->params.mimeType.type];
+		json[JsonStringKind]        	 = RtpCodecMimeType::type2String[this->params.mimeType.type];
+		json[JsonStringMimeType]    	 = this->params.mimeType.ToString();
+		json[JsonStringPacketCount] 	 = static_cast<Json::UInt>(this->transmissionCounter.GetPacketCount());
+		json[JsonStringByteCount]   	 = static_cast<Json::UInt>(this->transmissionCounter.GetBytes());
+		json[JsonStringBitRate]     	 = Json::UInt{ this->transmissionCounter.GetRate(now) };
 		json[JsonStringPacketsLost]      = Json::UInt{ this->packetsLost };
 		json[JsonStringFractionLost]     = Json::UInt{ this->fractionLost };
+		json[JsonStringVideoOrientation] = Json::UInt{ this->videoOrientation };
 		json[JsonStringPacketsDiscarded] = static_cast<Json::UInt>(this->packetsDiscarded);
 		json[JsonStringPacketsRepaired]  = static_cast<Json::UInt>(this->packetsRepaired);
 		json[JsonStringFirCount]         = static_cast<Json::UInt>(this->firCount);
@@ -110,6 +112,11 @@ namespace RTC
 
 			this->maxPacketTs = packet->GetTimestamp();
 			this->maxPacketMs = DepLibUV::GetTime();
+		}
+
+		uint8_t videoOrientation;
+		if (packet->ReadVideoOrientation(&videoOrientation)) {
+			this->videoOrientation = videoOrientation;
 		}
 
 		// If not a valid packet ignore it.
@@ -244,12 +251,12 @@ namespace RTC
 
 		Json::Value json(Json::objectValue);
 
-		json[JsonStringSsrc]        = Json::UInt{ this->ssrc };
-		json[JsonStringPayloadType] = Json::UInt{ this->payloadType };
-		json[JsonStringMimeType]    = this->mimeType.ToString();
-		json[JsonStringClockRate]   = Json::UInt{ this->clockRate };
-		json[JsonStringUseNack]     = this->useNack;
-		json[JsonStringUsePli]      = this->usePli;
+		json[JsonStringSsrc]        	 = Json::UInt{ this->ssrc };
+		json[JsonStringPayloadType] 	 = Json::UInt{ this->payloadType };
+		json[JsonStringMimeType]    	 = this->mimeType.ToString();
+		json[JsonStringClockRate]   	 = Json::UInt{ this->clockRate };
+		json[JsonStringUseNack]     	 = this->useNack;
+		json[JsonStringUsePli]      	 = this->usePli;
 
 		return json;
 	}

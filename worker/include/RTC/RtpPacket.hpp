@@ -112,7 +112,7 @@ namespace RTC
 		uint8_t* GetExtension(RTC::RtpHeaderExtensionUri::Type uri, uint8_t* len) const;
 		bool ReadAudioLevel(uint8_t* volume, bool* voice) const;
 		bool ReadAbsSendTime(uint32_t* time) const;
-		bool ReadVideoOrientation(const uint8_t** data, size_t* len) const;
+		bool ReadVideoOrientation(uint8_t* data) const;
 		bool ReadMid(const uint8_t** data, size_t* len) const;
 		bool ReadRid(const uint8_t** data, size_t* len) const;
 		uint8_t* GetPayload() const;
@@ -338,14 +338,14 @@ namespace RTC
 		return true;
 	}
 
-	inline bool RtpPacket::ReadVideoOrientation(const uint8_t** rotation, size_t* len) const
+	inline bool RtpPacket::ReadVideoOrientation(uint8_t* rotation) const
 	{
 		uint8_t extenLen;
 		uint8_t* extenValue;
 
 		extenValue = GetExtension(RTC::RtpHeaderExtensionUri::Type::VIDEO_ORIENTATION, &extenLen);
 
-		if (!extenValue || extenLen == 0)
+		if (!extenValue || extenLen != 1)
 			return false;
 		/** 
 			FIXME: may need to massage this to get the actual value
@@ -355,8 +355,7 @@ namespace RTC
 			10 = 180 CCW (aka: 180 CW)
 			11 = 270 CCW (aka: 90 CW)
 		**/
-		*rotation = extenValue;
-		*len  = static_cast<size_t>(extenLen);
+		*rotation = Utils::Byte::Get1Byte(extenValue, 0);
 
 		return true;
 	}
