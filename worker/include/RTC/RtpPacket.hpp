@@ -351,7 +351,6 @@ namespace RTC
 		}
 		/** 
 			Coordination of Video Orientation
-			
 			Bit#       7 6 5 4 3 2  1  0(LSB)
 			Definition 0 0 0 0 C F R1 R0
 
@@ -370,22 +369,16 @@ namespace RTC
 			 1  1 = 270 CCW (aka: 90 CW)
 		**/  
 		cvoByte = Utils::Byte::Get1Byte(extenValue, 0);
-		int r0 = cvoByte & (1 << 0);
-		int r1 = cvoByte & (1 << 1);
-
-
-		if (r1 == 1 && r0 == 1) {
-			*rotation = (uint8_t)90;
-		} else if (r1 == 1 && r0 == 0) {
-			*rotation = (uint8_t)180;
-		} else if (r1 == 0 && r0 == 1) {
+		int rValue = (cvoByte & 0x03);
+		if (rValue == 3) {
 			*rotation = (uint8_t)270;
+		} else if (rValue == 2) {
+			*rotation = (uint8_t)180;
+		} else if (rValue == 1) {
+			*rotation = (uint8_t)90;
 		} else {
 			*rotation = (uint8_t)0;
 		}
-		MS_ERROR("READ VIDEOORIENTATION [r0 bit:'%d']", r0);  
-		MS_ERROR("READ VIDEOORIENTATION [f1 bit:'%d']", r1);  
-		MS_ERROR("READ VIDEOORIENTATION [rotation:'%hhu']", *rotation); 
 		return true;
 	}
 
