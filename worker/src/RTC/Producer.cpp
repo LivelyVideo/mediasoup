@@ -75,6 +75,7 @@ namespace RTC
 		static const Json::StaticString JsonStringRtpStreamInfos{ "rtpStreamInfos" };
 		static const Json::StaticString JsonStringRtpStream{ "rtpStream" };
 		static const Json::StaticString JsonStringRid{ "rid" };
+		static const Json::StaticString JsonStringVideoOrientation{ "videoOrientation" };
 		static const Json::StaticString JsonStringProfile{ "profile" };
 		static const Json::StaticString JsonStringNone{ "none" };
 		static const Json::StaticString JsonStringDefault{ "default" };
@@ -153,6 +154,9 @@ namespace RTC
 
 		if (this->headerExtensionIds.rid != 0u)
 			jsonHeaderExtensionIds[JsonStringRid] = this->headerExtensionIds.rid;
+
+		if (this->headerExtensionIds.videoOrientation != 0u)
+			jsonHeaderExtensionIds[JsonStringVideoOrientation] = this->headerExtensionIds.videoOrientation;
 
 		json[JsonStringHeaderExtensionIds] = jsonHeaderExtensionIds;
 
@@ -416,7 +420,7 @@ namespace RTC
 				else
 					videoOrientationId = exten.id;
 
-				this->headerExtensionIds.videoOrientation          = absSendTimeId;
+				this->headerExtensionIds.videoOrientation          = videoOrientationId;
 				this->transportHeaderExtensionIds.videoOrientation = exten.id;
 			}
 

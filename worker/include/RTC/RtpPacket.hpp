@@ -3,6 +3,7 @@
 
 #include "common.hpp"
 #include "Utils.hpp"
+#include "Logger.hpp"
 #include "RTC/Codecs/PayloadDescriptorHandler.hpp"
 #include "RTC/RtpDictionaries.hpp"
 #include <map>
@@ -277,18 +278,20 @@ namespace RTC
 	{
 		*len = 0;
 
-		if (this->extensionMap.find(uri) == this->extensionMap.end())
+		if (this->extensionMap.find(uri) == this->extensionMap.end()) {
 			return nullptr;
+		}
 
 		uint8_t id = this->extensionMap.at(uri);
-
-		if (HasOneByteExtensions())
+		if (HasOneByteExtensions()) 
 		{
-			if (this->oneByteExtensions.find(id) == this->oneByteExtensions.end())
+			if (this->oneByteExtensions.find(id) == this->oneByteExtensions.end()){
+				MS_ERROR("READ VIDEOORIENTATION GET oneByteExtension FAIL[id:'%hhu']", id);
 				return nullptr;
+			}
 
 			*len = this->oneByteExtensions.at(id)->len + 1;
-
+			MS_ERROR("READ VIDEOORIENTATION GET oneByteExtension SUCCESS[id:'%hhu']", id);
 			return this->oneByteExtensions.at(id)->value;
 		}
 		else if (HasTwoBytesExtensions())
@@ -341,22 +344,54 @@ namespace RTC
 	inline bool RtpPacket::ReadVideoOrientation(uint8_t* rotation) const
 	{
 		uint8_t extenLen;
+		uint8_t cvoByte;
 		uint8_t* extenValue;
 
 		extenValue = GetExtension(RTC::RtpHeaderExtensionUri::Type::VIDEO_ORIENTATION, &extenLen);
-
-		if (!extenValue || extenLen != 1)
+		MS_ERROR("READ VIDEOORIENTATION [extenValue:'%s']", extenValue); 
+		MS_ERROR("READ VIDEOORIENTATION [extenLen:'%hhu']", extenLen); 
+		if (!extenValue || extenLen != 1) {
+			MS_ERROR("READ VIDEOORIENTATION FALSE!!!!!!!!!!!!!!!!!!!!!!");  
 			return false;
+		}
 		/** 
-			FIXME: may need to massage this to get the actual value
-			Rotation signalling for 2-bit granularity
-			00 = 0 rotation
-			01 = 90 CCW (aka: 270 CW)
-			10 = 180 CCW (aka: 180 CW)
-			11 = 270 CCW (aka: 90 CW)
-		**/
-		*rotation = Utils::Byte::Get1Byte(extenValue, 0);
+			Coordination of Video Orientation
+			
+			Bit#       7 6 5 4 3 2  1  0(LSB)
+			Definition 0 0 0 0 C F R1 R0
 
+			C = Camera
+			0: Front-facing camera, facing the user. If camera direction is unknown, this is the default value used.
+			1: Back-facing camera, facing away from the user.
+
+			F = Flip
+			0: No flip operation. If the sending client flips value is unknown, this is the default value used.
+			1: Horizontal flip operation
+
+			R1 R0 = Rotation
+			 0  0 = 0 rotation
+			 0  1 = 90 CCW (aka: 270 CW)
+			 1  0 = 180 CCW (aka: 180 CW)
+			 1  1 = 270 CCW (aka: 90 CW)
+		**/
+		MS_ERROR("READ VIDEOORIENTATION TRUE");  
+		cvoByte = Utils::Byte::Get1Byte(extenValue, 0);
+		int r0 = cvoByte & (1 << 0);
+		int r1 = cvoByte & (1 << 1);
+		MS_ERROR("READ VIDEOORIENTATION [byte:'%hhu']", cvoByte); 
+		MS_ERROR("READ VIDEOORIENTATION [r0 bit:'%d']", r0);  
+		MS_ERROR("READ VIDEOORIENTATION [f1 bit:'%d']", r1);  
+
+		if (r1 == 1 && r0 == 1) {
+			*rotation = (uint8_t)90;
+		} else if (r1 == 1 && r0 == 0) {
+			*rotation = (uint8_t)180;
+		} else if (r1 == 0 && r0 == 1) {
+			*rotation = (uint8_t)270;
+		} else {
+			*rotation = (uint8_t)0;
+		}
+		MS_ERROR("READ VIDEOORIENTATION [rotation:'%s']", rotation); 
 		return true;
 	}
 
