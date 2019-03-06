@@ -370,12 +370,13 @@ namespace RTC
 		**/  
 		cvoByte = Utils::Byte::Get1Byte(extenValue, 0);
 		int rValue = (cvoByte & 0x03);
+		// NOTE: using the clockwise orientation values
 		if (rValue == 3) {
-			*rotation = (uint8_t)270;
+			*rotation = (uint8_t)90;
 		} else if (rValue == 2) {
 			*rotation = (uint8_t)180;
 		} else if (rValue == 1) {
-			*rotation = (uint8_t)90;
+			*rotation = (uint8_t)270;
 		} else {
 			*rotation = (uint8_t)0;
 		}
