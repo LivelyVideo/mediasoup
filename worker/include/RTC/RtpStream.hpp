@@ -62,13 +62,14 @@ namespace RTC
 		// Stats.
 		uint32_t packetsLost{ 0 };
 		uint8_t fractionLost{ 0 };
-		uint8_t videoOrientation{ 0 };
 		size_t packetsDiscarded{ 0 };
 		size_t packetsRepaired{ 0 };
 		size_t firCount{ 0 };
 		size_t pliCount{ 0 };
 		size_t nackCount{ 0 };
 		size_t sliCount{ 0 };
+		uint8_t videoOrientation{ 0 };
+		bool cvoReceived{ false };
 
 		RtpDataCounter transmissionCounter;
 		RtpDataCounter retransmissionCounter;

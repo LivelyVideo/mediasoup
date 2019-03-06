@@ -64,6 +64,7 @@ namespace RTC
 		static const Json::StaticString JsonStringPacketsLost{ "packetsLost" };
 		static const Json::StaticString JsonStringFractionLost{ "fractionLost" };
 		static const Json::StaticString JsonStringVideoOrientation{ "videoOrientation" };
+		static const Json::StaticString JsonStringCvoReceived{ "cvoReceived" };
 		static const Json::StaticString JsonStringPacketsDiscarded{ "packetsDiscarded" };
 		static const Json::StaticString JsonStringPacketsRepaired{ "packetsRepaired" };
 		static const Json::StaticString JsonStringFirCount{ "firCount" };
@@ -86,6 +87,7 @@ namespace RTC
 		json[JsonStringPacketsLost]      = Json::UInt{ this->packetsLost };
 		json[JsonStringFractionLost]     = Json::UInt{ this->fractionLost };
 		json[JsonStringVideoOrientation] = Json::UInt{ this->videoOrientation };
+		json[JsonStringCvoReceived]      = this->cvoReceived;
 		json[JsonStringPacketsDiscarded] = static_cast<Json::UInt>(this->packetsDiscarded);
 		json[JsonStringPacketsRepaired]  = static_cast<Json::UInt>(this->packetsRepaired);
 		json[JsonStringFirCount]         = static_cast<Json::UInt>(this->firCount);
@@ -96,6 +98,8 @@ namespace RTC
 		return json;
 	}
 
+	uint8_t vo;
+	bool voReceived;
 	bool RtpStream::ReceivePacket(RTC::RtpPacket* packet)
 	{
 		MS_TRACE();
@@ -114,10 +118,13 @@ namespace RTC
 			this->maxPacketMs = DepLibUV::GetTime();
 		}
 
-		uint8_t videoOrientation;
-		if (packet->ReadVideoOrientation(&videoOrientation)) {
-			this->videoOrientation = videoOrientation;
+
+		
+		if (packet->ReadVideoOrientation(&vo)) {
+			voReceived = true;
 		}
+		this->videoOrientation = vo;
+		this->cvoReceived = voReceived;
 
 		// If not a valid packet ignore it.
 		if (!UpdateSeq(packet))
