@@ -113,7 +113,7 @@ namespace RTC
 		uint8_t* GetExtension(RTC::RtpHeaderExtensionUri::Type uri, uint8_t* len) const;
 		bool ReadAudioLevel(uint8_t* volume, bool* voice) const;
 		bool ReadAbsSendTime(uint32_t* time) const;
-		bool ReadVideoOrientation(uint8_t* data) const;
+		bool ReadVideoOrientation(uint16_t* data) const;
 		bool ReadMid(const uint8_t** data, size_t* len) const;
 		bool ReadRid(const uint8_t** data, size_t* len) const;
 		uint8_t* GetPayload() const;
@@ -339,7 +339,7 @@ namespace RTC
 		return true;
 	}
 
-	inline bool RtpPacket::ReadVideoOrientation(uint8_t* rotation) const
+	inline bool RtpPacket::ReadVideoOrientation(uint16_t* rotation) const
 	{
 		uint8_t extenLen;
 		uint8_t cvoByte;
@@ -370,16 +370,17 @@ namespace RTC
 		**/  
 		cvoByte = Utils::Byte::Get1Byte(extenValue, 0);
 		int rValue = (cvoByte & 0x03);
-		// NOTE: using the clockwise orientation values
-		if (rValue == 3) {
-			*rotation = (uint8_t)90;
-		} else if (rValue == 2) {
-			*rotation = (uint8_t)180;
-		} else if (rValue == 1) {
-			*rotation = (uint8_t)270;
-		} else {
-			*rotation = (uint8_t)0;
+		switch (rValue) {
+			case 3: // NOTE: using counter clockwise values
+				*rotation = 270;
+			case 2:
+				*rotation = 180;
+			case 1:
+				*rotation = 90;
+			default:
+				*rotation = 0;
 		}
+
 		return true;
 	}
 

@@ -98,7 +98,7 @@ namespace RTC
 		return json;
 	}
 
-	uint8_t vo;
+	uint16_t vo;
 	bool voReceived;
 	bool RtpStream::ReceivePacket(RTC::RtpPacket* packet)
 	{

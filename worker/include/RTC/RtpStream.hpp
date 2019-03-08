@@ -68,7 +68,7 @@ namespace RTC
 		size_t pliCount{ 0 };
 		size_t nackCount{ 0 };
 		size_t sliCount{ 0 };
-		uint8_t videoOrientation{ 0 };
+		uint16_t videoOrientation{ 0 };
 		bool cvoReceived{ false };
 
 		RtpDataCounter transmissionCounter;
