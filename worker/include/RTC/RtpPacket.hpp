@@ -373,10 +373,13 @@ namespace RTC
 		switch (rValue) {
 			case 3: // NOTE: using counter clockwise values
 				*rotation = 270;
+				break;
 			case 2:
 				*rotation = 180;
+				break;
 			case 1:
 				*rotation = 90;
+				break;
 			default:
 				*rotation = 0;
 		}
