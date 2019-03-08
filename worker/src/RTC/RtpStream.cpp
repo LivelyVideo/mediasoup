@@ -98,8 +98,6 @@ namespace RTC
 		return json;
 	}
 
-	uint16_t vo;
-	bool voReceived;
 	bool RtpStream::ReceivePacket(RTC::RtpPacket* packet)
 	{
 		MS_TRACE();
@@ -118,13 +116,9 @@ namespace RTC
 			this->maxPacketMs = DepLibUV::GetTime();
 		}
 
-
-		
-		if (packet->ReadVideoOrientation(&vo)) {
-			voReceived = true;
+		if (packet->ReadVideoOrientation(&this->videoOrientation)) {
+			this->cvoReceived = true;
 		}
-		this->videoOrientation = vo;
-		this->cvoReceived = voReceived;
 
 		// If not a valid packet ignore it.
 		if (!UpdateSeq(packet))
