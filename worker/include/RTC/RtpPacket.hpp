@@ -3,7 +3,6 @@
 
 #include "common.hpp"
 #include "Utils.hpp"
-#include "Logger.hpp"
 #include "RTC/Codecs/PayloadDescriptorHandler.hpp"
 #include "RTC/RtpDictionaries.hpp"
 #include <map>
