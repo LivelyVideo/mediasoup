@@ -75,6 +75,7 @@ namespace RTC
 		static const Json::StaticString JsonStringRtpStreamInfos{ "rtpStreamInfos" };
 		static const Json::StaticString JsonStringRtpStream{ "rtpStream" };
 		static const Json::StaticString JsonStringRid{ "rid" };
+		static const Json::StaticString JsonStringVideoOrientation{ "videoOrientation" };
 		static const Json::StaticString JsonStringProfile{ "profile" };
 		static const Json::StaticString JsonStringNone{ "none" };
 		static const Json::StaticString JsonStringDefault{ "default" };
@@ -153,6 +154,9 @@ namespace RTC
 
 		if (this->headerExtensionIds.rid != 0u)
 			jsonHeaderExtensionIds[JsonStringRid] = this->headerExtensionIds.rid;
+
+		if (this->headerExtensionIds.videoOrientation != 0u)
+			jsonHeaderExtensionIds[JsonStringVideoOrientation] = this->headerExtensionIds.videoOrientation;
 
 		json[JsonStringHeaderExtensionIds] = jsonHeaderExtensionIds;
 
@@ -382,6 +386,7 @@ namespace RTC
 		uint8_t absSendTimeId{ 0 };
 		uint8_t midId{ 0 };
 		uint8_t ridId{ 0 };
+		uint8_t videoOrientationId{ 0 };
 
 		for (auto& exten : this->rtpParameters.headerExtensions)
 		{
@@ -406,6 +411,17 @@ namespace RTC
 
 				this->headerExtensionIds.absSendTime          = absSendTimeId;
 				this->transportHeaderExtensionIds.absSendTime = exten.id;
+			}
+
+			if ((videoOrientationId == 0u) && exten.type == RTC::RtpHeaderExtensionUri::Type::VIDEO_ORIENTATION)
+			{
+				if (idMapping.find(exten.id) != idMapping.end())
+					videoOrientationId = idMapping[exten.id];
+				else
+					videoOrientationId = exten.id;
+
+				this->headerExtensionIds.videoOrientation          = videoOrientationId;
+				this->transportHeaderExtensionIds.videoOrientation = exten.id;
 			}
 
 			if ((midId == 0u) && exten.type == RTC::RtpHeaderExtensionUri::Type::MID)
@@ -619,6 +635,12 @@ namespace RTC
 		{
 			packet->AddExtensionMapping(
 			  RtpHeaderExtensionUri::Type::RTP_STREAM_ID, this->headerExtensionIds.rid);
+		}
+
+		if (this->headerExtensionIds.videoOrientation != 0u)
+		{
+			packet->AddExtensionMapping(
+			  RtpHeaderExtensionUri::Type::VIDEO_ORIENTATION, this->headerExtensionIds.videoOrientation);
 		}
 	}
 
