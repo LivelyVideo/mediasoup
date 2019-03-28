@@ -687,6 +687,12 @@ static srtp_err_status_t srtp_kdf_init(srtp_kdf_t *kdf,
     case SRTP_AES_ICM_128_KEY_LEN_WSALT:
         cipher_id = SRTP_AES_ICM_128;
         break;
+    case SRTP_AES_GCM_128_KEY_LEN_WSALT:
+        cipher_id = SRTP_AES_GCM_128;
+        break;
+    case SRTP_AES_GCM_256_KEY_LEN_WSALT:
+        cipher_id = SRTP_AES_GCM_256;
+        break;
     default:
         return srtp_err_status_bad_param;
         break;

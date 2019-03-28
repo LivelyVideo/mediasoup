@@ -641,8 +641,13 @@ namespace RTC
 					MS_DEBUG_TAG(
 					  dtls, "transition from DTLS local role 'auto' to 'server' and running DTLS transport");
 
+					MS_ERROR("L@@K: local role is 'AUTO' so set it into SERVER");
+
 					this->dtlsLocalRole = RTC::DtlsTransport::Role::SERVER;
 					this->dtlsTransport->Run(RTC::DtlsTransport::Role::SERVER);
+				}
+				else {
+					MS_ERROR("L@@K: local role is 'AUTO', ICE IS NOT CONNECTED OR COMPLETED");
 				}
 				break;
 
@@ -657,9 +662,15 @@ namespace RTC
 				  this->iceServer->GetState() == RTC::IceServer::IceState::CONNECTED ||
 				  this->iceServer->GetState() == RTC::IceServer::IceState::COMPLETED)
 				{
+					MS_ERROR("L@@K: running DTLS transport in local role 'client' WHEN ICE is connected or completed");
+
 					MS_DEBUG_TAG(dtls, "running DTLS transport in local role 'client'");
 
+
 					this->dtlsTransport->Run(RTC::DtlsTransport::Role::CLIENT);
+				}
+				else {
+					MS_ERROR("L@@K: local role is 'CLIENT', ICE IS NOT CONNECTED OR COMPLETED");
 				}
 				break;
 
@@ -670,9 +681,14 @@ namespace RTC
 				  this->iceServer->GetState() == RTC::IceServer::IceState::CONNECTED ||
 				  this->iceServer->GetState() == RTC::IceServer::IceState::COMPLETED)
 				{
+					MS_ERROR("L@@K: running DTLS transport in local role 'server' WHEN ICE is connected or completed");
+
 					MS_DEBUG_TAG(dtls, "running DTLS transport in local role 'server'");
 
 					this->dtlsTransport->Run(RTC::DtlsTransport::Role::SERVER);
+				}
+				else {
+					MS_ERROR("L@@K: local role is 'SERVER', ICE IS NOT CONNECTED OR COMPLETED");
 				}
 				break;
 
@@ -1138,6 +1154,8 @@ namespace RTC
 			this->srtpRecvSession = nullptr;
 		}
 
+		MS_ERROR("L@@K - WebRtcTransport::OnDtlsConnected#1 srtpProfile=%d srtpLocalKeyLen=%d srtpRemoteKeyLen=%d",  srtpProfile, srtpLocalKeyLen, srtpRemoteKeyLen);
+
 		try
 		{
 			this->srtpSendSession = new RTC::SrtpSession(
@@ -1147,6 +1165,8 @@ namespace RTC
 		{
 			MS_ERROR("error creating SRTP sending session: %s", error.what());
 		}
+
+		MS_ERROR("L@@K - WebRtcTransport::OnDtlsConnected#2 srtpProfile=%d srtpLocalKeyLen=%d srtpRemoteKeyLen=%d",  srtpProfile, srtpLocalKeyLen, srtpRemoteKeyLen);
 
 		try
 		{

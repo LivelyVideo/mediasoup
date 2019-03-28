@@ -131,6 +131,16 @@ STACK_OF(SRTP_PROTECTION_PROFILE) *SSL_get_srtp_profiles(SSL *s)
     return NULL;
 }
 
+STACK_OF(SRTP_PROTECTION_PROFILE) *SSL_HACK_get_ctx_srtp_profiles(SSL_CTX *ctx)
+{
+    if ((ctx != NULL) && (ctx->srtp_profiles != NULL)) {
+        return ctx->srtp_profiles;
+    }
+
+    return NULL;
+}
+
+
 SRTP_PROTECTION_PROFILE *SSL_get_selected_srtp_profile(SSL *s)
 {
     return s->srtp_profile;
@@ -305,6 +315,11 @@ int ssl_parse_serverhello_use_srtp_ext(SSL *s, PACKET *pkt, int *al)
         *al = SSL_AD_DECODE_ERROR;
         return 1;
     }
+    // HACK@@
+//    else {
+//        s->srtp_profile = sk_SRTP_PROTECTION_PROFILE_value(clnt, 0);
+//        s->srtp_profile->id = 1000 + s->srtp_profile->id;
+//    }
 
     /*
      * Check to see if the server gave us something we support (and

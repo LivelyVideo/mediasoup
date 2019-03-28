@@ -11,6 +11,7 @@
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
+#include <openssl/ssl.h>
 #include <cstdio>  // std::sprintf(), std::fopen()
 #include <cstring> // std::memcpy(), std::strcmp()
 #include <ctime>   // struct timeval
@@ -57,6 +58,18 @@ namespace RTC
 	static constexpr size_t SrtpMasterKeyLength{ 16 };
 	static constexpr size_t SrtpMasterSaltLength{ 14 };
 	static constexpr size_t SrtpMasterLength{ SrtpMasterKeyLength + SrtpMasterSaltLength };
+  // AES GCM 128
+	static constexpr size_t SrtpAesGcm128MasterKeyLength{ 16 };
+	static constexpr size_t SrtpAesGcm128MasterSaltLength{ 12 };
+	static constexpr size_t SrtpAesGcm128MasterLength{ SrtpAesGcm128MasterKeyLength + SrtpAesGcm128MasterSaltLength };
+
+  // AES GCM 256
+	static constexpr size_t SrtpAesGcm256MasterKeyLength{ 32 };
+	static constexpr size_t SrtpAesGcm256MasterSaltLength{ 12 };
+	static constexpr size_t SrtpAesGcm256MasterLength{ SrtpAesGcm256MasterKeyLength + SrtpAesGcm256MasterSaltLength };
+
+	static constexpr size_t SrtpMaxKeyMaterialBufSize { 32 + 14 };
+
 
 	/* Class variables. */
 
@@ -84,8 +97,10 @@ namespace RTC
 	// clang-format off
 	std::vector<DtlsTransport::SrtpProfileMapEntry> DtlsTransport::srtpProfiles =
 	{
-		{ RTC::SrtpSession::Profile::AES_CM_128_HMAC_SHA1_80, "SRTP_AES128_CM_SHA1_80" },
-		{ RTC::SrtpSession::Profile::AES_CM_128_HMAC_SHA1_32, "SRTP_AES128_CM_SHA1_32" }
+//		{ RTC::SrtpSession::Profile::AES_CM_128_HMAC_SHA1_80, "SRTP_AES128_CM_SHA1_80" },
+	//	{ RTC::SrtpSession::Profile::AES_CM_128_HMAC_SHA1_32, "SRTP_AES128_CM_SHA1_32" },
+		{ RTC::SrtpSession::Profile::AES_GCM_128_NULL, "SRTP_AEAD_AES_128_GCM" },
+		{ RTC::SrtpSession::Profile::AES_GCM_256_NULL, "SRTP_AEAD_AES_256_GCM" }
 	};
 	// clang-format on
 
@@ -100,10 +115,12 @@ namespace RTC
 		  Settings::configuration.dtlsCertificateFile.empty() ||
 		  Settings::configuration.dtlsPrivateKeyFile.empty())
 		{
+			MS_ERROR("L@@K:GENERATING CERTIFICATE");
 			GenerateCertificateAndPrivateKey();
 		}
 		else
 		{
+			MS_ERROR("L@@K:READING CERTIFICATE");
 			ReadCertificateAndPrivateKeyFromFiles();
 		}
 
@@ -133,7 +150,7 @@ namespace RTC
 		int ret{ 0 };
 		BIGNUM* bne{ nullptr };
 		RSA* rsaKey{ nullptr };
-		int numBits{ 1024 };
+		int numBits{ 2056 };
 		X509_NAME* certName{ nullptr };
 		std::string subject =
 		  std::string("mediasoup") + std::to_string(Utils::Crypto::GetRandomUInt(100000, 999999));
@@ -235,7 +252,7 @@ namespace RTC
 		}
 
 		// Sign the certificate with its own private key.
-		ret = X509_sign(DtlsTransport::certificate, DtlsTransport::privateKey, EVP_sha1());
+		ret = X509_sign(DtlsTransport::certificate, DtlsTransport::privateKey, EVP_sha256());
 		if (ret == 0)
 		{
 			LOG_OPENSSL_ERROR("X509_sign() failed");
@@ -311,6 +328,9 @@ namespace RTC
 		std::string dtlsSrtpProfiles;
 		EC_KEY* ecdh{ nullptr };
 		int ret;
+		STACK_OF(SRTP_PROTECTION_PROFILE) *hack_s = NULL;
+		STACK_OF(SSL_CIPHER) *ssl_ciphers = NULL;
+		
 
 /* Set the global DTLS context. */
 
@@ -376,12 +396,20 @@ namespace RTC
 
 		// Set ciphers.
 		ret = SSL_CTX_set_cipher_list(
-		  DtlsTransport::sslCtx, "ALL:!ADH:!LOW:!EXP:!MD5:!aNULL:!eNULL:@STRENGTH");
+		  DtlsTransport::sslCtx, "ALL:aNULL:kDHE:kECDHE:AESGCM+AES256:kEDH:!kRSA:!kECDHEPSK:!kDHEPSK:!kSRP:!kPSK:!kRSAPSK:!kGOST:!LOW:!EXP:!MD5:@STRENGTH"); // see ssl.h and https://www.mkssoftware.com/docs/man1/openssl_ciphers.1.asp		
+		// for chromium supported ciphers see https://github.com/chromium/chromium/blob/5e78b515bc3dda4c969db56e3fd769bccc7d2fa4/net/socket/ssl_server_socket_impl.cc#L894
 		if (ret == 0)
 		{
 			LOG_OPENSSL_ERROR("SSL_CTX_set_cipher_list() failed");
 			goto error;
 		}
+
+	//L@@K: see which ciphers we have got
+	ssl_ciphers = SSL_CTX_get_ciphers(DtlsTransport::sslCtx);
+	for (int j = 0; j < sk_SSL_CIPHER_num(ssl_ciphers); j++) {
+		const SSL_CIPHER *c = sk_SSL_CIPHER_value(ssl_ciphers, j);
+		MS_ERROR("L@@K: ===SSLCIPHER=%s ===", SSL_CIPHER_get_name(c));
+	}
 
 // Enable ECDH ciphers.
 // DOC: http://en.wikibooks.org/wiki/OpenSSL/Diffie-Hellman_parameters
@@ -558,6 +586,8 @@ namespace RTC
 
 		this->timer = new Timer(this);
 
+		MS_ERROR("L@@K - DtlsTransport::DtlsTransport() ctor call suceeded");
+
 		return;
 
 	error:
@@ -650,6 +680,7 @@ namespace RTC
 			case Role::CLIENT:
 			{
 				MS_DEBUG_TAG(dtls, "running [role:client]");
+				MS_ERROR("L@@K - DtlsTransport running [role:client]");
 
 				SSL_set_connect_state(this->ssl);
 				SSL_do_handshake(this->ssl);
@@ -662,6 +693,7 @@ namespace RTC
 			case Role::SERVER:
 			{
 				MS_DEBUG_TAG(dtls, "running [role:server]");
+				MS_ERROR("L@@K - DtlsTransport running [role:server]");
 
 				SSL_set_accept_state(this->ssl);
 				SSL_do_handshake(this->ssl);
@@ -862,6 +894,8 @@ namespace RTC
 				MS_WARN_TAG(dtls, "SSL status: unknown error");
 		}
 
+		MS_ERROR( "L@@K TLS handshake done: %d DtlsState: %d", this->handshakeDoneNow, this->state);
+
 		// Check if the handshake (or re-handshake) has been done right now.
 		if (this->handshakeDoneNow)
 		{
@@ -1007,6 +1041,7 @@ namespace RTC
 		RTC::SrtpSession::Profile srtpProfile;
 		srtpProfile = GetNegotiatedSrtpProfile();
 
+		MS_ERROR("\nL@@K: GetNegotiatedSrtpProfile() is %d\n", srtpProfile);
 		if (srtpProfile != RTC::SrtpSession::Profile::NONE)
 		{
 			// Extract the SRTP keys (will notify the listener with them).
@@ -1017,7 +1052,8 @@ namespace RTC
 
 		// NOTE: We assume that "use_srtp" DTLS extension is required even if
 		// there is no audio/video.
-		MS_WARN_TAG(dtls, "SRTP profile not negotiated");
+//		MS_WARN_TAG(dtls, "SRTP profile not negotiated");
+		MS_ERROR("L@@K GetNegotiatedSrtpProfile(): SRTP profile not negotiated, will call Reset() and notify a listener");
 
 		Reset();
 
@@ -1150,17 +1186,42 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		uint8_t srtpMaterial[SrtpMasterLength * 2];
 		uint8_t* srtpLocalKey;
 		uint8_t* srtpLocalSalt;
 		uint8_t* srtpRemoteKey;
 		uint8_t* srtpRemoteSalt;
-		uint8_t srtpLocalMasterKey[SrtpMasterLength];
-		uint8_t srtpRemoteMasterKey[SrtpMasterLength];
 		int ret;
 
+		uint8_t srtpMaterial[SrtpMaxKeyMaterialBufSize * 2];
+		uint8_t srtpLocalMasterKey[SrtpMaxKeyMaterialBufSize];
+		uint8_t srtpRemoteMasterKey[SrtpMaxKeyMaterialBufSize];
+		uint8_t masterLength;
+		uint8_t masterKeyLength;
+		uint8_t masterSaltLength;
+
+		MS_ERROR("\nL@@K: HELLO HELLO FROM DtlsTransport::ExtractSrtpKeys() with srtpProfile=%d\n", srtpProfile);
+
+		switch(srtpProfile)
+		{
+			case RTC::SrtpSession::Profile::AES_GCM_128_NULL:
+				masterLength = SrtpAesGcm128MasterLength;
+				masterKeyLength = SrtpAesGcm128MasterKeyLength;
+				masterSaltLength = SrtpAesGcm128MasterSaltLength;
+				break;
+			case RTC::SrtpSession::Profile::AES_GCM_256_NULL:
+				masterLength = SrtpAesGcm256MasterLength;
+				masterKeyLength = SrtpAesGcm256MasterKeyLength;
+				masterSaltLength = SrtpAesGcm256MasterSaltLength;
+				break;
+			default: // including AES_CM_128_HMAC_SHA1_80 and AES_CM_128_HMAC_SHA1_32
+				masterLength = SrtpMasterLength;
+				masterKeyLength = SrtpMasterKeyLength;
+				masterSaltLength = SrtpMasterSaltLength;
+				break;
+		}
+
 		ret = SSL_export_keying_material(
-		  this->ssl, srtpMaterial, SrtpMasterLength * 2, "EXTRACTOR-dtls_srtp", 19, nullptr, 0, 0);
+			this->ssl, srtpMaterial, masterLength * 2, "EXTRACTOR-dtls_srtp", 19, nullptr, 0, 0);
 
 		MS_ASSERT(ret != 0, "SSL_export_keying_material() failed");
 
@@ -1168,16 +1229,16 @@ namespace RTC
 		{
 			case Role::SERVER:
 				srtpRemoteKey  = srtpMaterial;
-				srtpLocalKey   = srtpRemoteKey + SrtpMasterKeyLength;
-				srtpRemoteSalt = srtpLocalKey + SrtpMasterKeyLength;
-				srtpLocalSalt  = srtpRemoteSalt + SrtpMasterSaltLength;
+				srtpLocalKey   = srtpRemoteKey + masterKeyLength;
+				srtpRemoteSalt = srtpLocalKey + masterKeyLength;
+				srtpLocalSalt  = srtpRemoteSalt + masterSaltLength;
 				break;
 
 			case Role::CLIENT:
 				srtpLocalKey   = srtpMaterial;
-				srtpRemoteKey  = srtpLocalKey + SrtpMasterKeyLength;
-				srtpLocalSalt  = srtpRemoteKey + SrtpMasterKeyLength;
-				srtpRemoteSalt = srtpLocalSalt + SrtpMasterSaltLength;
+				srtpRemoteKey  = srtpLocalKey + masterKeyLength;
+				srtpLocalSalt  = srtpRemoteKey + masterKeyLength;
+				srtpRemoteSalt = srtpLocalSalt + masterSaltLength;
 				break;
 
 			default:
@@ -1185,11 +1246,11 @@ namespace RTC
 		}
 
 		// Create the SRTP local master key.
-		std::memcpy(srtpLocalMasterKey, srtpLocalKey, SrtpMasterKeyLength);
-		std::memcpy(srtpLocalMasterKey + SrtpMasterKeyLength, srtpLocalSalt, SrtpMasterSaltLength);
+		std::memcpy(srtpLocalMasterKey, srtpLocalKey, masterKeyLength);
+		std::memcpy(srtpLocalMasterKey + masterKeyLength, srtpLocalSalt, masterSaltLength);
 		// Create the SRTP remote master key.
-		std::memcpy(srtpRemoteMasterKey, srtpRemoteKey, SrtpMasterKeyLength);
-		std::memcpy(srtpRemoteMasterKey + SrtpMasterKeyLength, srtpRemoteSalt, SrtpMasterSaltLength);
+		std::memcpy(srtpRemoteMasterKey, srtpRemoteKey, masterKeyLength);
+		std::memcpy(srtpRemoteMasterKey + masterKeyLength, srtpRemoteSalt, masterSaltLength);
 
 		// Set state and notify the listener.
 		this->state = DtlsState::CONNECTED;
@@ -1197,15 +1258,23 @@ namespace RTC
 		  this,
 		  srtpProfile,
 		  srtpLocalMasterKey,
-		  SrtpMasterLength,
+		  masterLength,
 		  srtpRemoteMasterKey,
-		  SrtpMasterLength,
+		  masterLength,
 		  this->remoteCert);
 	}
 
 	inline RTC::SrtpSession::Profile DtlsTransport::GetNegotiatedSrtpProfile()
 	{
+		STACK_OF(SRTP_PROTECTION_PROFILE) *ps = NULL;
+
 		MS_TRACE();
+
+		ps = SSL_get_srtp_profiles(this->ssl);
+		for (int i = 0; i < sk_SRTP_PROTECTION_PROFILE_num(ps); i++) {
+			SRTP_PROTECTION_PROFILE *prof = sk_SRTP_PROTECTION_PROFILE_value(ps, i);
+			MS_ERROR("\nL@@K: WE OFFERED SRTP_PROFILE[%lu]=%s\n", prof->id, prof->name);
+    }
 
 		RTC::SrtpSession::Profile negotiatedSrtpProfile = RTC::SrtpSession::Profile::NONE;
 
@@ -1213,7 +1282,11 @@ namespace RTC
 		SRTP_PROTECTION_PROFILE* sslSrtpProfile = SSL_get_selected_srtp_profile(this->ssl);
 		if (sslSrtpProfile == nullptr)
 		{
+			MS_ERROR("\nL@@K: SSL_get_selected_srtp_profile() returned NOTHING...\n");
 			return negotiatedSrtpProfile;
+		}
+		else {
+			MS_ERROR("\nL@@K: SSL_get_selected_srtp_profile() returned profile[%lu]=%s\n", sslSrtpProfile->id, sslSrtpProfile->name);
 		}
 
 		// Get the negotiated SRTP profile.
@@ -1225,7 +1298,7 @@ namespace RTC
 			if (std::strcmp(sslSrtpProfile->name, profileEntry->name) == 0)
 			{
 				MS_DEBUG_TAG(dtls, "chosen SRTP profile: %s", profileEntry->name);
-
+				MS_ERROR("\nL@@K: chosen SRTP profile: %s\n", profileEntry->name);
 				negotiatedSrtpProfile = profileEntry->profile;
 			}
 		}

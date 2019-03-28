@@ -39,6 +39,7 @@ __owur int SSL_CTX_set_tlsext_use_srtp(SSL_CTX *ctx, const char *profiles);
 __owur int SSL_set_tlsext_use_srtp(SSL *ssl, const char *profiles);
 
 __owur STACK_OF(SRTP_PROTECTION_PROFILE) *SSL_get_srtp_profiles(SSL *ssl);
+__owur STACK_OF(SRTP_PROTECTION_PROFILE) *SSL_HACK_get_ctx_srtp_profiles(SSL_CTX *ctx);
 __owur SRTP_PROTECTION_PROFILE *SSL_get_selected_srtp_profile(SSL *s);
 
 # endif

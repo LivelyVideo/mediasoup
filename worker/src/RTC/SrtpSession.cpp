@@ -65,10 +65,22 @@ namespace RTC
 			case Profile::AES_CM_128_HMAC_SHA1_80:
 				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy.rtp);
 				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy.rtcp);
+				MS_ERROR("L@@K ************************AES_CM_128_HMAC_SHA1_80 policy.rtp.cipher_key_len=%d", (int)policy.rtp.cipher_key_len);
 				break;
 			case Profile::AES_CM_128_HMAC_SHA1_32:
 				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&policy.rtp);
 				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy.rtcp); // NOTE: Must be 80 for RTCP!.
+				MS_ERROR("L@@K ************************AES_CM_128_HMAC_SHA1_32 policy.rtp.cipher_key_len=%d", (int)policy.rtp.cipher_key_len);
+				break;
+			case Profile::AES_GCM_128_NULL:
+				srtp_crypto_policy_set_aes_gcm_128_16_auth(&policy.rtp);
+				srtp_crypto_policy_set_aes_gcm_128_16_auth(&policy.rtcp);
+				MS_ERROR("L@@K ************************AES_GCM_128_NULL policy.rtp.cipher_key_len=%d keyLen=%d TYPE=%d", (int)policy.rtp.cipher_key_len, keyLen, type);
+				break;
+			case Profile::AES_GCM_256_NULL:
+				srtp_crypto_policy_set_aes_gcm_256_16_auth(&policy.rtp);
+				srtp_crypto_policy_set_aes_gcm_256_16_auth(&policy.rtcp);
+				MS_ERROR("L@@K ************************AES_GCM_256_NULL policy.rtp.cipher_key_len=%d keyLen=%d TYPE=%d", (int)policy.rtp.cipher_key_len, keyLen, type);
 				break;
 			default:
 				MS_ABORT("unknown SRTP suite");

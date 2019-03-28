@@ -721,6 +721,7 @@ namespace RTC
 
 					// This may throw.
 					localRole = webrtcTransport->SetRemoteDtlsParameters(remoteFingerprint, remoteRole);
+					MS_ERROR("L@@K: localRole: %d remoteRole: %d fingerprint algorithm: %s", localRole, remoteRole, remoteFingerprint.value.c_str());
 				}
 				catch (const MediaSoupError& error)
 				{
