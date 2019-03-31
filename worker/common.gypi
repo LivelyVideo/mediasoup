@@ -42,6 +42,7 @@
       'OTHER_CFLAGS':
       [
         '-fstrict-aliasing',
+        '-g',
         '-pg'
       ],
       'WARNING_CFLAGS':

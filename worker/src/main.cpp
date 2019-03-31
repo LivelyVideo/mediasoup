@@ -174,7 +174,8 @@ void exitSuccess()
 	// Wait a bit so peding messages to stdout/Channel arrive to the main process.
 	usleep(100000);
 	// And exit with success status.
-	std::_Exit(EXIT_SUCCESS);
+	//std::_Exit(EXIT_SUCCESS);
+  exit(EXIT_SUCCESS);
 }
 
 void exitWithError()
@@ -182,5 +183,6 @@ void exitWithError()
 	// Wait a bit so peding messages to stderr arrive to the main process.
 	usleep(100000);
 	// And exit with error status.
-	std::_Exit(EXIT_FAILURE);
+	//std::_Exit(EXIT_FAILURE);
+	exit(EXIT_FAILURE);
 }
