@@ -21,12 +21,12 @@
     {
       'Release':
       {
-        'cflags': [ '-g', '-pg' ]
+        'cflags': [ '-g', '-no-pie', '-pg' ]
       },
       'Debug':
       {
         'defines': [ 'DEBUG', 'MS_LOG_TRACE', 'MS_LOG_FILE_LINE' ],
-        'cflags': [ '-g', '-O0', '-fwrapv', '-pg', '-Wno-parentheses-equality' ],
+        'cflags': [ '-g', '-O0', '-fwrapv', '-pg', '-no-pie', '-Wno-parentheses-equality' ],
         'xcode_settings':
         {
           'GCC_OPTIMIZATION_LEVEL': '0'
@@ -42,6 +42,7 @@
       'OTHER_CFLAGS':
       [
         '-fstrict-aliasing',
+        '-no-pie',
         '-g',
         '-pg'
       ],
