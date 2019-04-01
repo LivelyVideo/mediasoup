@@ -221,8 +221,8 @@
       }],
 
       [ 'OS == "linux" and mediasoup_asan == "true"', {
-        'cflags': [ '-fsanitize=address' ],
-        'ldflags': [ '-fsanitize=address' ]
+        'cflags': [ '-fsanitize=address', '-pg', '-O0' ],
+        'ldflags': [ '-fsanitize=address', '-pg', 'O0' ]
       }],
 
       [ 'OS in "linux freebsd"', {
@@ -334,7 +334,7 @@
       'conditions':
       [
         [ 'OS == "linux"', {
-          'cflags': [ '-g', '-O0', '-fsanitize=address,fuzzer' ],
+          'cflags': [ '-g', '-O0', '-pg', '-fsanitize=address,fuzzer' ],
           'ldflags': [ '-fsanitize=address,fuzzer' ]
         }]
       ]
