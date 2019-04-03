@@ -213,6 +213,8 @@
       }],
 
       [ 'OS == "linux"', {
+        'cflags': [ '-pg', '-O0' ],
+        'ldflags': [ '-static-libgcc', '-Wl','-Bstatic', '-lc', '-pg', 'O0' ]
         'defines':
         [
           '_POSIX_C_SOURCE=200112',
