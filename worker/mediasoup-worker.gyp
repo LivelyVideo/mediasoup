@@ -213,8 +213,8 @@
       }],
 
       [ 'OS == "linux"', {
-        'cflags': [ '-pg', '-O0' ],
-        'ldflags': [ '-static-libgcc', '-Bstatic', '-lc', '-pg', '-O0' ],
+        'cflags': [ '-pg', '-O2' ],
+        'ldflags': [ '-static-libgcc', '-Bstatic', '-lc', '-pg', '-O2' ],
         'defines':
         [
           '_POSIX_C_SOURCE=200112',
@@ -223,8 +223,8 @@
       }],
 
       [ 'OS == "linux" and mediasoup_asan == "true"', {
-        'cflags': [ '-fsanitize=address', '-pg', '-O0' ],
-        'ldflags': [ '-fsanitize=address', '-pg', 'O0' ]
+        'cflags': [ '-fsanitize=address', '-pg', '-O2' ],
+        'ldflags': [ '-fsanitize=address', '-pg', 'O2' ]
       }],
 
       [ 'OS in "linux freebsd"', {

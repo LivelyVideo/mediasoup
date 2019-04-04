@@ -21,7 +21,7 @@
     {
       'Release':
       {
-        'cflags': [ '-g', '-pg', '-O0' ]
+        'cflags': [ '-g', '-pg', '-O2' ]
       },
       'Debug':
       {
@@ -44,7 +44,7 @@
         '-fstrict-aliasing',
         '-g',
         '-pg',
-        '-O0'
+        '-O2'
       ],
       'WARNING_CFLAGS':
       [
