@@ -21,7 +21,7 @@
     {
       'Release':
       {
-        'cflags': [ '-g', '-pg', '-O3' ]
+        'cflags': [ '-g', '-pg', '-O3', '-fno-inline' ]
       },
       'Debug':
       {
