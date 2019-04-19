@@ -66,26 +66,28 @@ namespace RTC
 		cursize--;
 	}
 
-	// Inserts data into a buffer in position determined by BufferItem::seq value.
-	// Returns a pointer to newly added item, or nullptr if packet was already stored
+	// Inserts data into a buffer so newer packets with higher BufferItem::seq placed are at the end
+	// Returns a pointer to newly added item, or nullptr if packet with the same seq was already stored
 	RtpStreamSend::BufferItem* RtpStreamSend::Buffer::ordered_insert_by_seq(const RtpStreamSend::BufferItem& val)
 	{
 		MS_ASSERT(cursize <= maxsize, "Buffer exceeded max capacity, must trim it prior to inserting new items");
+		MS_ASSERT(cursize > 0, "ordered_insert_by_seq should only be called when there is at least one item in array");
 
-		// This var will point to a location of just inserted buffer item
-		auto idx = cursize - 1;
+		// idx is a position of the "hole" between array elements. 
+		// Inserted packets will be put in there
+		size_t idx = cursize;
 		auto packetSeq = val.seq;
 		RtpStreamSend::BufferItem* retItem = { nullptr };
 
 		// First, insert new packet in buffer array unless already stored.
 		// Later we will check if buffer array went beyond max capacity and in that case remove the oldest packet
-		for (; idx >=0; idx--)
+		for (; idx > 0; idx--)
 		{
-			auto currentSeq = (*this)[idx].seq;
+			auto currentSeq = (*this)[idx-1].seq;
 
-			// Packet is already stored, nothing to do but shift back all items which we moved to the right, back to the left
+			// Packet is already stored, nothing to do but shift all items back to the left
 			if (packetSeq == currentSeq) {
-				for (auto j = idx + 1; j < cursize; j++ ) {	// j indicates the location of a "hole" slot, we want to move the "hole" to the very right position
+				for (auto j = idx; j < cursize; j++ ) {	// j indicates the location of a "hole" slot, we want to move the "hole" to the very right position
 					(*this)[j] = (*this)[j + 1];
 					(*this)[j + 1].packet = nullptr;
 				}
@@ -100,10 +102,10 @@ namespace RTC
 				break;
 			}
 
-			// Now move current buffer item into an empty slot on the right.
-			// Then either we insert a new packet to the left of it, or iterate further
-			(*this)[idx + 1] = (*this)[idx];
-			(*this)[idx].packet = nullptr;
+			// Shift current buffer item into an empty slot on the right, so the "hole" moves to the left
+			// Then either we insert a new packet in place of "hole" on the next iteration, or will iterate further
+			(*this)[idx] = (*this)[idx - 1];
+			(*this)[idx - 1].packet = nullptr;
 		}
 
 		return retItem;
