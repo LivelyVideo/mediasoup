@@ -37,7 +37,6 @@ namespace RTC
 		MS_ASSERT(index <= maxsize, "index out of vector maxsize capacity");
 		
 		auto idx = vctr.empty() ? start + index : (start + index) % vctr.size();
-		MS_ASSERT(idx >= 0 && idx < vctr.size(), "idx out of boundaries of vctr");
 		return vctr[idx];
 	}
 

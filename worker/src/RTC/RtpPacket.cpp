@@ -379,7 +379,7 @@ namespace RTC
 		// Parse RFC 5285 extension header.
 		packet->ParseExtensions();
 
-		// Clone the extension map. TODO: this takes 3.5% CPU on MacOS, check gprof data and maybe optimize too?
+		// Clone the extension map.
 		packet->extensionMap = this->extensionMap;
 
 		return packet;
