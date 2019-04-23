@@ -21,7 +21,7 @@
     {
       'Release':
       {
-        'cflags': [ '-g' ]
+        'cflags': [ '-g', '-O3' ]
       },
       'Debug':
       {

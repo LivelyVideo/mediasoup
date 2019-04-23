@@ -25,6 +25,30 @@ namespace RTC
 			RTC::RtpPacket* packet{ nullptr };
 		};
 
+  private:
+	  class Buffer
+		{
+		private:
+			std::vector<BufferItem> vctr; // array that can hold up to maxsize of BufferItems plus 1 empty slot reserved for easier inserts
+			uint8_t start{ 0 };           // index in vctr where data begins
+			size_t cursize{ 0 };          // number of items currently stored in array. While inserting a new packet, we may see cursize == maxsize + 1 until trim_front() is called
+			size_t maxsize{ 0 };          //maximum number of items that can be stored in this Buffer instance
+
+		public:
+			Buffer(size_t bufferSize) : vctr(bufferSize + 1), start(0), cursize(0), maxsize(bufferSize) {}
+			inline bool empty() const { return vctr.empty() || cursize == 0; }
+			inline size_t datasize() const { return vctr.empty() ? 0 : cursize; }
+
+			const RtpStreamSend::BufferItem& first() const;
+			const RtpStreamSend::BufferItem& last() const;
+			RtpStreamSend::BufferItem& operator[] (size_t index);
+
+			bool push_back (const RtpStreamSend::BufferItem& val);
+			void trim_front();
+			RtpStreamSend::BufferItem* ordered_insert_by_seq( const RtpStreamSend::BufferItem& val);
+			inline void clear() { vctr.clear(); start = cursize = maxsize = 0; }
+		};
+
 	public:
 		RtpStreamSend(RTC::RtpStream::Params& params, size_t bufferSize);
 		~RtpStreamSend() override;
@@ -51,7 +75,6 @@ namespace RTC
 	private:
 		// Passed by argument.
 		std::vector<StorageItem> storage;
-		using Buffer = std::list<BufferItem>;
 		Buffer buffer;
 		// Stats.
 		float rtt{ 0 };
