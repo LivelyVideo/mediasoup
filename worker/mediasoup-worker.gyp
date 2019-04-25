@@ -224,7 +224,7 @@
 
       [ 'OS == "linux" and mediasoup_asan == "true"', {
         'cflags': [ '-fsanitize=address', '-O3' ],
-        'ldflags': [ '-fsanitize=address', 'O3' ]
+        'ldflags': [ '-fsanitize=address', '-O3' ]
       }],
 
       [ 'OS in "linux freebsd"', {

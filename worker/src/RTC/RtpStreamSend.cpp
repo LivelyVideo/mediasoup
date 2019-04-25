@@ -398,8 +398,11 @@ namespace RTC
 			delete this->buffer[idx].packet;
 		}
 
-		// Clear list.
+		// Clear buffer list.
 		this->buffer.clear();
+		
+		//Clear storage list.
+		this->storage.clear();
 	}
 
 	inline void RtpStreamSend::StorePacket(RTC::RtpPacket* packet)

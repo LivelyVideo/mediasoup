@@ -46,7 +46,7 @@ namespace RTC
 			bool push_back (const RtpStreamSend::BufferItem& val);
 			void trim_front();
 			RtpStreamSend::BufferItem* ordered_insert_by_seq( const RtpStreamSend::BufferItem& val);
-			inline void clear() { vctr.clear(); start = cursize = maxsize = 0; }
+			inline void clear() { vctr.clear(); start = cursize = 0; }
 		};
 
 	public:
