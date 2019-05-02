@@ -23,6 +23,7 @@
 #include <map>
 #include <string>
 #include <unistd.h> // getpid(), usleep()
+#include <mcheck.h> // mtrace(). Note: not avail on MacOS
 
 static void init();
 static void ignoreSignals();
@@ -39,6 +40,9 @@ int main(int argc, char* argv[])
 
 		std::_Exit(EXIT_FAILURE);
 	}
+
+	// enable allocation tracing
+	mtrace();
 
 	std::string id = std::string(argv[1]);
 	int channelFd  = std::stoi(std::getenv("MEDIASOUP_CHANNEL_FD"));
