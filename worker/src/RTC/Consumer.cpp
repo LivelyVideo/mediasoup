@@ -796,10 +796,8 @@ namespace RTC
 		params.usePli      = usePli;
 
 		// Create a RtpStreamSend for sending a single media stream.
-		if (useNack)
-			this->rtpStream = new RTC::RtpStreamSend(params, 1500);
-		else
-			this->rtpStream = new RTC::RtpStreamSend(params, 0);
+		size_t bufferSize = params.useNack ? 600 : 0;
+		this->rtpStream = new RTC::RtpStreamSend(params, bufferSize);
 
 		if (encoding.hasRtx && encoding.rtx.ssrc != 0u)
 		{

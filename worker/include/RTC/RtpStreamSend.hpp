@@ -11,42 +11,17 @@ namespace RTC
 {
 	class RtpStreamSend : public RtpStream
 	{
-	private:
+	public:
 		struct StorageItem
 		{
-			uint8_t store[RTC::MtuSize];
-		};
-
-	private:
-		struct BufferItem
-		{
-			uint16_t seq{ 0 }; // RTP seq.
-			uint64_t resentAtTime{ 0 };
+			// Cloned packet.
 			RTC::RtpPacket* packet{ nullptr };
-		};
-
-  private:
-	  class Buffer
-		{
-		private:
-			std::vector<BufferItem> vctr; // array that can hold up to maxsize of BufferItems plus 1 empty slot reserved for easier inserts
-			uint8_t start{ 0 };           // index in vctr where data begins
-			size_t cursize{ 0 };          // number of items currently stored in array. While inserting a new packet, we may see cursize == maxsize + 1 until trim_front() is called
-			size_t maxsize{ 0 };          //maximum number of items that can be stored in this Buffer instance
-
-		public:
-			Buffer(size_t bufferSize) : vctr(bufferSize + 1), start(0), cursize(0), maxsize(bufferSize) {}
-			inline bool empty() const { return vctr.empty() || cursize == 0; }
-			inline size_t datasize() const { return vctr.empty() ? 0 : cursize; }
-
-			const RtpStreamSend::BufferItem& first() const;
-			const RtpStreamSend::BufferItem& last() const;
-			RtpStreamSend::BufferItem& operator[] (size_t index);
-
-			bool push_back (const RtpStreamSend::BufferItem& val);
-			void trim_front();
-			RtpStreamSend::BufferItem* ordered_insert_by_seq( const RtpStreamSend::BufferItem& val);
-			inline void clear() { vctr.clear(); start = cursize = 0; }
+			// Memory to hold the cloned packet (with extra space for RTX encoding).
+			uint8_t store[RTC::MtuSize + 100];
+			// Last time this packet was resent.
+			uint64_t resentAtTime{ 0 };
+			// Number of times this packet was resent.
+			uint8_t sentTimes{ 0 };
 		};
 
 	public:
@@ -67,15 +42,21 @@ namespace RTC
 
 	private:
 		void StorePacket(RTC::RtpPacket* packet);
+		void ResetStorageItem(StorageItem* storageItem);
+		void UpdateBufferStartIdx();
 
 		/* Pure virtual methods inherited from RtpStream. */
 	protected:
 		void CheckStatus() override;
 
 	private:
-		// Passed by argument.
+		std::vector<StorageItem*> buffer;
+		uint16_t bufferStartIdx{ 0 };
+		size_t bufferSize{ 0 };
 		std::vector<StorageItem> storage;
-		Buffer buffer;
+
+		RTC::RtpDataCounter transmissionCounter;
+
 		// Stats.
 		float rtt{ 0 };
 
