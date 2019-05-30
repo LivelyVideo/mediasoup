@@ -19,6 +19,7 @@ namespace RTC
 			std::string localIP;
 			bool preferIPv4;
 			bool preferIPv6;
+			bool sendOldNack;
 		};
 
 	public:
@@ -34,6 +35,7 @@ namespace RTC
 	public:
 		Json::Value ToJson() const override;
 		Json::Value GetStats() const override;
+		bool SendOldNack() const { return sendOldNack; }
 		void SetRemoteParameters(const std::string& ip, uint16_t port);
 		void SendRtpPacket(RTC::RtpPacket* packet) override;
 		void SendRtcpPacket(RTC::RTCP::Packet* packet) override;
@@ -60,6 +62,7 @@ namespace RTC
 		RTC::TransportTuple* tuple{ nullptr };
 		// Others.
 		struct sockaddr_storage remoteAddrStorage;
+		bool sendOldNack{ false };
 	};
 } // namespace RTC
 

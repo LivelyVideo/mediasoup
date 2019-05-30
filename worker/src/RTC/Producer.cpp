@@ -2,6 +2,7 @@
 // #define MS_LOG_DEV
 
 #include "RTC/Producer.hpp"
+#include "RTC/PlainRtpTransport.hpp"
 #include "Logger.hpp"
 #include "MediaSoupError.hpp"
 #include "RTC/RTCP/FeedbackPsPli.hpp"
@@ -563,6 +564,11 @@ namespace RTC
 		params.clockRate   = codec.clockRate;
 		params.useNack     = useNack;
 		params.usePli      = usePli;
+		params.sendOldNack = false;
+		RTC::PlainRtpTransport *plainTransport = dynamic_cast<RTC::PlainRtpTransport*> (transport);
+		if (plainTransport) {
+			params.sendOldNack = plainTransport->SendOldNack();
+		}
 
 		// Create a RtpStreamRecv for receiving a media stream.
 		auto* rtpStream = new RTC::RtpStreamRecv(this, params);

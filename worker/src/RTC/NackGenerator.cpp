@@ -18,7 +18,7 @@ namespace RTC
 
 	/* Instance methods. */
 
-	NackGenerator::NackGenerator(Listener* listener) : listener(listener), rtt(DefaultRtt)
+	NackGenerator::NackGenerator(Listener* listener, bool oldNack) : listener(listener), rtt(DefaultRtt), sendOldNack(oldNack)
 	{
 		MS_TRACE();
 
@@ -84,7 +84,7 @@ namespace RTC
 			  packet->GetSsrc(),
 			  packet->GetSequenceNumber());
 
-			return false;
+			return this->sendOldNack; // MS has this as false, but this makes nice with the ffmpeg proxy
 		}
 
 		// If we are here it means that we may have lost some packets so seq

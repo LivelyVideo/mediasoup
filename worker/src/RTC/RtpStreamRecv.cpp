@@ -20,7 +20,7 @@ namespace RTC
 		MS_TRACE();
 
 		if (this->params.useNack)
-			this->nackGenerator.reset(new RTC::NackGenerator(this));
+			this->nackGenerator.reset(new RTC::NackGenerator(this, this->params.sendOldNack));
 
 		// Run the timer.
 		this->statusCheckTimer->Start(StatusCheckPeriod, StatusCheckPeriod);

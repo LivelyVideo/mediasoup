@@ -23,6 +23,7 @@ namespace RTC
 			uint32_t clockRate{ 0 };
 			bool useNack{ false };
 			bool usePli{ false };
+			bool sendOldNack{ false };
 		};
 
 	public:

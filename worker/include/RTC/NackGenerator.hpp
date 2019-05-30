@@ -40,7 +40,7 @@ namespace RTC
 		};
 
 	public:
-		explicit NackGenerator(Listener* listener);
+		explicit NackGenerator(Listener* listener, bool oldNack=false);
 		~NackGenerator() override;
 
 		bool ReceivePacket(RTC::RtpPacket* packet);
@@ -70,6 +70,7 @@ namespace RTC
 		bool started{ false };
 		uint16_t lastSeq{ 0 }; // Seq number of last valid packet.
 		uint32_t rtt{ 0 };     // Round trip time (ms).
+		bool sendOldNack{ false }; // whether to resend on old or out of sequence rtx packets
 	};
 
 	// Inline instance methods.

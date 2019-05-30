@@ -236,6 +236,7 @@ namespace RTC
 				static const Json::StaticString JsonStringLocalIP{ "localIP" };
 				static const Json::StaticString JsonStringPreferIPv4{ "preferIPv4" };
 				static const Json::StaticString JsonStringPreferIPv6{ "preferIPv6" };
+				static const Json::StaticString JsonStringSendOldNacks{ "sendOldNacks" };
 
 				uint32_t transportId;
 
@@ -266,6 +267,9 @@ namespace RTC
 
 				if (request->data[JsonStringPreferIPv6].isBool())
 					options.preferIPv6 = request->data[JsonStringPreferIPv6].asBool();
+
+				if (request->data[JsonStringSendOldNacks].isBool())
+					options.sendOldNack = request->data[JsonStringSendOldNacks].asBool();
 
 				RTC::PlainRtpTransport* plainRtpTransport;
 
