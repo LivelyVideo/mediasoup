@@ -80,9 +80,10 @@ namespace RTC
 			// Out of order packet or already handled NACKed packet.
 			MS_DEBUG_TAG(
 			  rtx,
-			  "ignoring old packet not present in the NACK list [ssrc:%" PRIu32 ", seq:%" PRIu16 "]",
+			  "ignoring old packet not present in the NACK list [ssrc:%" PRIu32 ", seq:%" PRIu16 "], respond with %s",
 			  packet->GetSsrc(),
-			  packet->GetSequenceNumber());
+			  packet->GetSequenceNumber(),
+				this->sendOldNack ? "true" : "false");
 
 			return this->sendOldNack; // MS has this as false, but this makes nice with the ffmpeg proxy
 		}
