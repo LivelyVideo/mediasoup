@@ -570,6 +570,9 @@ namespace RTC
 			params.sendOldNack = plainTransport->SendOldNack();
 		}
 
+		MS_DEBUG_2TAGS(rtcp, rtx, "Producer::CreateRtpStream transport is PlainRtpTransport=%s sendOldNack is %s",
+										plainTransport ? "true" : "false", params.sendOldNack ? "true" : "false");
+
 		// Create a RtpStreamRecv for receiving a media stream.
 		auto* rtpStream = new RTC::RtpStreamRecv(this, params);
 
