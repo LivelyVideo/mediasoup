@@ -35,7 +35,7 @@ namespace RTC
 	public:
 		Json::Value ToJson() const override;
 		Json::Value GetStats() const override;
-		bool SendOldNack() const { return sendOldNack; }
+		bool SendOldNack() const override { return sendOldNack; }
 		void SetRemoteParameters(const std::string& ip, uint16_t port);
 		void SendRtpPacket(RTC::RtpPacket* packet) override;
 		void SendRtcpPacket(RTC::RTCP::Packet* packet) override;

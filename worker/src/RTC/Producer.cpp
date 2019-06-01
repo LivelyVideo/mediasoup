@@ -564,14 +564,11 @@ namespace RTC
 		params.clockRate   = codec.clockRate;
 		params.useNack     = useNack;
 		params.usePli      = usePli;
-		params.sendOldNack = false;
-		RTC::PlainRtpTransport *plainTransport = dynamic_cast<RTC::PlainRtpTransport*> (transport);
-		if (plainTransport) {
-			params.sendOldNack = plainTransport->SendOldNack();
-		}
 
-		MS_DEBUG_2TAGS(rtcp, rtx, "Producer::CreateRtpStream transport is PlainRtpTransport=%s sendOldNack is %s",
-										plainTransport ? "true" : "false", params.sendOldNack ? "true" : "false");
+		params.sendOldNack = transport->SendOldNack();
+
+		MS_DEBUG_2TAGS(rtcp, rtx, "Producer::CreateRtpStream sendOldNack is %s",
+										params.sendOldNack ? "true" : "false");
 
 		// Create a RtpStreamRecv for receiving a media stream.
 		auto* rtpStream = new RTC::RtpStreamRecv(this, params);
