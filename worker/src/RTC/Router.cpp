@@ -288,7 +288,7 @@ namespace RTC
 				// Insert into the map.
 				this->transports[transportId] = plainRtpTransport;
 
-				MS_DEBUG_DEV("PlainRtpTransport created [transportId:%" PRIu32 "]", transportId);
+				MS_DEBUG_DEV("PlainRtpTransport created [transportId:%" PRIu32 "] sendOldNack %d", transportId, plainRtpTransport->SendOldNack());
 
 				auto data = plainRtpTransport->ToJson();
 
