@@ -24,6 +24,11 @@ namespace RTC
 
 		// Set the timer.
 		this->timer = new Timer(this);
+
+		MS_DEBUG_TAG(
+			  rtx,
+			  "NackGenerator ctor - sendOldNack=%s",
+				this->sendOldNack ? "true" : "false");
 	}
 
 	NackGenerator::~NackGenerator()
