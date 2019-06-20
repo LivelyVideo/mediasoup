@@ -79,6 +79,11 @@ namespace RTC
 		}
 
 		sendOldNack = options.sendOldNack;
+
+				MS_DEBUG_TAG(
+			  rtp,
+			  "PlainRtpTransport ctor - sendOldNack=%s",
+				this->sendOldNack ? "true" : "false");
 	}
 
 	PlainRtpTransport::~PlainRtpTransport()

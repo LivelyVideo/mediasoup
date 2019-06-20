@@ -537,9 +537,12 @@ namespace RTC
 		{
 			if (!useNack && fb.type == "nack")
 			{
-				MS_DEBUG_2TAGS(rtcp, rtx, "NACK supported");
+				MS_DEBUG_2TAGS(rtcp, rtx, "NACK supported kind=%s", (this->kind == RTC::Media::Kind::VIDEO)? "video" : "audio" );
 
 				useNack = true;
+			}
+			else {
+				MS_DEBUG_2TAGS(rtcp, rtx, "NACK not supported kind=%s", (this->kind == RTC::Media::Kind::VIDEO)? "video" : "audio" );
 			}
 			if (!usePli && fb.type == "nack" && fb.parameter == "pli")
 			{
