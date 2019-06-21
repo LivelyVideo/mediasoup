@@ -44,10 +44,10 @@ namespace RTC
 		this->keyFrameRequestBlockTimer = new Timer(this);
 
 		if (this->transport != nullptr)
-			MS_DEBUG_2TAGS(rtcp, rtx, "Producer ctor transport->sendOldNack is %s",
-										this->transport->SendOldNack() ? "true" : "false");
+			MS_DEBUG_2TAGS(rtcp, rtx, "Producer ctor transport->sendOldNack=%s kind=%s",
+										this->transport->SendOldNack() ? "true" : "false", ((this->kind == RTC::Media::Kind::VIDEO)? "video" : "audio"));
 		else
-			MS_DEBUG_2TAGS(rtcp, rtx, "Producer ctor transport is nullptr, sendOldNack is undefined");
+			MS_DEBUG_2TAGS(rtcp, rtx, "Producer ctor transport is nullptr, sendOldNack=undefined kind=%s", ((this->kind == RTC::Media::Kind::VIDEO)? "video" : "audio"));
 	}
 
 	Producer::~Producer()
@@ -577,7 +577,7 @@ namespace RTC
 		if (this->transport != nullptr)
 			params.sendOldNack = transport->SendOldNack();
 
-		MS_DEBUG_2TAGS(rtcp, rtx, "Producer::CreateRtpStream sendOldNack=%s kind=%s",
+		MS_DEBUG_2TAGS(rtcp, rtx, "Producer::CreateRtpStream of RtpStreamRecv sendOldNack=%s kind=%s",
 										params.sendOldNack ? "true" : "false", (this->kind == RTC::Media::Kind::VIDEO)? "video" : "audio");
 
 		// Create a RtpStreamRecv for receiving a media stream.
