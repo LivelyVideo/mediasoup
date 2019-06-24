@@ -466,6 +466,7 @@ namespace RTC
 		{
 			if (encoding.ssrc == ssrc)
 			{
+				MS_DEBUG_2TAGS(rtcp, rtx, "MayNeedNewStream() will call CreateRtpStream() for found ssrc, kind=%s", (this->kind == RTC::Media::Kind::VIDEO)? "video" : "audio" );
 				CreateRtpStream(encoding, ssrc);
 
 				return;
@@ -514,6 +515,8 @@ namespace RTC
 					return;
 				}
 			}
+
+			MS_DEBUG_2TAGS(rtcp, rtx, "MayNeedNewStream() will call CreateRtpStream() for matching encodingId, kind=%s", (this->kind == RTC::Media::Kind::VIDEO)? "video" : "audio" );
 
 			CreateRtpStream(encoding, ssrc);
 

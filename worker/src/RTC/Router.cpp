@@ -236,7 +236,6 @@ namespace RTC
 				static const Json::StaticString JsonStringLocalIP{ "localIP" };
 				static const Json::StaticString JsonStringPreferIPv4{ "preferIPv4" };
 				static const Json::StaticString JsonStringPreferIPv6{ "preferIPv6" };
-				static const Json::StaticString JsonStringSendOldNack{ "sendOldNack" };
 
 				uint32_t transportId;
 
@@ -268,9 +267,6 @@ namespace RTC
 				if (request->data[JsonStringPreferIPv6].isBool())
 					options.preferIPv6 = request->data[JsonStringPreferIPv6].asBool();
 
-				if (request->data[JsonStringSendOldNack].isBool())
-					options.sendOldNack = request->data[JsonStringSendOldNack].asBool();
-
 				RTC::PlainRtpTransport* plainRtpTransport;
 
 				try
@@ -288,7 +284,7 @@ namespace RTC
 				// Insert into the map.
 				this->transports[transportId] = plainRtpTransport;
 
-				MS_DEBUG_DEV("PlainRtpTransport created [transportId:%" PRIu32 "] sendOldNack %d", transportId, plainRtpTransport->SendOldNack());
+				MS_DEBUG_DEV("PlainRtpTransport created [transportId:%" PRIu32 "]", transportId);
 
 				auto data = plainRtpTransport->ToJson();
 

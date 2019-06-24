@@ -77,13 +77,6 @@ namespace RTC
 				CreateSocket(AF_INET6, options.localIP);
 			}
 		}
-
-		sendOldNack = options.sendOldNack;
-
-				MS_DEBUG_TAG(
-			  rtp,
-			  "PlainRtpTransport ctor - sendOldNack=%s",
-				this->sendOldNack ? "true" : "false");
 	}
 
 	PlainRtpTransport::~PlainRtpTransport()
@@ -103,7 +96,6 @@ namespace RTC
 		static const Json::StaticString JsonStringRtpListener{ "rtpListener" };
 		static const Json::StaticString JsonStringLocalIP{ "localIP" };
 		static const Json::StaticString JsonStringLocalPort{ "localPort" };
-		static const Json::StaticString JsonStringSendOldNack{ "sendOldNack" };
 
 		Json::Value json(Json::objectValue);
 
@@ -120,8 +112,6 @@ namespace RTC
 
 		// Add rtpListener.
 		json[JsonStringRtpListener] = this->rtpListener.ToJson();
-
-		json[JsonStringSendOldNack] = this->sendOldNack;
 
 		return json;
 	}

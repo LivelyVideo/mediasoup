@@ -786,7 +786,7 @@ namespace RTC
 			}
 			if (!sendOldNack && fb.type == "ffmpeg-proxy")
 			{
-				MS_DEBUG_TAG(rtcp, "Ffmpeg proxy uses sendOldNack");
+				MS_DEBUG_TAG(rtcp, "Ffmpeg proxy - sendOldNack");
 
 				sendOldNack = true;
 			}
