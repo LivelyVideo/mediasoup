@@ -34,6 +34,8 @@ namespace RTC
 		void RequestKeyFrame();
 		bool IsActive() const;
 
+		//bool SendOldNack() const { return this->params.sendOldNack; } // try to use this when producer processes rtx packet, ffmpeg consumer wants a different behavior
+
 	private:
 		void CalculateJitter(uint32_t rtpTimestamp);
 

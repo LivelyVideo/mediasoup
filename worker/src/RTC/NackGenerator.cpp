@@ -18,17 +18,12 @@ namespace RTC
 
 	/* Instance methods. */
 
-	NackGenerator::NackGenerator(Listener* listener, bool oldNack) : listener(listener), rtt(DefaultRtt), sendOldNack(oldNack)
+	NackGenerator::NackGenerator(Listener* listener) : listener(listener), rtt(DefaultRtt)
 	{
 		MS_TRACE();
 
 		// Set the timer.
 		this->timer = new Timer(this);
-
-		MS_DEBUG_TAG(
-			  rtx,
-			  "NackGenerator ctor - sendOldNack=%s",
-				this->sendOldNack ? "true" : "false");
 	}
 
 	NackGenerator::~NackGenerator()
@@ -39,8 +34,8 @@ namespace RTC
 		delete this->timer;
 	}
 
-	// Returns true if this is a found nacked packet. False otherwise.
-	bool NackGenerator::ReceivePacket(RTC::RtpPacket* packet)
+	// Returns 0 if this is a found nacked packet. 1 if not found, 2 if pkt is already NACK'ed or out of order.
+	NackGenerator::NACKedPacket NackGenerator::ReceivePacket(RTC::RtpPacket* packet)
 	{
 		MS_TRACE();
 
@@ -55,12 +50,12 @@ namespace RTC
 			if (isKeyFrame)
 				this->keyFrameList.insert(seq);
 
-			return false;
+			return NackGenerator::NACKedPacket::NOT_FOUND;
 		}
 
 		// Obviously never nacked, so ignore.
 		if (seq == this->lastSeq)
-			return false;
+			return NackGenerator::NACKedPacket::NOT_FOUND;
 
 		// May be an out of order packet, or already handled retransmitted packet,
 		// or a retransmitted packet.
@@ -79,18 +74,17 @@ namespace RTC
 
 				this->nackList.erase(it);
 
-				return true;
+				return NackGenerator::NACKedPacket::FOUND;
 			}
 
 			// Out of order packet or already handled NACKed packet.
 			MS_DEBUG_TAG(
 			  rtx,
-			  "ignoring old packet not present in the NACK list [ssrc:%" PRIu32 ", seq:%" PRIu16 "], respond with %s",
+			  "ignoring old packet not present in the NACK list [ssrc:%" PRIu32 ", seq:%" PRIu16 "]",
 			  packet->GetSsrc(),
-			  packet->GetSequenceNumber(),
-				this->sendOldNack ? "true" : "false");
+			  packet->GetSequenceNumber());
 
-			return this->sendOldNack; // MS has this as false, but this makes nice with the ffmpeg proxy
+			return NackGenerator::NACKedPacket::TOO_OLD; // MS has this as false, but this makes nice with the ffmpeg proxy
 		}
 
 		// If we are here it means that we may have lost some packets so seq
@@ -112,14 +106,14 @@ namespace RTC
 		{
 			this->lastSeq++;
 
-			return false;
+			return NackGenerator::NACKedPacket::NOT_FOUND;
 		}
 
 		AddPacketsToNackList(this->lastSeq + 1, seq);
 
 		// NackGenerator instance may have been reseted.
 		if (!this->started)
-			return false;
+			return NackGenerator::NACKedPacket::NOT_FOUND;
 
 		this->lastSeq = seq;
 
@@ -131,7 +125,7 @@ namespace RTC
 
 		MayRunTimer();
 
-		return false;
+		return NackGenerator::NACKedPacket::NOT_FOUND;
 	}
 
 	void NackGenerator::CleanOldNackItems(uint16_t seq)

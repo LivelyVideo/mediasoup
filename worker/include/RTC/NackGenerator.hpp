@@ -14,6 +14,14 @@ namespace RTC
 	class NackGenerator : public Timer::Listener
 	{
 	public:
+		enum class NACKedPacket
+		{
+			NOT_FOUND = 0,
+			FOUND = 1,
+			TOO_OLD = 2
+		};
+		
+	public:
 		class Listener
 		{
 		public:
@@ -40,10 +48,10 @@ namespace RTC
 		};
 
 	public:
-		explicit NackGenerator(Listener* listener, bool oldNack=false);
+		explicit NackGenerator(Listener* listener);
 		~NackGenerator() override;
 
-		bool ReceivePacket(RTC::RtpPacket* packet);
+		NACKedPacket ReceivePacket(RTC::RtpPacket* packet);
 		size_t GetNackListLength() const;
 		void Reset();
 
@@ -70,7 +78,6 @@ namespace RTC
 		bool started{ false };
 		uint16_t lastSeq{ 0 }; // Seq number of last valid packet.
 		uint32_t rtt{ 0 };     // Round trip time (ms).
-		bool sendOldNack{ false }; // whether to resend on old or out of sequence rtx packets
 	};
 
 	// Inline instance methods.

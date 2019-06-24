@@ -23,7 +23,7 @@ namespace RTC
 		  rtx,
 		  "RtpStreamRecv ctor useNack=%s params.sendOldNack=%s this->params.sendOldNack=%s", (this->params.useNack ? "true" : "false"), (params.sendOldNack ? "true" : "false"), (this->params.sendOldNack ? "true" : "false"));
 		if (this->params.useNack)
-			this->nackGenerator.reset(new RTC::NackGenerator(this, params.sendOldNack));
+			this->nackGenerator.reset(new RTC::NackGenerator(this));
 
 		// Run the timer.
 		this->statusCheckTimer->Start(StatusCheckPeriod, StatusCheckPeriod);
@@ -137,8 +137,20 @@ namespace RTC
 
 		// Pass the packet to the NackGenerator and return true just if this was a
 		// NACKed packet.
-		if (this->params.useNack)
-			return this->nackGenerator->ReceivePacket(packet);
+		if (this->params.useNack) {
+			RTC::NackGenerator::NACKedPacket ret = this->nackGenerator->ReceivePacket(packet);
+			switch(ret) {
+				case RTC::NackGenerator::NACKedPacket::NOT_FOUND:
+					return false;
+				case RTC::NackGenerator::NACKedPacket::FOUND:
+					return true;
+				case RTC::NackGenerator::NACKedPacket::TOO_OLD:
+					MS_DEBUG_TAG(
+		  			rtx,
+		  			"RtpStreamRecv::ReceiveRtxPacket this->params.sendOldNack=%s", (this->params.useNack ? "true" : "false"));
+					return this->params.sendOldNack;
+			}
+		}
 
 		return false;
 	}

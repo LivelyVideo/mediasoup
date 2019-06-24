@@ -42,12 +42,6 @@ namespace RTC
 
 		// Set the RTP key frame request block timer.
 		this->keyFrameRequestBlockTimer = new Timer(this);
-
-		if (this->transport != nullptr)
-			MS_DEBUG_2TAGS(rtcp, rtx, "Producer ctor transport->sendOldNack=%s kind=%s",
-										this->transport->SendOldNack() ? "true" : "false", ((this->kind == RTC::Media::Kind::VIDEO)? "video" : "audio"));
-		else
-			MS_DEBUG_2TAGS(rtcp, rtx, "Producer ctor transport is nullptr, sendOldNack=undefined kind=%s", ((this->kind == RTC::Media::Kind::VIDEO)? "video" : "audio"));
 	}
 
 	Producer::~Producer()
@@ -276,6 +270,8 @@ namespace RTC
 
 				if (info.rtxSsrc != 0u && info.rtxSsrc == ssrc)
 				{
+					// H@@CK: TODO: rtpStream is now smart enough to make sense out of NackGenerator return value depending on whether its sendOldNack value set or not.
+					// Now I need to find out how to set up a consumer correctly so that it can set up its rtpStream's parameters right
 					rtpStream = info.rtpStream;
 					profile   = info.profile;
 
@@ -538,6 +534,7 @@ namespace RTC
 		bool useNack{ false };
 		bool usePli{ false };
 		bool useRemb{ false };
+		bool sendOldNack{ false };
 
 		for (auto& fb : codec.rtcpFeedback)
 		{
@@ -547,9 +544,7 @@ namespace RTC
 
 				useNack = true;
 			}
-			else {
-				MS_DEBUG_2TAGS(rtcp, rtx, "NACK not supported kind=%s", (this->kind == RTC::Media::Kind::VIDEO)? "video" : "audio" );
-			}
+
 			if (!usePli && fb.type == "nack" && fb.parameter == "pli")
 			{
 				MS_DEBUG_TAG(rtcp, "PLI supported");
@@ -562,6 +557,13 @@ namespace RTC
 
 				useRemb = true;
 			}
+
+			if (!sendOldNack && fb.type == "ffmpeg-proxy")
+			{
+				MS_DEBUG_2TAGS(rtcp, rtx, "Ffmpeg proxy uses sendOldNack");
+
+				sendOldNack = true;
+			}
 		}
 
 		// Create stream params.
@@ -573,12 +575,7 @@ namespace RTC
 		params.clockRate   = codec.clockRate;
 		params.useNack     = useNack;
 		params.usePli      = usePli;
-		params.sendOldNack = false;
-		if (this->transport != nullptr)
-			params.sendOldNack = transport->SendOldNack();
-
-		MS_DEBUG_2TAGS(rtcp, rtx, "Producer::CreateRtpStream of RtpStreamRecv sendOldNack=%s kind=%s",
-										params.sendOldNack ? "true" : "false", (this->kind == RTC::Media::Kind::VIDEO)? "video" : "audio");
+		params.sendOldNack = sendOldNack;
 
 		// Create a RtpStreamRecv for receiving a media stream.
 		auto* rtpStream = new RTC::RtpStreamRecv(this, params);
