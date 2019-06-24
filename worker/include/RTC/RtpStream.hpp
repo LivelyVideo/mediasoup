@@ -44,6 +44,7 @@ namespace RTC
 		const std::string& GetId() const;
 		void RestartStatusCheckTimer();
 		void StopStatusCheckTimer();
+		bool SendOldNack() const {return params.sendOldNack;}
 
 	protected:
 		bool UpdateSeq(RTC::RtpPacket* packet);

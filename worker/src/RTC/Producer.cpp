@@ -270,8 +270,6 @@ namespace RTC
 
 				if (info.rtxSsrc != 0u && info.rtxSsrc == ssrc)
 				{
-					// H@@CK: TODO: rtpStream is now smart enough to make sense out of NackGenerator return value depending on whether its sendOldNack value set or not.
-					// Now I need to find out how to set up a consumer correctly so that it can set up its rtpStream's parameters right
 					rtpStream = info.rtpStream;
 					profile   = info.profile;
 
@@ -281,6 +279,8 @@ namespace RTC
 					packet = clonedPacket.get();
 
 					// Process the packet.
+					MS_DEBUG_2TAGS(rtcp, rtx, "calling ReceiveRtxPacket() for rtpStream.params.sendOldNack=%s, Producer kind=%s", rtpStream->SendOldNack() ? "true" : "false", (this->kind == RTC::Media::Kind::VIDEO)? "video" : "audio" );
+
 					if (!rtpStream->ReceiveRtxPacket(packet))
 						return;
 
