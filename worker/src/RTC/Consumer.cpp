@@ -786,7 +786,7 @@ namespace RTC
 			}
 			if (!sendOldNack && fb.type == "ffmpeg-proxy")
 			{
-				MS_DEBUG_TAG(rtcp, "Ffmpeg proxy - sendOldNack");
+				MS_DEBUG_TAG(rtcp, "Ffmpeg proxy uses sendOldNack");
 
 				sendOldNack = true;
 			}
@@ -801,7 +801,7 @@ namespace RTC
 		params.clockRate   = codec.clockRate;
 		params.useNack     = useNack;
 		params.usePli      = usePli;
-		params.sendOldNack = sendOldNack; // TODO: don't care for RtpStreamSend
+		params.sendOldNack = sendOldNack;
 
 		// Create a RtpStreamSend for sending a single media stream.
 		size_t bufferSize = params.useNack ? 600 : 0;

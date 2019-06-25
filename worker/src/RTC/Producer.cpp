@@ -2,7 +2,6 @@
 // #define MS_LOG_DEV
 
 #include "RTC/Producer.hpp"
-#include "RTC/PlainRtpTransport.hpp"
 #include "Logger.hpp"
 #include "MediaSoupError.hpp"
 #include "RTC/RTCP/FeedbackPsPli.hpp"
@@ -279,8 +278,6 @@ namespace RTC
 					packet = clonedPacket.get();
 
 					// Process the packet.
-					MS_DEBUG_2TAGS(rtcp, rtx, "calling ReceiveRtxPacket() for rtpStream.params.sendOldNack=%s, Producer kind=%s", rtpStream->SendOldNack() ? "true" : "false", (this->kind == RTC::Media::Kind::VIDEO)? "video" : "audio" );
-
 					if (!rtpStream->ReceiveRtxPacket(packet))
 						return;
 
@@ -466,7 +463,6 @@ namespace RTC
 		{
 			if (encoding.ssrc == ssrc)
 			{
-				MS_DEBUG_2TAGS(rtcp, rtx, "MayNeedNewStream() will call CreateRtpStream() for found ssrc, kind=%s", (this->kind == RTC::Media::Kind::VIDEO)? "video" : "audio" );
 				CreateRtpStream(encoding, ssrc);
 
 				return;
@@ -516,8 +512,6 @@ namespace RTC
 				}
 			}
 
-			MS_DEBUG_2TAGS(rtcp, rtx, "MayNeedNewStream() will call CreateRtpStream() for matching encodingId, kind=%s", (this->kind == RTC::Media::Kind::VIDEO)? "video" : "audio" );
-
 			CreateRtpStream(encoding, ssrc);
 
 			return;
@@ -543,7 +537,7 @@ namespace RTC
 		{
 			if (!useNack && fb.type == "nack")
 			{
-				MS_DEBUG_2TAGS(rtcp, rtx, "NACK supported kind=%s", (this->kind == RTC::Media::Kind::VIDEO)? "video" : "audio" );
+				MS_DEBUG_2TAGS(rtcp, rtx, "NACK supported");
 
 				useNack = true;
 			}
@@ -579,6 +573,13 @@ namespace RTC
 		params.useNack     = useNack;
 		params.usePli      = usePli;
 		params.sendOldNack = sendOldNack;
+
+		if (params.sendOldNack) {
+			MS_DEBUG_2TAGS(rtcp, rtx, "Producer of %s creating new RtpStreamRecv: useNack=%s, sendOldNack=%s", 
+				(this->kind == RTC::Media::Kind::VIDEO)? "video" : "audio",
+				params.useNack ? "true" : "false",
+				params.sendOldNack ? "true" : "false" );
+		}
 
 		// Create a RtpStreamRecv for receiving a media stream.
 		auto* rtpStream = new RTC::RtpStreamRecv(this, params);

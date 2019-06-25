@@ -19,9 +19,6 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		MS_DEBUG_TAG(
-		  rtx,
-		  "RtpStreamRecv ctor useNack=%s params.sendOldNack=%s this->params.sendOldNack=%s", (this->params.useNack ? "true" : "false"), (params.sendOldNack ? "true" : "false"), (this->params.sendOldNack ? "true" : "false"));
 		if (this->params.useNack)
 			this->nackGenerator.reset(new RTC::NackGenerator(this));
 
