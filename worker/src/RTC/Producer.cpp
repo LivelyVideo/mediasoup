@@ -541,7 +541,6 @@ namespace RTC
 
 				useNack = true;
 			}
-
 			if (!usePli && fb.type == "nack" && fb.parameter == "pli")
 			{
 				MS_DEBUG_TAG(rtcp, "PLI supported");
@@ -554,7 +553,6 @@ namespace RTC
 
 				useRemb = true;
 			}
-
 			if (!sendOldNack && fb.type == "ffmpeg-proxy" && fb.parameter == "yes")
 			{
 				MS_DEBUG_2TAGS(rtcp, rtx, "Ffmpeg proxy uses sendOldNack");
