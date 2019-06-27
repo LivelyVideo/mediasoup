@@ -144,7 +144,7 @@ namespace RTC
 				case RTC::NackGenerator::NACKedPacket::TOO_OLD:
 					MS_DEBUG_TAG(
 		  			rtx,
-		  			"RtpStreamRecv::ReceiveRtxPacket this->params.sendOldNack=%s", (this->params.useNack ? "true" : "false"));
+		  			"RtpStreamRecv::ReceiveRtxPacket this->params.sendOldNack=%s", (this->params.sendOldNack ? "true" : "false"));
 					return this->params.sendOldNack;
 			}
 		}
