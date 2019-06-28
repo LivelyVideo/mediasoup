@@ -264,7 +264,8 @@
         'libraries': [
           '-ltcmalloc',
         ],
-      },
+      }
+    },
     {
       'target_name': 'mediasoup-worker-test',
       'defines': [ 'MS_LOG_STD' ],
