@@ -262,9 +262,9 @@
       ],
       'link_settings': {
         'libraries': [
-          'libtcmalloc.a'
-        ]
-      }
+          '-ltcmalloc',
+        ],
+      },
     {
       'target_name': 'mediasoup-worker-test',
       'defines': [ 'MS_LOG_STD' ],
