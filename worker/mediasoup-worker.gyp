@@ -213,8 +213,8 @@
       }],
 
       [ 'OS == "linux"', {
-        'cflags': [ '-O3' ],
-        'ldflags': [ '-O3' ],
+        'cflags': [ '-O1' ],
+        'ldflags': [ '-O1' ],
         'defines':
         [
           '_POSIX_C_SOURCE=200112',
@@ -223,8 +223,8 @@
       }],
 
       [ 'OS == "linux" and mediasoup_asan == "true"', {
-        'cflags': [ '-fsanitize=address', '-O3' ],
-        'ldflags': [ '-fsanitize=address', '-O3' ]
+        'cflags': [ '-fsanitize=address', '-O1' ],
+        'ldflags': [ '-fsanitize=address', '-O1' ]
       }],
 
       [ 'OS in "linux freebsd"', {
@@ -259,8 +259,12 @@
       [
         # C++ source files
         'src/main.cpp'
-      ]
-    },
+      ],
+      'link_settings': {
+        'libraries': [
+          'libtcmalloc.a'
+        ]
+      }
     {
       'target_name': 'mediasoup-worker-test',
       'defines': [ 'MS_LOG_STD' ],
