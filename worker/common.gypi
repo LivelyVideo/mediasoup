@@ -21,12 +21,12 @@
     {
       'Release':
       {
-        'cflags': [ '-g', '-O1' ]
+        'cflags': [ '-g', '-O1', '-fnoomit-frame-pointer', '-fno-inline' ]
       },
       'Debug':
       {
         'defines': [ 'DEBUG', 'MS_LOG_TRACE', 'MS_LOG_FILE_LINE' ],
-        'cflags': [ '-g', '-O1', '-fwrapv', '-Wno-parentheses-equality' ],
+        'cflags': [ '-g', '-O1', '-fwrapv', '-Wno-parentheses-equality', '-fnoomit-frame-pointer', '-fno-inline' ],
         'xcode_settings':
         {
           'GCC_OPTIMIZATION_LEVEL': '0'
