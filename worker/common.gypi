@@ -21,7 +21,7 @@
     {
       'Release':
       {
-        'cflags': [ '-g', '-O1', '-fnoomit-frame-pointer', '-fno-inline' ]
+        'cflags': [ '-g', '-O1', '-fno-omit-frame-pointer', '-fno-inline' ]
       },
       'Debug':
       {
