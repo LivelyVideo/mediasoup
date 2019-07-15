@@ -71,7 +71,7 @@ namespace RTC
 		{
 			RTC::TcpServer::availableIPv4Ports[i] = true;
 			RTC::TcpServer::availableIPv6Ports[i] = true;
-		} while (i++ != RTC::TcpServer::maxPort);
+		} while (i++ < RTC::TcpServer::maxPort);
 	}
 
 	uv_tcp_t* TcpServer::GetRandomPort(int addressFamily)

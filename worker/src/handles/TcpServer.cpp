@@ -152,8 +152,7 @@ void TcpServer::Close()
 	// Tell the UV handle that the TcpServer has been closed.
 	this->uvHandle->data = nullptr;
 
-	MS_DEBUG_DEV("closing %zu active connections", this->connections.size());
-
+	MS_ERROR("closing %zu active connections", this->connections.size())
 	for (auto it = this->connections.begin(); it != this->connections.end();)
 	{
 		auto* connection = *it;
@@ -270,6 +269,8 @@ void TcpServer::OnTcpConnectionClosed(TcpConnection* connection, bool isClosedBy
 
 	// Remove the TcpConnection from the set.
 	size_t numErased = this->connections.erase(connection);
+
+	MS_ERROR("erased TcpConnection, numErased=%zu", numErased);
 
 	// If the closed connection was not present in the set, do nothing else.
 	if (numErased == 0)
