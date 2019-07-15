@@ -120,7 +120,7 @@ namespace RTC
 				// The frame is too big, so close the connection.
 				else
 				{
-					MS_WARN_DEV(
+					MS_ERROR(
 					  "no more space in the buffer for the unfinished frame being parsed, closing the "
 					  "connection");
 

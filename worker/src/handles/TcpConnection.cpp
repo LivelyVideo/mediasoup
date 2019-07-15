@@ -73,6 +73,7 @@ TcpConnection::TcpConnection(size_t bufferSize) : bufferSize(bufferSize)
 	this->uvHandle->data = (void*)this;
 
 	// NOTE: Don't allocate the buffer here. Instead wait for the first uv_alloc_cb().
+	MS_ERROR("No buffer allocation at ctor");
 }
 
 TcpConnection::~TcpConnection()
@@ -81,6 +82,15 @@ TcpConnection::~TcpConnection()
 
 	if (!this->closed)
 		Close();
+
+	if (this->buffer == nullptr) {
+		// CHECK
+		MS_ERROR("destructor with nullptr buffer already");
+	}
+	else {
+		// CHECK
+		MS_ERROR("destructor with non-empty buffer");
+	}
 
 	delete[] this->buffer;
 }
@@ -98,6 +108,11 @@ void TcpConnection::Close()
 
 	// Tell the UV handle that the TcpConnection has been closed.
 	this->uvHandle->data = nullptr;
+	
+	if (this->buffer == nullptr) {
+		// CHECK
+		MS_ERROR("Close() with nullptr buffer already");
+	}
 
 	// Don't read more.
 	err = uv_read_stop(reinterpret_cast<uv_stream_t*>(this->uvHandle));
@@ -361,8 +376,13 @@ inline void TcpConnection::OnUvReadAlloc(size_t /*suggestedSize*/, uv_buf_t* buf
 		return;
 
 	// If this is the first call to onUvReadAlloc() then allocate the receiving buffer now.
-	if (this->buffer == nullptr)
+	if (this->buffer == nullptr) {
+		MS_ERROR("OnUvReadAlloc will allocate a buffer");
 		this->buffer = new uint8_t[this->bufferSize];
+	}
+	else {
+		MS_ERROR("OnUvReadAlloc will not allocate a buffer");
+	}
 
 	// Tell UV to write after the last data byte in the buffer.
 	buf->base = reinterpret_cast<char*>(this->buffer + this->bufferDataLen);
@@ -401,7 +421,7 @@ inline void TcpConnection::OnUvRead(ssize_t nread, const uv_buf_t* /*buf*/)
 	// Client disconneted.
 	else if (nread == UV_EOF || nread == UV_ECONNRESET)
 	{
-		MS_DEBUG_DEV("connection closed by peer, closing server side");
+		MS_ERROR("connection closed by peer, closing server side: %s - buffer is %s", uv_strerror(nread), this->buffer == nullptr ? "NULL" : "not empty");
 
 		this->isClosedByPeer = true;
 
@@ -411,7 +431,7 @@ inline void TcpConnection::OnUvRead(ssize_t nread, const uv_buf_t* /*buf*/)
 	// Some error.
 	else
 	{
-		MS_WARN_DEV("read error, closing the connection: %s", uv_strerror(nread));
+		MS_ERROR("read error, closing the connection: %s  - buffer is %s", uv_strerror(nread), this->buffer == nullptr ? "NULL" : "not empty");
 
 		this->hasError = true;
 
