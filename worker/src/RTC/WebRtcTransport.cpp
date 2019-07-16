@@ -52,6 +52,12 @@ namespace RTC
 		bool tryIPv4tcp{ options.tcp };
 		bool tryIPv6tcp{ options.tcp };
 
+		MS_ERROR( "WebRtcTransport ctor called with options.udp=%s options.tcp=%s options.preferUdp=%s options.preferTcp=%s",
+			options.udp ? "true":"false", 
+			options.tcp ? "true":"false", 
+			options.preferUdp ? "true":"false", 
+			options.preferTcp ? "true":"false" );
+
 		// Create a ICE server.
 		this->iceServer = new RTC::IceServer(
 		  this, Utils::Crypto::GetRandomString(16), Utils::Crypto::GetRandomString(32));

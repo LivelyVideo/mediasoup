@@ -227,6 +227,7 @@ namespace RTC
 	    connListener(connListener)
 	{
 		MS_TRACE();
+		MS_ERROR("TcpServer ctor is called with %s", addressFamily == AF_INET6 ? "AF_INET6" : "AF_INET");
 	}
 
 	TcpServer::~TcpServer()
@@ -238,6 +239,8 @@ namespace RTC
 			RTC::TcpServer::availableIPv4Ports[this->localPort] = true;
 		else if (this->localAddr.ss_family == AF_INET6)
 			RTC::TcpServer::availableIPv6Ports[this->localPort] = true;
+		
+		// L@@K: are we deleting TcpConnection buffers properly here?
 	}
 
 	void TcpServer::UserOnTcpConnectionAlloc(::TcpConnection** connection)
