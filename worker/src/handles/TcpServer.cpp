@@ -152,7 +152,7 @@ void TcpServer::Close()
 	// Tell the UV handle that the TcpServer has been closed.
 	this->uvHandle->data = nullptr;
 
-	MS_ERROR("closing %zu active connections", this->connections.size())
+	MS_ERROR("closing %zu active connections", this->connections.size());
 	for (auto it = this->connections.begin(); it != this->connections.end();)
 	{
 		auto* connection = *it;
