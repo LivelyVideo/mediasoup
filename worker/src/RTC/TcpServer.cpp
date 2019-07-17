@@ -233,6 +233,7 @@ namespace RTC
 	TcpServer::~TcpServer()
 	{
 		MS_TRACE();
+			MS_ERROR("destructor called - RTC::TcpServer with %zu active connections", GetNumConnections());
 
 		// Mark the port as available again.
 		if (this->localAddr.ss_family == AF_INET)

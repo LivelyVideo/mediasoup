@@ -136,6 +136,8 @@ TcpServer::~TcpServer()
 {
 	MS_TRACE();
 
+	MS_ERROR("destructor called - ::TcpServer with %zu active connections closed=%s", this->connections.size(), this->closed() ? "true" : "false");
+
 	if (!this->closed)
 		Close();
 }
