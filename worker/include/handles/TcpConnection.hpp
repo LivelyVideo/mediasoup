@@ -39,7 +39,7 @@ public:
 	virtual ~TcpConnection();
 
 public:
-	void Close();
+	void Close(); // L@@K: who is the external caller of Close()? that caller does not invoke TcpConnection's dtor so we got a leak :)
 	virtual void Dump() const;
 	void Setup(
 	  Listener* listener,

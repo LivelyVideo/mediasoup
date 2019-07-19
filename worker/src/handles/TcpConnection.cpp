@@ -139,6 +139,9 @@ void TcpConnection::Close()
 
 	// Notify the listener.
 	this->listener->OnTcpConnectionClosed(this, this->isClosedByPeer);
+
+	// Try this line here... maybe it will work this time, at least we get the buffer cleaned up?
+	delete[] this->buffer;
 }
 
 void TcpConnection::Dump() const

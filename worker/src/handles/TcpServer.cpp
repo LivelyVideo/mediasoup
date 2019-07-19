@@ -282,8 +282,7 @@ void TcpServer::OnTcpConnectionClosed(TcpConnection* connection, bool isClosedBy
 
 	size_t numErased = this->connections.erase(connection);
 	MS_ERROR("erased TcpConnection, numErased=%zu", numErased);
-	
-	delete connection; // added this new line
+	// dtor is not being called here
 
 	// If the closed connection was not present in the set, do nothing else.
 	if (numErased == 0)
@@ -291,4 +290,5 @@ void TcpServer::OnTcpConnectionClosed(TcpConnection* connection, bool isClosedBy
 
 	// Notify the subclass.
 	UserOnTcpConnectionClosed(connection, isClosedByPeer);
+
 }
