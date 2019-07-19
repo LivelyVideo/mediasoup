@@ -14,6 +14,7 @@ namespace RTC
 	  : ::TcpConnection::TcpConnection(bufferSize), listener(listener)
 	{
 		MS_TRACE();
+		MS_ERROR("RTC::TcpConnection ctor called L@@K");
 	}
 
 	void TcpConnection::UserOnTcpConnectionRead()

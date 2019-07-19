@@ -136,7 +136,7 @@ TcpServer::~TcpServer()
 {
 	MS_TRACE();
 
-	MS_ERROR("destructor called - ::TcpServer with %zu active connections closed=%s", this->connections.size(), this->closed() ? "true" : "false");
+	MS_ERROR("destructor called - ::TcpServer closed=%s with %zu active connections", this->closed ? "true" : "false", this->connections.size());
 
 	if (!this->closed)
 		Close();
@@ -232,6 +232,7 @@ inline void TcpServer::OnUvConnection(int status)
 	}
 	catch (const MediaSoupError& error)
 	{
+		MS_ERROR("Failed to setup new TcpConnection in TcpServer");
 		delete connection;
 
 		return;
@@ -246,6 +247,7 @@ inline void TcpServer::OnUvConnection(int status)
 
 	// Insert the TcpConnection in the set.
 	this->connections.insert(connection);
+	MS_ERROR("Inserted new TcpConnection in TcpServer collection");
 
 	// Start receiving data.
 	try
@@ -270,9 +272,18 @@ void TcpServer::OnTcpConnectionClosed(TcpConnection* connection, bool isClosedBy
 	MS_DEBUG_DEV("TCP connection closed");
 
 	// Remove the TcpConnection from the set.
-	size_t numErased = this->connections.erase(connection);
+	// For some reason erase() does not call dtor of TcpConnection here
+	/* while this code above does!
+		auto* connection = *it;
 
+		it = this->connections.erase(it);
+		delete connection;
+	*/
+
+	size_t numErased = this->connections.erase(connection);
 	MS_ERROR("erased TcpConnection, numErased=%zu", numErased);
+	
+	delete connection; // added this new line
 
 	// If the closed connection was not present in the set, do nothing else.
 	if (numErased == 0)

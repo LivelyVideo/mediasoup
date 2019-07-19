@@ -249,6 +249,7 @@ namespace RTC
 		MS_TRACE();
 
 		// Allocate a new RTC::TcpConnection for the TcpServer to handle it.
+		MS_ERROR("calling new TcpConnection ctor");
 		*connection = new RTC::TcpConnection(this->connListener, 65536);
 	}
 
