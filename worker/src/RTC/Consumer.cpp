@@ -768,6 +768,7 @@ namespace RTC
 		auto& codec = this->rtpParameters.GetCodecForEncoding(encoding);
 		bool useNack{ false };
 		bool usePli{ false };
+		bool sendOldNack{ false };
 
 		for (auto& fb : codec.rtcpFeedback)
 		{
@@ -783,6 +784,12 @@ namespace RTC
 
 				usePli = true;
 			}
+			if (!sendOldNack && fb.type == "ffmpeg-proxy" && fb.parameter == "yes")
+			{
+				MS_DEBUG_TAG(rtcp, "Ffmpeg proxy uses sendOldNack");
+
+				sendOldNack = true;
+			}
 		}
 
 		// Create stream params.
@@ -794,6 +801,7 @@ namespace RTC
 		params.clockRate   = codec.clockRate;
 		params.useNack     = useNack;
 		params.usePli      = usePli;
+		params.sendOldNack = sendOldNack;
 
 		// Create a RtpStreamSend for sending a single media stream.
 		size_t bufferSize = params.useNack ? 600 : 0;

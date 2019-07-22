@@ -23,6 +23,7 @@ namespace RTC
 			uint32_t clockRate{ 0 };
 			bool useNack{ false };
 			bool usePli{ false };
+			bool sendOldNack{ false };
 		};
 
 	public:
@@ -43,6 +44,7 @@ namespace RTC
 		const std::string& GetId() const;
 		void RestartStatusCheckTimer();
 		void StopStatusCheckTimer();
+		bool SendOldNack() const {return params.sendOldNack;}
 
 	protected:
 		bool UpdateSeq(RTC::RtpPacket* packet);
