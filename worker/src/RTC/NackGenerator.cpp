@@ -84,7 +84,7 @@ namespace RTC
 			  packet->GetSsrc(),
 			  packet->GetSequenceNumber());
 
-			return NackGenerator::NACKedPacket::TOO_OLD; // MS has this as false, but this makes nice with the ffmpeg proxy
+			return NackGenerator::NACKedPacket::TOO_OLD; // this makes nice with the ffmpeg proxy
 		}
 
 		// If we are here it means that we may have lost some packets so seq
