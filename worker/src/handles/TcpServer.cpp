@@ -271,15 +271,6 @@ void TcpServer::OnTcpConnectionClosed(TcpConnection* connection, bool isClosedBy
 
 	MS_DEBUG_DEV("TCP connection closed");
 
-	// Remove the TcpConnection from the set.
-	// For some reason erase() does not call dtor of TcpConnection here
-	/* while this code above does!
-		auto* connection = *it;
-
-		it = this->connections.erase(it);
-		delete connection;
-	*/
-
 	size_t numErased = this->connections.erase(connection);
 	MS_ERROR("erased TcpConnection, numErased=%zu", numErased);
 	// dtor is not being called here

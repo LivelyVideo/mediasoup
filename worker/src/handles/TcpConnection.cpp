@@ -140,8 +140,9 @@ void TcpConnection::Close()
 	// Notify the listener.
 	this->listener->OnTcpConnectionClosed(this, this->isClosedByPeer);
 
-	// Try this line here... maybe it will work this time, at least we get the buffer cleaned up?
-	delete[] this->buffer;
+	// L@@K: Try this line here... maybe it will work this time, at least we get the buffer cleaned up?
+	// delete[] this->buffer;
+	// Temp disable, trying dtor in RTC::TcpServer in UserOnTcpConnectionClosed()
 }
 
 void TcpConnection::Dump() const

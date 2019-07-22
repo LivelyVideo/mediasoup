@@ -233,7 +233,7 @@ namespace RTC
 	TcpServer::~TcpServer()
 	{
 		MS_TRACE();
-			MS_ERROR("destructor called - RTC::TcpServer with %zu active connections", GetNumConnections());
+		MS_ERROR("destructor called - RTC::TcpServer");
 
 		// Mark the port as available again.
 		if (this->localAddr.ss_family == AF_INET)
@@ -268,5 +268,8 @@ namespace RTC
 
 		this->listener->OnRtcTcpConnectionClosed(
 		  this, dynamic_cast<RTC::TcpConnection*>(connection), isClosedByPeer);
+
+		MS_ERROR("L@@KL@@K deleting closed connection");
+		delete connection; // L@@K: see if this is ok: connection was allocated by RTC::TcpServer, has to be deleted here
 	}
 } // namespace RTC
