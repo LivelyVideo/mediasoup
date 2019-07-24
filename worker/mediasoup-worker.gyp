@@ -213,8 +213,8 @@
       }],
 
       [ 'OS == "linux"', {
-        'cflags': [ '-O3' ],
-        'ldflags': [ '-O3' ],
+        'cflags': [ '-O1', '-fno-omit-frame-pointer' ],
+        'ldflags': [ '-O1' ],
         'defines':
         [
           '_POSIX_C_SOURCE=200112',
@@ -223,8 +223,8 @@
       }],
 
       [ 'OS == "linux" and mediasoup_asan == "true"', {
-        'cflags': [ '-fsanitize=address', '-O3' ],
-        'ldflags': [ '-fsanitize=address', '-O3' ]
+        'cflags': [ '-fsanitize=address', '-O1', '-fno-omit-frame-pointer' ],
+        'ldflags': [ '-fsanitize=address', '-O1' ]
       }],
 
       [ 'OS in "linux freebsd"', {

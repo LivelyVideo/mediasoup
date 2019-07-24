@@ -85,7 +85,7 @@ TcpConnection::~TcpConnection()
 	delete[] this->buffer;
 }
 
-void TcpConnection::Close()
+void __attribute__ ((noinline)) TcpConnection::Close()
 {
 	MS_TRACE();
 
@@ -101,9 +101,10 @@ void TcpConnection::Close()
 
 	// Don't read more.
 	err = uv_read_stop(reinterpret_cast<uv_stream_t*>(this->uvHandle));
-	if (err != 0)
+	if (err != 0) {
+		MS_ERROR("uv_read_stop() failed: %s", uv_strerror(err));
 		MS_ABORT("uv_read_stop() failed: %s", uv_strerror(err));
-
+	}
 	// If there is no error and the peer didn't close its connection side then close gracefully.
 	if (!this->hasError && !this->isClosedByPeer)
 	{
@@ -113,8 +114,10 @@ void TcpConnection::Close()
 		req->data = (void*)this;
 		err       = uv_shutdown(
       req, reinterpret_cast<uv_stream_t*>(this->uvHandle), static_cast<uv_shutdown_cb>(onShutdown));
-		if (err != 0)
+		if (err != 0) {
+			MS_ERROR("uv_shutdown() failed: %s", uv_strerror(err));
 			MS_ABORT("uv_shutdown() failed: %s", uv_strerror(err));
+		}
 	}
 	// Otherwise directly close the socket.
 	else

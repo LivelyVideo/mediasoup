@@ -9,7 +9,8 @@
 
 /* Static methods for UV callbacks. */
 
-inline static void onConnection(uv_stream_t* handle, int status)
+//inline 
+static void __attribute__ ((noinline)) onConnection(uv_stream_t* handle, int status)
 {
 	auto* server = static_cast<TcpServer*>(handle->data);
 
@@ -203,7 +204,8 @@ bool TcpServer::SetLocalAddress()
 	return true;
 }
 
-inline void TcpServer::OnUvConnection(int status)
+//inline 
+void __attribute__ ((noinline)) TcpServer::OnUvConnection(int status)
 {
 	MS_TRACE();
 
@@ -231,8 +233,8 @@ inline void TcpServer::OnUvConnection(int status)
 	}
 	catch (const MediaSoupError& error)
 	{
+		MS_ERROR("cannot setup the TCP connection, closing the connection: %s", error.what());
 		delete connection;
-
 		return;
 	}
 
@@ -240,8 +242,10 @@ inline void TcpServer::OnUvConnection(int status)
 	err = uv_accept(
 	  reinterpret_cast<uv_stream_t*>(this->uvHandle),
 	  reinterpret_cast<uv_stream_t*>(connection->GetUvHandle()));
-	if (err != 0)
+	if (err != 0) {
+		MS_ERROR("uv_accept() failed: %s", uv_strerror(err));
 		MS_ABORT("uv_accept() failed: %s", uv_strerror(err));
+	}
 
 	// Insert the TcpConnection in the set.
 	this->connections.insert(connection);

@@ -21,7 +21,7 @@
     {
       'Release':
       {
-        'cflags': [ '-g', '-O3' ]
+        'cflags': [ '-g', '-O1', '-fno-omit-frame-pointer' ]
       },
       'Debug':
       {
