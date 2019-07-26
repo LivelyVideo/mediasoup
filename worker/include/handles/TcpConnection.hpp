@@ -39,7 +39,7 @@ public:
 	virtual ~TcpConnection();
 
 public:
-	void Close();
+//	void Close();
 	virtual void Dump() const;
 	void Setup(
 	  Listener* listener,
@@ -69,6 +69,10 @@ public:
 	void OnUvRead(ssize_t nread, const uv_buf_t* buf);
 	void OnUvWriteError(int error);
 
+	/* Only a TcpConnection object can close itself */
+protected:
+	void Close();
+
 	/* Pure virtual methods that must be implemented by the subclass. */
 protected:
 	virtual void UserOnTcpConnectionRead() = 0;
@@ -83,6 +87,7 @@ private:
 	bool closed{ false };
 	bool isClosedByPeer{ false };
 	bool hasError{ false };
+	bool isBeenDestroyed{ false };
 
 protected:
 	// Passed by argument.

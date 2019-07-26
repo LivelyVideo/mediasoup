@@ -79,6 +79,8 @@ TcpConnection::~TcpConnection()
 {
 	MS_TRACE();
 
+	isBeenDestroyed = true;
+	
 	if (!this->closed)
 		Close();
 
@@ -125,8 +127,9 @@ void __attribute__ ((noinline)) TcpConnection::Close()
 		uv_close(reinterpret_cast<uv_handle_t*>(this->uvHandle), static_cast<uv_close_cb>(onClose));
 	}
 
-	// Notify the listener.
-	this->listener->OnTcpConnectionClosed(this, this->isClosedByPeer);
+	// Notify the listener - unless dtor is already called (dtor is called by the listener so it already knows, avoid circular call to this connection's dtor)
+	if (!isBeenDestroyed)
+		this->listener->OnTcpConnectionClosed(this, this->isClosedByPeer);
 }
 
 void TcpConnection::Dump() const

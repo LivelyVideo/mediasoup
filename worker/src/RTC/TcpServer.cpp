@@ -245,6 +245,8 @@ namespace RTC
 		MS_TRACE();
 
 		// Allocate a new RTC::TcpConnection for the TcpServer to handle it.
+		// A base class ::TcpServer is responsible for maintaining a collection of TcpConnections
+		// and their deallocation
 		*connection = new RTC::TcpConnection(this->connListener, 65536);
 	}
 
@@ -254,7 +256,7 @@ namespace RTC
 
 		// Allow just MaxTcpConnectionsPerServer.
 		if (GetNumConnections() > MaxTcpConnectionsPerServer)
-			delete connection;
+			MS_THROW_ERROR("new TCP connection not allowed, reached max limit of %zu connections per server", MaxTcpConnectionsPerServer);
 	}
 
 	void TcpServer::UserOnTcpConnectionClosed(::TcpConnection* connection, bool isClosedByPeer)
@@ -263,7 +265,5 @@ namespace RTC
 
 		this->listener->OnRtcTcpConnectionClosed(
 		  this, dynamic_cast<RTC::TcpConnection*>(connection), isClosedByPeer);
-		
-		delete connection;
 	}
 } // namespace RTC

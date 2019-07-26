@@ -261,7 +261,7 @@ void __attribute__ ((noinline)) TcpServer::OnUvConnection(int status)
 	catch (const MediaSoupError& error)
 	{
 		MS_ERROR("cannot run the TCP connection, closing the connection: %s", error.what());
-
+		size_t numErased = this->connections.erase(connection);
 		delete connection;
 	}
 }
@@ -276,9 +276,14 @@ void TcpServer::OnTcpConnectionClosed(TcpConnection* connection, bool isClosedBy
 	size_t numErased = this->connections.erase(connection);
 
 	// If the closed connection was not present in the set, do nothing else.
-	if (numErased == 0)
+	if (numErased == 0) {
+		//TODO: turn into warning
+		MS_ERROR("Closing connection was not in a collection");
 		return;
-
+	}
 	// Notify the subclass.
 	UserOnTcpConnectionClosed(connection, isClosedByPeer);
+
+	// Clean up connection
+	delete connection;
 }
