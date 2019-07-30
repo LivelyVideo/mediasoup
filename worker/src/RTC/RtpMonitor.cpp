@@ -16,7 +16,7 @@ namespace RTC
 
 	// Score constraints weight.
 	static constexpr float LossPercentageWeight{ -1.0f };
-	static constexpr float RepairedPercentageWeight{ 0.5f };
+	static constexpr float RepairedPercentageWeight{ 0.2f };
 
 	/* Instance methods. */
 
@@ -108,6 +108,16 @@ namespace RTC
 		// Add score to histogram.
 		AddScore(static_cast<uint8_t>(score / 10 + 0.5f));
 
+		MS_WARN_TAG(
+		  rtp,
+		  "rtp monitor score2: %zu, currentLoss: %zu, repairedPacketCount: %zu, lossPercentage: %f, repairedPercentage: %f, score: %f",
+		  sentPackets,
+		  currentLoss,
+		  repairedPacketCount,
+		  lossPercentage,
+		  repairedPercentage,
+		  score);
+
 #ifdef MS_LOG_DEV
 		MS_DEBUG_TAG(
 		  rtp,
@@ -188,6 +198,14 @@ namespace RTC
 			samples += weight;
 			totalScore += weight * score;
 		}
+
+		MS_WARN_TAG(
+		  rtp,
+		  "rtp monitor score [weight:%" PRIu8 ", sample:%" PRIu8 ", total:%" PRIu8 ", score:%" PRIu8 "]",
+		  static_cast<uint8_t>(weight),
+		  static_cast<uint8_t>(samples),
+		  static_cast<uint8_t>(totalScore),
+		  static_cast<uint8_t>(std::round(totalScore / samples)));
 
 		return static_cast<uint8_t>(std::round(totalScore / samples));
 	}
