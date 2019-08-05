@@ -11,18 +11,17 @@ namespace RTC
 {
 	class RtpStreamSend : public RtpStream
 	{
-	private:
+	public:
 		struct StorageItem
 		{
-			uint8_t store[RTC::MtuSize];
-		};
-
-	private:
-		struct BufferItem
-		{
-			uint16_t seq{ 0 }; // RTP seq.
-			uint64_t resentAtTime{ 0 };
+			// Cloned packet.
 			RTC::RtpPacket* packet{ nullptr };
+			// Memory to hold the cloned packet (with extra space for RTX encoding).
+			uint8_t store[RTC::MtuSize + 100];
+			// Last time this packet was resent.
+			uint64_t resentAtTime{ 0 };
+			// Number of times this packet was resent.
+			uint8_t sentTimes{ 0 };
 		};
 
 	public:
@@ -43,16 +42,21 @@ namespace RTC
 
 	private:
 		void StorePacket(RTC::RtpPacket* packet);
+		void ResetStorageItem(StorageItem* storageItem);
+		void UpdateBufferStartIdx();
 
 		/* Pure virtual methods inherited from RtpStream. */
 	protected:
 		void CheckStatus() override;
 
 	private:
-		// Passed by argument.
+		std::vector<StorageItem*> buffer;
+		uint16_t bufferStartIdx{ 0 };
+		size_t bufferSize{ 0 };
 		std::vector<StorageItem> storage;
-		using Buffer = std::list<BufferItem>;
-		Buffer buffer;
+
+		RTC::RtpDataCounter transmissionCounter;
+
 		// Stats.
 		float rtt{ 0 };
 

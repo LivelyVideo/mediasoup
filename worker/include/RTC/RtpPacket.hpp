@@ -112,6 +112,7 @@ namespace RTC
 		uint8_t* GetExtension(RTC::RtpHeaderExtensionUri::Type uri, uint8_t* len) const;
 		bool ReadAudioLevel(uint8_t* volume, bool* voice) const;
 		bool ReadAbsSendTime(uint32_t* time) const;
+		bool ReadVideoOrientation(uint16_t* data) const;
 		bool ReadMid(const uint8_t** data, size_t* len) const;
 		bool ReadRid(const uint8_t** data, size_t* len) const;
 		uint8_t* GetPayload() const;
@@ -276,18 +277,18 @@ namespace RTC
 	{
 		*len = 0;
 
-		if (this->extensionMap.find(uri) == this->extensionMap.end())
+		if (this->extensionMap.find(uri) == this->extensionMap.end()) {
 			return nullptr;
+		}
 
 		uint8_t id = this->extensionMap.at(uri);
-
-		if (HasOneByteExtensions())
+		if (HasOneByteExtensions()) 
 		{
-			if (this->oneByteExtensions.find(id) == this->oneByteExtensions.end())
+			if (this->oneByteExtensions.find(id) == this->oneByteExtensions.end()){
 				return nullptr;
+			}
 
 			*len = this->oneByteExtensions.at(id)->len + 1;
-
 			return this->oneByteExtensions.at(id)->value;
 		}
 		else if (HasTwoBytesExtensions())
@@ -333,6 +334,54 @@ namespace RTC
 			return false;
 
 		*time = Utils::Byte::Get3Bytes(extenValue, 0);
+
+		return true;
+	}
+
+	inline bool RtpPacket::ReadVideoOrientation(uint16_t* rotation) const
+	{
+		uint8_t extenLen;
+		uint8_t cvoByte;
+		uint8_t* extenValue;
+
+		extenValue = GetExtension(RTC::RtpHeaderExtensionUri::Type::VIDEO_ORIENTATION, &extenLen);
+		if (!extenValue || extenLen != 1) {
+			return false;
+		}
+		/** 
+			Coordination of Video Orientation
+			Bit#       7 6 5 4 3 2  1  0(LSB)
+			Definition 0 0 0 0 C F R1 R0
+
+			C = Camera
+			0: Front-facing camera, facing the user. If camera direction is unknown, this is the default value used.
+			1: Back-facing camera, facing away from the user.
+
+			F = Flip
+			0: No flip operation. If the sending client flips value is unknown, this is the default value used.
+			1: Horizontal flip operation
+
+			R1 R0 = Rotation
+			 0  0 = 0 rotation
+			 0  1 = 90 CCW (aka: 270 CW)
+			 1  0 = 180 CCW (aka: 180 CW)
+			 1  1 = 270 CCW (aka: 90 CW)
+		**/  
+		cvoByte = Utils::Byte::Get1Byte(extenValue, 0);
+		int rValue = (cvoByte & 0x03);
+		switch (rValue) {
+			case 3: // NOTE: using counter clockwise values
+				*rotation = 270;
+				break;
+			case 2:
+				*rotation = 180;
+				break;
+			case 1:
+				*rotation = 90;
+				break;
+			default:
+				*rotation = 0;
+		}
 
 		return true;
 	}

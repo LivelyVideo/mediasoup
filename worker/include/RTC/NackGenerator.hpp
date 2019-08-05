@@ -14,6 +14,14 @@ namespace RTC
 	class NackGenerator : public Timer::Listener
 	{
 	public:
+		enum class NACKedPacket
+		{
+			NOT_FOUND = 0,
+			FOUND = 1,
+			TOO_OLD = 2
+		};
+		
+	public:
 		class Listener
 		{
 		public:
@@ -43,7 +51,7 @@ namespace RTC
 		explicit NackGenerator(Listener* listener);
 		~NackGenerator() override;
 
-		bool ReceivePacket(RTC::RtpPacket* packet);
+		NACKedPacket ReceivePacket(RTC::RtpPacket* packet);
 		size_t GetNackListLength() const;
 		void Reset();
 

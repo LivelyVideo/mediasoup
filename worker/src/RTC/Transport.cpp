@@ -167,6 +167,9 @@ namespace RTC
 
 		if (producer->GetTransportHeaderExtensionIds().rid != 0u)
 			this->headerExtensionIds.rid = producer->GetTransportHeaderExtensionIds().rid;
+
+		if (producer->GetTransportHeaderExtensionIds().videoOrientation != 0u)
+			this->headerExtensionIds.videoOrientation = producer->GetTransportHeaderExtensionIds().videoOrientation;
 	}
 
 	void Transport::HandleConsumer(RTC::Consumer* consumer)

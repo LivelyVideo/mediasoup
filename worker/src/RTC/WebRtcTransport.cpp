@@ -247,6 +247,7 @@ namespace RTC
 		static const Json::StaticString JsonStringFailed{ "failed" };
 		static const Json::StaticString JsonStringHeaderExtensionIds{ "headerExtensionIds" };
 		static const Json::StaticString JsonStringAbsSendTime{ "absSendTime" };
+		static const Json::StaticString JsonStringVideoOrientation{ "videoOrientation" };
 		static const Json::StaticString JsonStringMid{ "mid" };
 		static const Json::StaticString JsonStringRid{ "rid" };
 		static const Json::StaticString JsonStringRtpListener{ "rtpListener" };
@@ -337,6 +338,9 @@ namespace RTC
 
 		if (this->headerExtensionIds.absSendTime != 0u)
 			jsonHeaderExtensionIds[JsonStringAbsSendTime] = this->headerExtensionIds.absSendTime;
+
+		if (this->headerExtensionIds.videoOrientation != 0u)
+			jsonHeaderExtensionIds[JsonStringVideoOrientation] = this->headerExtensionIds.videoOrientation;
 
 		if (this->headerExtensionIds.mid != 0u)
 			jsonHeaderExtensionIds[JsonStringMid] = this->headerExtensionIds.mid;
@@ -856,6 +860,11 @@ namespace RTC
 		{
 			packet->AddExtensionMapping(
 			  RtpHeaderExtensionUri::Type::ABS_SEND_TIME, this->headerExtensionIds.absSendTime);
+		}
+		if (this->headerExtensionIds.videoOrientation != 0u)
+		{
+			packet->AddExtensionMapping(
+			  RtpHeaderExtensionUri::Type::VIDEO_ORIENTATION, this->headerExtensionIds.videoOrientation);
 		}
 		if (this->headerExtensionIds.mid != 0u)
 		{

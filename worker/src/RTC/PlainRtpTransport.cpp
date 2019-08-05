@@ -283,6 +283,11 @@ namespace RTC
 			packet->AddExtensionMapping(
 			  RtpHeaderExtensionUri::Type::ABS_SEND_TIME, this->headerExtensionIds.absSendTime);
 		}
+		if (this->headerExtensionIds.videoOrientation != 0u)
+		{
+			packet->AddExtensionMapping(
+			  RtpHeaderExtensionUri::Type::VIDEO_ORIENTATION, this->headerExtensionIds.videoOrientation);
+		}
 		if (this->headerExtensionIds.mid != 0u)
 		{
 			packet->AddExtensionMapping(RtpHeaderExtensionUri::Type::MID, this->headerExtensionIds.mid);

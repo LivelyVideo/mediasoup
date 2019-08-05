@@ -1,5 +1,5 @@
 {
-  "name": "mediasoup",
+  "name": "@livelyvideo/mediasoup",
   "version": "2.6.14",
   "description": "Cutting Edge WebRTC Video Conferencing",
   "author": "Iñaki Baz Castillo <ibc@aliax.net> (https://inakibaz.me)",
@@ -8,9 +8,14 @@
   ],
   "homepage": "https://mediasoup.org",
   "license": "ISC",
+  "publishConfig": {
+    "always-auth": true,
+    "registry": "https://npm.livelyvideo.tv"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/versatica/mediasoup.git"
+    "private": true,
+    "url": "https://github.com/LivelyVideo/mediasoup.git"
   },
   "keywords": [
     "webrtc",

@@ -62,7 +62,6 @@
 
 * Downgrade OpenSSL to version 1.1.0h (27 Mar 2018) until issue [#257](https://github.com/versatica/mediasoup/issues/257) is fixed.
 
-
 ### 2.6.2
 
 * C++: Remove all `Destroy()` class methods and no longer do `delete this`.
