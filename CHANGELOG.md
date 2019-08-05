@@ -1,6 +1,38 @@
 # Changelog
 
 
+### 2.6.14
+
+* Fix TCP leak (#325).
+
+
+### 2.6.13
+
+* Make it compile it Armbian Debian Buster (thanks @krishisola, fixes #321).
+* Update deps.
+
+
+### 2.6.12
+
+* Fix RTCP Receiver Report handling.
+
+
+### 2.6.11
+
+* Update deps.
+* Simulcast: Increase profiles one by one unless explicitly forced (fixes #188).
+
+
+### 2.6.10
+
+* `PlainRtpTransport.js`: Add missing methods and events.
+
+
+### 2.6.9
+
+* Remove a potential crash if a single `encoding` is given in the Producer `rtpParameters` and it has a `profile` value.
+
+
 ### 2.6.8
 
 * C++: Verify in libuv static callbacks that the associated C++ instance has not been deallocated (thanks @artushin and @mariat-atg for reporting and providing valuable help in #258).
