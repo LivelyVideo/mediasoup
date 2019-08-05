@@ -15,7 +15,6 @@ namespace RTC
 	{
 		MS_TRACE();
 	}
-	
 
 	void TcpConnection::UserOnTcpConnectionRead()
 	{

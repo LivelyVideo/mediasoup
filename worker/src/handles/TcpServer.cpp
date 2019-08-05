@@ -9,8 +9,7 @@
 
 /* Static methods for UV callbacks. */
 
-//inline 
-static void __attribute__ ((noinline)) onConnection(uv_stream_t* handle, int status)
+inline static void onConnection(uv_stream_t* handle, int status)
 {
 	auto* server = static_cast<TcpServer*>(handle->data);
 
@@ -204,8 +203,7 @@ bool TcpServer::SetLocalAddress()
 	return true;
 }
 
-//inline 
-void __attribute__ ((noinline)) TcpServer::OnUvConnection(int status)
+inline void TcpServer::OnUvConnection(int status)
 {
 	MS_TRACE();
 
@@ -242,10 +240,8 @@ void __attribute__ ((noinline)) TcpServer::OnUvConnection(int status)
 	err = uv_accept(
 	  reinterpret_cast<uv_stream_t*>(this->uvHandle),
 	  reinterpret_cast<uv_stream_t*>(connection->GetUvHandle()));
-	if (err != 0) {
-		MS_ERROR("uv_accept() failed: %s", uv_strerror(err));
+	if (err != 0)
 		MS_ABORT("uv_accept() failed: %s", uv_strerror(err));
-	}
 
 	// Insert the TcpConnection in the set.
 	this->connections.insert(connection);
@@ -276,11 +272,9 @@ void TcpServer::OnTcpConnectionClosed(TcpConnection* connection, bool isClosedBy
 	size_t numErased = this->connections.erase(connection);
 
 	// If the closed connection was not present in the set, do nothing else.
-	if (numErased == 0) {
-		//TODO: turn into warning
-		MS_ERROR("Closing connection was not in a collection");
+	if (numErased == 0)
 		return;
-	}
+
 	// Notify the subclass.
 	UserOnTcpConnectionClosed(connection, isClosedByPeer);
 

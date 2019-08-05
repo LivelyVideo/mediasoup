@@ -39,7 +39,6 @@ public:
 	virtual ~TcpConnection();
 
 public:
-//	void Close();
 	virtual void Dump() const;
 	void Setup(
 	  Listener* listener,
