@@ -21,6 +21,7 @@
     {
       'Release':
       {
+        'defines': [ 'DEBUG' ],
         'cflags': [ '-g', '-O3' ]
       },
       'Debug':
