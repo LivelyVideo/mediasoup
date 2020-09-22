@@ -9,6 +9,11 @@ export declare type PipeTransportOptions = {
      */
     listenIp: TransportListenIp | string;
     /**
+     * Disable IP:Port check for RTP and RTCP packets.
+     * Default false.
+     */
+    disableOriginCheck?: boolean;
+    /**
      * Create a SCTP association. Default false.
      */
     enableSctp?: boolean;
@@ -67,10 +72,12 @@ export declare type PipeTransportStat = {
     availableOutgoingBitrate?: number;
     availableIncomingBitrate?: number;
     maxIncomingBitrate?: number;
+    disableOriginCheck: boolean;
     tuple: TransportTuple;
 };
 export declare class PipeTransport extends Transport {
     protected readonly _data: {
+        disableOriginCheck?: boolean;
         tuple: TransportTuple;
         sctpParameters?: SctpParameters;
         sctpState?: SctpState;
