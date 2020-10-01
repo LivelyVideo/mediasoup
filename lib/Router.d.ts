@@ -150,7 +150,7 @@ export declare class Router extends EnhancedEventEmitter {
     /**
      * Create a PlainTransport.
      */
-    createPlainTransport({ listenIp, rtcpMux, comedia, enableSctp, numSctpStreams, maxSctpMessageSize, sctpSendBufferSize, enableSrtp, srtpCryptoSuite, appData }: PlainTransportOptions): Promise<PlainTransport>;
+    createPlainTransport({ listenIp, rtcpMux, comedia, disableOriginCheck, enableSctp, numSctpStreams, maxSctpMessageSize, sctpSendBufferSize, enableSrtp, srtpCryptoSuite, appData }: PlainTransportOptions): Promise<PlainTransport>;
     /**
      * DEPRECATED: Use createPlainTransport().
      */
@@ -158,7 +158,7 @@ export declare class Router extends EnhancedEventEmitter {
     /**
      * Create a PipeTransport.
      */
-    createPipeTransport({ listenIp, enableSctp, numSctpStreams, maxSctpMessageSize, sctpSendBufferSize, enableRtx, enableSrtp, appData }: PipeTransportOptions): Promise<PipeTransport>;
+    createPipeTransport({ listenIp, enableSctp, numSctpStreams, maxSctpMessageSize, sctpSendBufferSize, enableRtx, enableSrtp, disableOriginCheck, appData }: PipeTransportOptions): Promise<PipeTransport>;
     /**
      * Create a DirectTransport.
      */

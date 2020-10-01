@@ -39,6 +39,11 @@ export declare type PipeTransportOptions = {
      */
     enableSrtp?: boolean;
     /**
+     * Disable IP:Port check for RTP and RTCP packets.
+     * Default false.
+     */
+    disableOriginCheck?: boolean;
+    /**
      * Custom application data.
      */
     appData?: any;
@@ -65,6 +70,7 @@ export declare type PipeTransportStat = {
     availableOutgoingBitrate?: number;
     availableIncomingBitrate?: number;
     maxIncomingBitrate?: number;
+    disableOriginCheck: boolean;
     tuple: TransportTuple;
 };
 export declare class PipeTransport extends Transport {
@@ -74,6 +80,7 @@ export declare class PipeTransport extends Transport {
         sctpState?: SctpState;
         rtx: boolean;
         srtpParameters?: SrtpParameters;
+        disableOriginCheck?: boolean;
     };
     /**
      * @private

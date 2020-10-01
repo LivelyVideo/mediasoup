@@ -70,6 +70,7 @@ namespace RTC
 		ListenIp listenIp;
 		struct sockaddr_storage remoteAddrStorage;
 		bool rtx{ false };
+		bool disableOriginCheck{ false };
 		std::string srtpKey;
 		std::string srtpKeyBase64;
 	};

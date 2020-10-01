@@ -62,6 +62,16 @@ namespace RTC
 
 		auto jsonEnableSrtpIt = data.find("enableSrtp");
 
+		auto jsonDisableOriginCheckIt = data.find("disableOriginCheck");
+
+		if (jsonDisableOriginCheckIt != data.end())
+		{
+			if (!jsonDisableOriginCheckIt->is_boolean())
+				MS_THROW_TYPE_ERROR("wrong disableOriginCheck (not a boolean)");
+
+			this->disableOriginCheck = jsonDisableOriginCheckIt->get<bool>();
+		}
+
 		// clang-format off
 		if (
 			jsonEnableSrtpIt != data.end() &&
@@ -604,7 +614,7 @@ namespace RTC
 		}
 
 		// Verify that the packet's tuple matches our tuple.
-		if (!this->tuple->Compare(tuple))
+		if (!this->disableOriginCheck && !this->tuple->Compare(tuple))
 		{
 			MS_DEBUG_TAG(rtp, "ignoring RTP packet from unknown IP:port");
 
@@ -635,7 +645,7 @@ namespace RTC
 		}
 
 		// Verify that the packet's tuple matches our tuple.
-		if (!this->tuple->Compare(tuple))
+		if (!this->disableOriginCheck && !this->tuple->Compare(tuple))
 		{
 			MS_DEBUG_TAG(rtcp, "ignoring RTCP packet from unknown IP:port");
 

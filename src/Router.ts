@@ -549,6 +549,7 @@ export class Router extends EnhancedEventEmitter
 			sctpSendBufferSize = 268435456,
 			enableRtx = false,
 			enableSrtp = false,
+			disableOriginCheck = false,
 			appData = {}
 		}: PipeTransportOptions
 	): Promise<PipeTransport>
@@ -586,7 +587,8 @@ export class Router extends EnhancedEventEmitter
 			sctpSendBufferSize,
 			isDataChannel : false,
 			enableRtx,
-			enableSrtp
+			enableSrtp,
+			disableOriginCheck,
 		};
 
 		const data =

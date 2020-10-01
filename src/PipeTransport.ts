@@ -57,6 +57,12 @@ export type PipeTransportOptions =
 	enableSrtp?: boolean;
 
 	/**
+	 * Disable IP:Port check for RTP and RTCP packets.
+	 * Default false.
+	 */
+	disableOriginCheck?: boolean;
+
+	/**
 	 * Custom application data.
 	 */
 	appData?: any;
@@ -86,6 +92,7 @@ export type PipeTransportStat =
 	availableOutgoingBitrate?: number;
 	availableIncomingBitrate?: number;
 	maxIncomingBitrate?: number;
+	disableOriginCheck: boolean;
 	// PipeTransport specific.
 	tuple: TransportTuple;
 }
@@ -102,6 +109,7 @@ export class PipeTransport extends Transport
 		sctpState?: SctpState;
 		rtx: boolean;
 		srtpParameters?: SrtpParameters;
+		disableOriginCheck?: boolean;
 	};
 
 	/**
@@ -119,11 +127,12 @@ export class PipeTransport extends Transport
 
 		this._data =
 		{
-			tuple          : data.tuple,
-			sctpParameters : data.sctpParameters,
-			sctpState      : data.sctpState,
-			rtx            : data.rtx,
-			srtpParameters : data.srtpParameters
+			tuple              : data.tuple,
+			sctpParameters     : data.sctpParameters,
+			sctpState          : data.sctpState,
+			rtx                : data.rtx,
+			srtpParameters     : data.srtpParameters,
+			disableOriginCheck : data.disableOriginCheck
 		};
 
 		this._handleWorkerNotifications();
