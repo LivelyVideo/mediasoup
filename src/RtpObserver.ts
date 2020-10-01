@@ -1,9 +1,18 @@
 import { Logger } from './Logger';
 import { EnhancedEventEmitter } from './EnhancedEventEmitter';
 import { Channel } from './Channel';
+import { PayloadChannel } from './PayloadChannel';
 import { Producer } from './Producer';
 
 const logger = new Logger('RtpObserver');
+
+export type RtpObserverAddRemoveProducerOptions =
+{
+	/**
+	 * The id of the Producer to be added or removed.
+	 */
+	producerId: string;
+}
 
 export class RtpObserver extends EnhancedEventEmitter
 {
@@ -16,6 +25,9 @@ export class RtpObserver extends EnhancedEventEmitter
 
 	// Channel instance.
 	protected readonly _channel: Channel;
+
+	// PayloadChannel instance.
+	protected readonly _payloadChannel: PayloadChannel;
 
 	// Closed flag.
 	protected _closed = false;
@@ -42,12 +54,14 @@ export class RtpObserver extends EnhancedEventEmitter
 		{
 			internal,
 			channel,
+			payloadChannel,
 			appData,
 			getProducerById
 		}:
 		{
 			internal: any;
 			channel: Channel;
+			payloadChannel: PayloadChannel;
 			appData: any;
 			getProducerById: (producerId: string) => Producer;
 		}
@@ -59,6 +73,7 @@ export class RtpObserver extends EnhancedEventEmitter
 
 		this._internal = internal;
 		this._channel = channel;
+		this._payloadChannel = payloadChannel;
 		this._appData = appData;
 		this._getProducerById = getProducerById;
 	}
@@ -131,6 +146,7 @@ export class RtpObserver extends EnhancedEventEmitter
 
 		// Remove notification subscriptions.
 		this._channel.removeAllListeners(this._internal.rtpObserverId);
+		this._payloadChannel.removeAllListeners(this._internal.rtpObserverId);
 
 		this._channel.request('rtpObserver.close', this._internal)
 			.catch(() => {});
@@ -203,7 +219,7 @@ export class RtpObserver extends EnhancedEventEmitter
 	/**
 	 * Add a Producer to the RtpObserver.
 	 */
-	async addProducer({ producerId }: { producerId: string }): Promise<void>
+	async addProducer({ producerId }: RtpObserverAddRemoveProducerOptions): Promise<void>
 	{
 		logger.debug('addProducer()');
 
@@ -219,7 +235,7 @@ export class RtpObserver extends EnhancedEventEmitter
 	/**
 	 * Remove a Producer from the RtpObserver.
 	 */
-	async removeProducer({ producerId }: { producerId: string }): Promise<void>
+	async removeProducer({ producerId }: RtpObserverAddRemoveProducerOptions): Promise<void>
 	{
 		logger.debug('removeProducer()');
 

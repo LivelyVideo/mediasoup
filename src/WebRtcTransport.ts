@@ -16,7 +16,7 @@ export type WebRtcTransportOptions =
 	 * Listening IP address or addresses in order of preference (first one is the
 	 * preferred one).
 	 */
-	listenIps: TransportListenIp[] | string[];
+	listenIps: (TransportListenIp | string)[];
 
 	/**
 	 * Listen in UDP. Default true.
@@ -54,10 +54,16 @@ export type WebRtcTransportOptions =
 	numSctpStreams?: NumSctpStreams;
 
 	/**
-	 * Maximum size of data that can be passed to DataProducer's send() method.
+	 * Maximum allowed size for SCTP messages sent by DataProducers.
 	 * Default 262144.
 	 */
 	maxSctpMessageSize?: number;
+
+	/**
+	 * Maximum SCTP send buffer used by DataConsumers.
+	 * Default 262144.
+	 */
+	sctpSendBufferSize?: number;
 
 	/**
 	 * Custom application data.
@@ -126,8 +132,6 @@ export type WebRtcTransportStat =
 	rtxRecvBitrate: number;
 	rtxBytesSent: number;
 	rtxSendBitrate: number;
-	probationBytesReceived: number;
-	probationRecvBitrate: number;
 	probationBytesSent: number;
 	probationSendBitrate: number;
 	availableOutgoingBitrate?: number;
@@ -151,7 +155,7 @@ export class WebRtcTransport extends Transport
 		iceParameters: IceParameters;
 		iceCandidates: IceCandidate[];
 		iceState: IceState;
-		iceSelectedTuple: TransportTuple;
+		iceSelectedTuple?: TransportTuple;
 		dtlsParameters: DtlsParameters;
 		dtlsState: DtlsState;
 		dtlsRemoteCert?: string;
@@ -278,9 +282,9 @@ export class WebRtcTransport extends Transport
 	 * @override
 	 * @emits close
 	 * @emits newproducer - (producer: Producer)
-	 * @emits newconsumer - (producer: Producer)
+	 * @emits newconsumer - (consumer: Consumer)
 	 * @emits newdataproducer - (dataProducer: DataProducer)
-	 * @emits newdataconsumer - (dataProducer: DataProducer)
+	 * @emits newdataconsumer - (dataConsumer: DataConsumer)
 	 * @emits icestatechange - (iceState: IceState)
 	 * @emits iceselectedtuplechange - (iceSelectedTuple: TransportTuple)
 	 * @emits dtlsstatechange - (dtlsState: DtlsState)

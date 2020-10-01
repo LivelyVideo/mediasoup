@@ -32,10 +32,15 @@ export declare type PlainTransportOptions = {
      */
     numSctpStreams?: NumSctpStreams;
     /**
-     * Maximum size of data that can be passed to DataProducer's send() method.
+     * Maximum allowed size for SCTP messages sent by DataProducers.
      * Default 262144.
      */
     maxSctpMessageSize?: number;
+    /**
+     * Maximum SCTP send buffer used by DataConsumers.
+     * Default 262144.
+     */
+    sctpSendBufferSize?: number;
     /**
      * Enable SRTP. For this to work, connect() must be called
      * with remote SRTP parameters. Default false.
@@ -72,8 +77,6 @@ export declare type PlainTransportStat = {
     rtxRecvBitrate: number;
     rtxBytesSent: number;
     rtxSendBitrate: number;
-    probationBytesReceived: number;
-    probationRecvBitrate: number;
     probationBytesSent: number;
     probationSendBitrate: number;
     availableOutgoingBitrate?: number;
@@ -86,7 +89,7 @@ export declare type PlainTransportStat = {
     rtcpTuple?: TransportTuple;
 };
 /**
- * DEPRECATED: Use PlainTransportOptions.
+ * DEPRECATED: Use PlainTransportStat.
  */
 export declare type PlainRtpTransportStat = PlainTransportStat;
 export declare class PlainTransport extends Transport {
@@ -134,9 +137,9 @@ export declare class PlainTransport extends Transport {
      * @override
      * @emits close
      * @emits newproducer - (producer: Producer)
-     * @emits newconsumer - (producer: Producer)
+     * @emits newconsumer - (consumer: Consumer)
      * @emits newdataproducer - (dataProducer: DataProducer)
-     * @emits newdataconsumer - (dataProducer: DataProducer)
+     * @emits newdataconsumer - (dataConsumer: DataConsumer)
      * @emits tuple - (tuple: TransportTuple)
      * @emits rtcptuple - (rtcpTuple: TransportTuple)
      * @emits sctpstatechange - (sctpState: SctpState)

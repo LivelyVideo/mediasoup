@@ -6,6 +6,7 @@
 #include "MediaSoupErrors.hpp"
 #include "Utils.hpp"
 #include "RTC/AudioLevelObserver.hpp"
+#include "RTC/DirectTransport.hpp"
 #include "RTC/PipeTransport.hpp"
 #include "RTC/PlainTransport.hpp"
 #include "RTC/WebRtcTransport.hpp"
@@ -62,9 +63,9 @@ namespace RTC
 		jsonObject["transportIds"] = json::array();
 		auto jsonTransportIdsIt    = jsonObject.find("transportIds");
 
-		for (auto& kv : this->mapTransports)
+		for (const auto& kv : this->mapTransports)
 		{
-			auto& transportId = kv.first;
+			const auto& transportId = kv.first;
 
 			jsonTransportIdsIt->emplace_back(transportId);
 		}
@@ -73,9 +74,9 @@ namespace RTC
 		jsonObject["rtpObserverIds"] = json::array();
 		auto jsonRtpObserverIdsIt    = jsonObject.find("rtpObserverIds");
 
-		for (auto& kv : this->mapRtpObservers)
+		for (const auto& kv : this->mapRtpObservers)
 		{
-			auto& rtpObserverId = kv.first;
+			const auto& rtpObserverId = kv.first;
 
 			jsonRtpObserverIdsIt->emplace_back(rtpObserverId);
 		}
@@ -84,10 +85,10 @@ namespace RTC
 		jsonObject["mapProducerIdConsumerIds"] = json::object();
 		auto jsonMapProducerConsumersIt        = jsonObject.find("mapProducerIdConsumerIds");
 
-		for (auto& kv : this->mapProducerConsumers)
+		for (const auto& kv : this->mapProducerConsumers)
 		{
-			auto* producer  = kv.first;
-			auto& consumers = kv.second;
+			auto* producer        = kv.first;
+			const auto& consumers = kv.second;
 
 			(*jsonMapProducerConsumersIt)[producer->id] = json::array();
 			auto jsonProducerIdIt                       = jsonMapProducerConsumersIt->find(producer->id);
@@ -102,7 +103,7 @@ namespace RTC
 		jsonObject["mapConsumerIdProducerId"] = json::object();
 		auto jsonMapConsumerProducerIt        = jsonObject.find("mapConsumerIdProducerId");
 
-		for (auto& kv : this->mapConsumerProducer)
+		for (const auto& kv : this->mapConsumerProducer)
 		{
 			auto* consumer = kv.first;
 			auto* producer = kv.second;
@@ -114,10 +115,10 @@ namespace RTC
 		jsonObject["mapProducerIdObserverIds"] = json::object();
 		auto jsonMapProducerRtpObserversIt     = jsonObject.find("mapProducerIdObserverIds");
 
-		for (auto& kv : this->mapProducerRtpObservers)
+		for (const auto& kv : this->mapProducerRtpObservers)
 		{
-			auto* producer     = kv.first;
-			auto& rtpObservers = kv.second;
+			auto* producer           = kv.first;
+			const auto& rtpObservers = kv.second;
 
 			(*jsonMapProducerRtpObserversIt)[producer->id] = json::array();
 			auto jsonProducerIdIt = jsonMapProducerRtpObserversIt->find(producer->id);
@@ -132,10 +133,10 @@ namespace RTC
 		jsonObject["mapDataProducerIdDataConsumerIds"] = json::object();
 		auto jsonMapDataProducerDataConsumersIt = jsonObject.find("mapDataProducerIdDataConsumerIds");
 
-		for (auto& kv : this->mapDataProducerDataConsumers)
+		for (const auto& kv : this->mapDataProducerDataConsumers)
 		{
-			auto* dataProducer  = kv.first;
-			auto& dataConsumers = kv.second;
+			auto* dataProducer        = kv.first;
+			const auto& dataConsumers = kv.second;
 
 			(*jsonMapDataProducerDataConsumersIt)[dataProducer->id] = json::array();
 			auto jsonDataProducerIdIt = jsonMapDataProducerDataConsumersIt->find(dataProducer->id);
@@ -150,7 +151,7 @@ namespace RTC
 		jsonObject["mapDataConsumerIdDataProducerId"] = json::object();
 		auto jsonMapDataConsumerDataProducerIt = jsonObject.find("mapDataConsumerIdDataProducerId");
 
-		for (auto& kv : this->mapDataConsumerDataProducer)
+		for (const auto& kv : this->mapDataConsumerDataProducer)
 		{
 			auto* dataConsumer = kv.first;
 			auto* dataProducer = kv.second;
@@ -181,7 +182,7 @@ namespace RTC
 				std::string transportId;
 
 				// This may throw.
-				SetNewTransportIdFromRequest(request, transportId);
+				SetNewTransportIdFromInternal(request->internal, transportId);
 
 				// This may throw.
 				auto* webRtcTransport = new RTC::WebRtcTransport(transportId, this, request->data);
@@ -205,7 +206,7 @@ namespace RTC
 				std::string transportId;
 
 				// This may throw
-				SetNewTransportIdFromRequest(request, transportId);
+				SetNewTransportIdFromInternal(request->internal, transportId);
 
 				auto* plainTransport = new RTC::PlainTransport(transportId, this, request->data);
 
@@ -228,7 +229,7 @@ namespace RTC
 				std::string transportId;
 
 				// This may throw
-				SetNewTransportIdFromRequest(request, transportId);
+				SetNewTransportIdFromInternal(request->internal, transportId);
 
 				auto* pipeTransport = new RTC::PipeTransport(transportId, this, request->data);
 
@@ -246,12 +247,35 @@ namespace RTC
 				break;
 			}
 
+			case Channel::Request::MethodId::ROUTER_CREATE_DIRECT_TRANSPORT:
+			{
+				std::string transportId;
+
+				// This may throw
+				SetNewTransportIdFromInternal(request->internal, transportId);
+
+				auto* directTransport = new RTC::DirectTransport(transportId, this, request->data);
+
+				// Insert into the map.
+				this->mapTransports[transportId] = directTransport;
+
+				MS_DEBUG_DEV("DirectTransport created [transportId:%s]", transportId.c_str());
+
+				json data = json::object();
+
+				directTransport->FillJson(data);
+
+				request->Accept(data);
+
+				break;
+			}
+
 			case Channel::Request::MethodId::ROUTER_CREATE_AUDIO_LEVEL_OBSERVER:
 			{
 				std::string rtpObserverId;
 
 				// This may throw
-				SetNewRtpObserverIdFromRequest(request, rtpObserverId);
+				SetNewRtpObserverIdFromInternal(request->internal, rtpObserverId);
 
 				auto* audioLevelObserver = new RTC::AudioLevelObserver(rtpObserverId, request->data);
 
@@ -268,7 +292,7 @@ namespace RTC
 			case Channel::Request::MethodId::TRANSPORT_CLOSE:
 			{
 				// This may throw.
-				RTC::Transport* transport = GetTransportFromRequest(request);
+				RTC::Transport* transport = GetTransportFromInternal(request->internal);
 
 				// Tell the Transport to close all its Producers and Consumers so it will
 				// notify us about their closures.
@@ -290,7 +314,7 @@ namespace RTC
 			case Channel::Request::MethodId::RTP_OBSERVER_CLOSE:
 			{
 				// This may throw.
-				RTC::RtpObserver* rtpObserver = GetRtpObserverFromRequest(request);
+				RTC::RtpObserver* rtpObserver = GetRtpObserverFromInternal(request->internal);
 
 				// Remove it from the map.
 				this->mapRtpObservers.erase(rtpObserver->id);
@@ -316,7 +340,7 @@ namespace RTC
 			case Channel::Request::MethodId::RTP_OBSERVER_PAUSE:
 			{
 				// This may throw.
-				RTC::RtpObserver* rtpObserver = GetRtpObserverFromRequest(request);
+				RTC::RtpObserver* rtpObserver = GetRtpObserverFromInternal(request->internal);
 
 				rtpObserver->Pause();
 
@@ -328,7 +352,7 @@ namespace RTC
 			case Channel::Request::MethodId::RTP_OBSERVER_RESUME:
 			{
 				// This may throw.
-				RTC::RtpObserver* rtpObserver = GetRtpObserverFromRequest(request);
+				RTC::RtpObserver* rtpObserver = GetRtpObserverFromInternal(request->internal);
 
 				rtpObserver->Resume();
 
@@ -340,8 +364,8 @@ namespace RTC
 			case Channel::Request::MethodId::RTP_OBSERVER_ADD_PRODUCER:
 			{
 				// This may throw.
-				RTC::RtpObserver* rtpObserver = GetRtpObserverFromRequest(request);
-				RTC::Producer* producer       = GetProducerFromRequest(request);
+				RTC::RtpObserver* rtpObserver = GetRtpObserverFromInternal(request->internal);
+				RTC::Producer* producer       = GetProducerFromInternal(request->internal);
 
 				rtpObserver->AddProducer(producer);
 
@@ -356,8 +380,8 @@ namespace RTC
 			case Channel::Request::MethodId::RTP_OBSERVER_REMOVE_PRODUCER:
 			{
 				// This may throw.
-				RTC::RtpObserver* rtpObserver = GetRtpObserverFromRequest(request);
-				RTC::Producer* producer       = GetProducerFromRequest(request);
+				RTC::RtpObserver* rtpObserver = GetRtpObserverFromInternal(request->internal);
+				RTC::Producer* producer       = GetProducerFromInternal(request->internal);
 
 				rtpObserver->RemoveProducer(producer);
 
@@ -373,7 +397,7 @@ namespace RTC
 			default:
 			{
 				// This may throw.
-				RTC::Transport* transport = GetTransportFromRequest(request);
+				RTC::Transport* transport = GetTransportFromInternal(request->internal);
 
 				transport->HandleRequest(request);
 
@@ -382,14 +406,34 @@ namespace RTC
 		}
 	}
 
-	void Router::SetNewTransportIdFromRequest(Channel::Request* request, std::string& transportId) const
+	void Router::HandleRequest(PayloadChannel::Request* request)
 	{
 		MS_TRACE();
 
-		auto jsonTransportIdIt = request->internal.find("transportId");
+		// This may throw.
+		RTC::Transport* transport = GetTransportFromInternal(request->internal);
 
-		if (jsonTransportIdIt == request->internal.end() || !jsonTransportIdIt->is_string())
-			MS_THROW_ERROR("request has no internal.transportId");
+		transport->HandleRequest(request);
+	}
+
+	void Router::HandleNotification(PayloadChannel::Notification* notification)
+	{
+		MS_TRACE();
+
+		// This may throw.
+		RTC::Transport* transport = GetTransportFromInternal(notification->internal);
+
+		transport->HandleNotification(notification);
+	}
+
+	void Router::SetNewTransportIdFromInternal(json& internal, std::string& transportId) const
+	{
+		MS_TRACE();
+
+		auto jsonTransportIdIt = internal.find("transportId");
+
+		if (jsonTransportIdIt == internal.end() || !jsonTransportIdIt->is_string())
+			MS_THROW_ERROR("missing internal.transportId");
 
 		transportId.assign(jsonTransportIdIt->get<std::string>());
 
@@ -397,14 +441,14 @@ namespace RTC
 			MS_THROW_ERROR("a Transport with same transportId already exists");
 	}
 
-	RTC::Transport* Router::GetTransportFromRequest(Channel::Request* request) const
+	RTC::Transport* Router::GetTransportFromInternal(json& internal) const
 	{
 		MS_TRACE();
 
-		auto jsonTransportIdIt = request->internal.find("transportId");
+		auto jsonTransportIdIt = internal.find("transportId");
 
-		if (jsonTransportIdIt == request->internal.end() || !jsonTransportIdIt->is_string())
-			MS_THROW_ERROR("request has no internal.transportId");
+		if (jsonTransportIdIt == internal.end() || !jsonTransportIdIt->is_string())
+			MS_THROW_ERROR("missing internal.transportId");
 
 		auto it = this->mapTransports.find(jsonTransportIdIt->get<std::string>());
 
@@ -416,14 +460,14 @@ namespace RTC
 		return transport;
 	}
 
-	void Router::SetNewRtpObserverIdFromRequest(Channel::Request* request, std::string& rtpObserverId) const
+	void Router::SetNewRtpObserverIdFromInternal(json& internal, std::string& rtpObserverId) const
 	{
 		MS_TRACE();
 
-		auto jsonRtpObserverIdIt = request->internal.find("rtpObserverId");
+		auto jsonRtpObserverIdIt = internal.find("rtpObserverId");
 
-		if (jsonRtpObserverIdIt == request->internal.end() || !jsonRtpObserverIdIt->is_string())
-			MS_THROW_ERROR("request has no internal.rtpObserverId");
+		if (jsonRtpObserverIdIt == internal.end() || !jsonRtpObserverIdIt->is_string())
+			MS_THROW_ERROR("missing internal.rtpObserverId");
 
 		rtpObserverId.assign(jsonRtpObserverIdIt->get<std::string>());
 
@@ -431,14 +475,14 @@ namespace RTC
 			MS_THROW_ERROR("an RtpObserver with same rtpObserverId already exists");
 	}
 
-	RTC::RtpObserver* Router::GetRtpObserverFromRequest(Channel::Request* request) const
+	RTC::RtpObserver* Router::GetRtpObserverFromInternal(json& internal) const
 	{
 		MS_TRACE();
 
-		auto jsonRtpObserverIdIt = request->internal.find("rtpObserverId");
+		auto jsonRtpObserverIdIt = internal.find("rtpObserverId");
 
-		if (jsonRtpObserverIdIt == request->internal.end() || !jsonRtpObserverIdIt->is_string())
-			MS_THROW_ERROR("request has no internal.rtpObserverId");
+		if (jsonRtpObserverIdIt == internal.end() || !jsonRtpObserverIdIt->is_string())
+			MS_THROW_ERROR("missing internal.rtpObserverId");
 
 		auto it = this->mapRtpObservers.find(jsonRtpObserverIdIt->get<std::string>());
 
@@ -450,14 +494,14 @@ namespace RTC
 		return rtpObserver;
 	}
 
-	RTC::Producer* Router::GetProducerFromRequest(Channel::Request* request) const
+	RTC::Producer* Router::GetProducerFromInternal(json& internal) const
 	{
 		MS_TRACE();
 
-		auto jsonProducerIdIt = request->internal.find("producerId");
+		auto jsonProducerIdIt = internal.find("producerId");
 
-		if (jsonProducerIdIt == request->internal.end() || !jsonProducerIdIt->is_string())
-			MS_THROW_ERROR("request has no internal.producerId");
+		if (jsonProducerIdIt == internal.end() || !jsonProducerIdIt->is_string())
+			MS_THROW_ERROR("missing internal.producerId");
 
 		auto it = this->mapProducers.find(jsonProducerIdIt->get<std::string>());
 
@@ -634,7 +678,7 @@ namespace RTC
 		for (auto* consumer : consumers)
 		{
 			// Update MID RTP extension value.
-			auto& mid = consumer->GetRtpParameters().mid;
+			const auto& mid = consumer->GetRtpParameters().mid;
 
 			if (!mid.empty())
 				packet->UpdateMid(mid);
@@ -702,13 +746,16 @@ namespace RTC
 		this->mapConsumerProducer[consumer] = producer;
 
 		// Get all streams in the Producer and provide the Consumer with them.
-		for (auto& kv : producer->GetRtpStreams())
+		for (const auto& kv : producer->GetRtpStreams())
 		{
 			auto* rtpStream     = kv.first;
 			uint32_t mappedSsrc = kv.second;
 
 			consumer->ProducerRtpStream(rtpStream, mappedSsrc);
 		}
+
+		// Provide the Consumer with the scores of all streams in the Producer.
+		consumer->ProducerRtpStreamScores(producer->GetRtpStreamScores());
 	}
 
 	inline void Router::OnTransportConsumerClosed(RTC::Transport* /*transport*/, RTC::Consumer* consumer)
@@ -830,7 +877,7 @@ namespace RTC
 		this->mapDataProducerDataConsumers.erase(mapDataProducerDataConsumersIt);
 	}
 
-	inline void Router::OnTransportDataProducerSctpMessageReceived(
+	inline void Router::OnTransportDataProducerMessageReceived(
 	  RTC::Transport* /*transport*/,
 	  RTC::DataProducer* dataProducer,
 	  uint32_t ppid,
@@ -843,7 +890,7 @@ namespace RTC
 
 		for (auto* consumer : dataConsumers)
 		{
-			consumer->SendSctpMessage(ppid, msg, len);
+			consumer->SendMessage(ppid, msg, len);
 		}
 	}
 

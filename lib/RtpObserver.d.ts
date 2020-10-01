@@ -1,12 +1,20 @@
 import { EnhancedEventEmitter } from './EnhancedEventEmitter';
 import { Channel } from './Channel';
+import { PayloadChannel } from './PayloadChannel';
 import { Producer } from './Producer';
+export declare type RtpObserverAddRemoveProducerOptions = {
+    /**
+     * The id of the Producer to be added or removed.
+     */
+    producerId: string;
+};
 export declare class RtpObserver extends EnhancedEventEmitter {
     protected readonly _internal: {
         routerId: string;
         rtpObserverId: string;
     };
     protected readonly _channel: Channel;
+    protected readonly _payloadChannel: PayloadChannel;
     protected _closed: boolean;
     protected _paused: boolean;
     private readonly _appData?;
@@ -18,9 +26,10 @@ export declare class RtpObserver extends EnhancedEventEmitter {
      * @emits routerclose
      * @emits @close
      */
-    constructor({ internal, channel, appData, getProducerById }: {
+    constructor({ internal, channel, payloadChannel, appData, getProducerById }: {
         internal: any;
         channel: Channel;
+        payloadChannel: PayloadChannel;
         appData: any;
         getProducerById: (producerId: string) => Producer;
     });
@@ -75,14 +84,10 @@ export declare class RtpObserver extends EnhancedEventEmitter {
     /**
      * Add a Producer to the RtpObserver.
      */
-    addProducer({ producerId }: {
-        producerId: string;
-    }): Promise<void>;
+    addProducer({ producerId }: RtpObserverAddRemoveProducerOptions): Promise<void>;
     /**
      * Remove a Producer from the RtpObserver.
      */
-    removeProducer({ producerId }: {
-        producerId: string;
-    }): Promise<void>;
+    removeProducer({ producerId }: RtpObserverAddRemoveProducerOptions): Promise<void>;
 }
 //# sourceMappingURL=RtpObserver.d.ts.map

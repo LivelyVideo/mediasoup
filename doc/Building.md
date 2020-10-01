@@ -8,14 +8,14 @@ This document is intended for mediasoup developers.
 The `package.json` file in the main folder includes the following scripts:
 
 
-### `num run typescript:build`
+### `npm run typescript:build`
 
-Compiles mediasoup TypeScript code (`lib` folder) into es2020 JavaScript and places it into the `lib` directory.
+Compiles mediasoup TypeScript code (`lib` folder) JavaScript and places it into the `lib` directory.
 
 
-### `num run typescript:watch`
+### `npm run typescript:watch`
 
-Compiles mediasoup TypeScript code (`lib` folder) into es2020 JavaScript, places it into the `lib` directory an watches for changes in the TypeScript files.
+Compiles mediasoup TypeScript code (`lib` folder) JavaScript, places it into the `lib` directory an watches for changes in the TypeScript files.
 
 ### `npm run lint`
 
@@ -65,6 +65,8 @@ The `worker` folder contains a `Makefile` for the mediasoup-worker C++ subprojec
 ### `make`
 
 Builds the `mediasoup-worker` binary at `worker/out/Release/`.
+
+If the "MEDIASOUP_MAX_CORES" environment variable is set, the build process will use that number of CPU cores. Otherwise it will auto-detect the number of cores in the machine.
 
 If the "MEDIASOUP_BUILDTYPE" environment variable is set to "Debug", the binary is built at `worker/out/Debug/` with some C/C++ flags enabled (such as `-O0`) and some macros defined (such as `DEBUG`, `MS_LOG_TRACE` and `MS_LOG_FILE_LINE`). Check the meaning of these macros in the `worker/include/Logger.hpp` header file.
 
