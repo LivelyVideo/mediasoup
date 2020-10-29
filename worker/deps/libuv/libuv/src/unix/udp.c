@@ -33,6 +33,7 @@
 #include <sys/un.h>
 
 #define UV__UDP_DGRAM_MAXSIZE (64 * 1024)
+#define UV__UDP_DGRAM_CHUNK_SIZE 1450
 
 #if defined(IPV6_JOIN_GROUP) && !defined(IPV6_ADD_MEMBERSHIP)
 # define IPV6_ADD_MEMBERSHIP IPV6_JOIN_GROUP
@@ -197,12 +198,12 @@ static int uv__udp_recvmmsg(uv_udp_t* handle, uv_buf_t* buf) {
   size_t k;
 
   /* prepare structures for recvmmsg */
-  chunks = buf->len / UV__UDP_DGRAM_MAXSIZE;
+  chunks = buf->len / UV__UDP_DGRAM_CHUNK_SIZE;
   if (chunks > ARRAY_SIZE(iov))
     chunks = ARRAY_SIZE(iov);
   for (k = 0; k < chunks; ++k) {
-    iov[k].iov_base = buf->base + k * UV__UDP_DGRAM_MAXSIZE;
-    iov[k].iov_len = UV__UDP_DGRAM_MAXSIZE;
+    iov[k].iov_base = buf->base + k * UV__UDP_DGRAM_CHUNK_SIZE;
+    iov[k].iov_len = UV__UDP_DGRAM_CHUNK_SIZE;
     msgs[k].msg_hdr.msg_iov = iov + k;
     msgs[k].msg_hdr.msg_iovlen = 1;
     msgs[k].msg_hdr.msg_name = peers + k;

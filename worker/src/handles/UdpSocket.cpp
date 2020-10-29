@@ -250,7 +250,8 @@ inline void UdpSocket::OnUvRecvAlloc(size_t /*suggestedSize*/, uv_buf_t* buf)
 inline void UdpSocket::OnUvRecv(
   ssize_t nread, const uv_buf_t* buf, const struct sockaddr* addr, unsigned int flags)
 {
-	MS_TRACE();
+	//MS_TRACE();
+	MS_DEBUG_DEV("L@@K nread=%zu buf->len=%lu", nread, buf->len);
 
 	// NOTE: Ignore if there is nothing to read or if it was an empty datagram.
 	if (nread == 0)

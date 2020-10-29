@@ -334,7 +334,7 @@
       #  - make as usually
       #  - publish: update package.json with a distinct version name (x.x.x-noshm), run 'npm run typescript:build' and 'npm publish'
       'target_name': 'mediasoup-worker',
-      'defines': [ 'TRANSCODE', 'FFNGXSHM_MAX_NUM_CHANNELS=10', 'SFUSHM_AV_MAX_NUM_CHANNELS=10', 'STREAM_SHM_MAX_CHANNELS=10' ],
+      'defines': [ 'MS_LOG_DEV_LEVEL=3', 'DEBUG', 'TRANSCODE', 'FFNGXSHM_MAX_NUM_CHANNELS=10', 'SFUSHM_AV_MAX_NUM_CHANNELS=10', 'STREAM_SHM_MAX_CHANNELS=10' ],
       'sources': [
         # C++ source files.
         'src/main.cpp',
