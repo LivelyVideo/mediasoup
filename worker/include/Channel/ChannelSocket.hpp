@@ -23,6 +23,8 @@ namespace Channel
 
 	public:
 		ConsumerSocket(int fd, size_t bufferSize, Listener* listener);
+		ConsumerSocket(const char* name, size_t bufferSize);
+
 		/* Pure virtual methods inherited from ::UnixStreamSocket. */
 	public:
 		void UserOnUnixStreamRead() override;

@@ -4,6 +4,7 @@
  */
 
 #define MS_CLASS "UnixStreamSocket"
+#define SOCKET_NAME "/tmp/TestSocket"
 // #define MS_LOG_DEV_LEVEL 3
 
 #include "handles/UnixStreamSocket.hpp"
@@ -59,7 +60,37 @@ inline static void onShutdown(uv_shutdown_t* req, int /*status*/)
 	uv_close(reinterpret_cast<uv_handle_t*>(handle), static_cast<uv_close_cb>(onClose));
 }
 
+inline static void onConnection(uv_stream_t *handle, int status)
+{
+	assert(status == 0);
+	int r;
+
+	uv_pipe_t *client = new uv_pipe_t;
+
+	uv_pipe_init(handle->loop, client, 0);
+	r = uv_accept(handle, (uv_stream_t *)client);
+	assert(r == 0);
+
+	client->data = handle->data;
+
+	uv_read_start(reinterpret_cast<uv_stream_t*> (client),
+			  	  	static_cast<uv_alloc_cb>(onAlloc),
+			  		static_cast<uv_read_cb>(onRead));
+}
 /* Instance methods. */
+
+UnixStreamSocket::UnixStreamSocket(const char* name, size_t bufferSize, UnixStreamSocket::Role role)
+	: bufferSize(bufferSize), role(role)
+{
+	this->uvHandle = new uv_pipe_t;
+	this->uvHandle->data = static_cast<void*>(this);
+
+	uv_pipe_init(DepLibUV::GetLoop(), this->uvHandle, 0);
+	unlink(name);
+	uv_pipe_bind(this->uvHandle, name);
+
+	uv_listen(reinterpret_cast<uv_stream_t*>(this->uvHandle), 1, onConnection);
+}
 
 UnixStreamSocket::UnixStreamSocket(int fd, size_t bufferSize, UnixStreamSocket::Role role)
   : bufferSize(bufferSize), role(role)
@@ -87,7 +118,7 @@ UnixStreamSocket::UnixStreamSocket(int fd, size_t bufferSize, UnixStreamSocket::
 	{
 		uv_close(reinterpret_cast<uv_handle_t*>(this->uvHandle), static_cast<uv_close_cb>(onClose));
 
-		MS_THROW_ERROR_STD("uv_pipe_open() failed: %s", uv_strerror(err));
+		MS_THROW_ERROR_STD("uv_pipe_open() failed: %s and the FD is: %d", uv_strerror(err), fd);
 	}
 
 	if (this->role == UnixStreamSocket::Role::CONSUMER)
@@ -224,13 +255,19 @@ void UnixStreamSocket::Write(const uint8_t* data, size_t len)
 inline void UnixStreamSocket::OnUvReadAlloc(size_t /*suggestedSize*/, uv_buf_t* buf)
 {
 	MS_TRACE_STD();
+	fprintf(stderr, "\nTEST: OnUvReadAlloc called\n");
 
 	// If this is the first call to onUvReadAlloc() then allocate the receiving buffer now.
 	if (!this->buffer)
-		this->buffer = new uint8_t[this->bufferSize];
+	{
+		  fprintf(stderr, "\nTEST: OnUvReadAlloc - This is the first time allocating\n");
 
+		this->buffer = new uint8_t[this->bufferSize];
+	}
 	// Tell UV to write after the last data byte in the buffer.
 	buf->base = reinterpret_cast<char*>(this->buffer + this->bufferDataLen);
+
+	fprintf(stderr, "\nTEST: OnUvReadAlloc - this->bufferSize:%zu, this->bufferDataLen:%zu\n", this->bufferSize, this->bufferDataLen);
 
 	// Give UV all the remaining space in the buffer.
 	if (this->bufferSize > this->bufferDataLen)
@@ -248,6 +285,7 @@ inline void UnixStreamSocket::OnUvReadAlloc(size_t /*suggestedSize*/, uv_buf_t* 
 inline void UnixStreamSocket::OnUvRead(ssize_t nread, const uv_buf_t* /*buf*/)
 {
 	MS_TRACE_STD();
+	  fprintf(stderr, "\nTEST: OnUvRead called\n");
 
 	if (nread == 0)
 		return;
@@ -255,6 +293,8 @@ inline void UnixStreamSocket::OnUvRead(ssize_t nread, const uv_buf_t* /*buf*/)
 	// Data received.
 	if (nread > 0)
 	{
+		fprintf(stderr, "\nTEST OnUvRead: nread with data - calling UserOnUnix method\n");
+
 		// Update the buffer data length.
 		this->bufferDataLen += static_cast<size_t>(nread);
 

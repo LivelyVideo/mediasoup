@@ -96,7 +96,7 @@ extern "C" int mediasoup_worker_run(
 	{
 		MS_ERROR_STD("error creating the RTC Channel: %s", error.what());
 
-		channel->Close();
+		//channel->Close();
 		DepLibUV::RunLoop();
 		DepLibUV::ClassDestroy();
 

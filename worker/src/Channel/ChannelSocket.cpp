@@ -237,6 +237,9 @@ namespace Channel
 	void ChannelSocket::OnConsumerSocketMessage(ConsumerSocket* /*consumerSocket*/, char* msg, size_t msgLen)
 	{
 		MS_TRACE_STD();
+		fprintf(stderr, "ENTERED OnConsumerSocketMessage\n");
+
+		fprintf(stderr, "%s\n", msg);
 
 		try
 		{
@@ -283,11 +286,19 @@ namespace Channel
 		MS_TRACE_STD();
 	}
 
+
+	ConsumerSocket::ConsumerSocket(const char* name, size_t bufferSize)
+		: ::UnixStreamSocket(name, bufferSize, ::UnixStreamSocket::Role::CONSUMER)
+	{
+		// Call the UnixStreamSocket overloaded constructor
+	}
+
 	void ConsumerSocket::UserOnUnixStreamRead()
 	{
 		MS_TRACE_STD();
 
 		size_t msgStart{ 0 };
+		fprintf(stderr, "ENTERED UserOnUnixStreamRead\n");
 
 		// Be ready to parse more than a single message in a single chunk.
 		while (true)
@@ -302,8 +313,8 @@ namespace Channel
 				// Incomplete data.
 				break;
 			}
-
 			uint32_t msgLen;
+
 			// Read message length.
 			std::memcpy(&msgLen, this->buffer + msgStart, sizeof(uint32_t));
 
