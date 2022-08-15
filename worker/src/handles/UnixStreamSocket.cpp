@@ -304,6 +304,8 @@ inline void UnixStreamSocket::OnUvRead(ssize_t nread, const uv_buf_t* /*buf*/)
 	// Peer disconnected.
 	else if (nread == UV_EOF || nread == UV_ECONNRESET)
 	{
+		fprintf(stderr, "\nTEST OnUvRead:EOF \n");
+
 		this->isClosedByPeer = true;
 
 		// Close local side of the pipe.

@@ -169,7 +169,7 @@ namespace Channel
 		size_t messageCtx;
 
 		auto free = this->channelReadFn(
-		  &message, &messageLen, &messageCtx, this->uvReadHandle, this->channelReadCtx);
+		  &message, &messageLen, &messageCtx, this->uvReadHandle, this);
 
 		if (free)
 		{
@@ -287,8 +287,8 @@ namespace Channel
 	}
 
 
-	ConsumerSocket::ConsumerSocket(const char* name, size_t bufferSize)
-		: ::UnixStreamSocket(name, bufferSize, ::UnixStreamSocket::Role::CONSUMER)
+	ConsumerSocket::ConsumerSocket(const char* name, size_t bufferSize, Listener* listener)
+		: ::UnixStreamSocket(name, bufferSize, ::UnixStreamSocket::Role::CONSUMER), listener(listener)
 	{
 		// Call the UnixStreamSocket overloaded constructor
 	}
@@ -307,28 +307,41 @@ namespace Channel
 				return;
 
 			size_t readLen = this->bufferDataLen - msgStart;
+			fprintf(stderr, "UserOnUnixStreamRead 1: readLen = %d\n", readLen);
 
 			if (readLen < sizeof(uint32_t))
 			{
+				fprintf(stderr, "UserOnUnixStreamRead FAIL 1\n");
+
 				// Incomplete data.
 				break;
 			}
+			fprintf(stderr, "UserOnUnixStreamRead 2: readLen = %d\n", readLen);
+
 			uint32_t msgLen;
+
+			fprintf(stderr, "UserOnUnixStreamRead 2.1: Before memcpy msgLen = %d\n", msgLen);
 
 			// Read message length.
 			std::memcpy(&msgLen, this->buffer + msgStart, sizeof(uint32_t));
 
+
+			fprintf(stderr, "UserOnUnixStreamRead 3:readLen = %d; msgStart = %d, msgLen = %d, Buffer string: %s\n",
+					readLen, msgStart, static_cast<size_t>(msgLen), this->buffer );
+
 			if (readLen < sizeof(uint32_t) + static_cast<size_t>(msgLen))
 			{
 				// Incomplete data.
+				fprintf(stderr, "UserOnUnixStreamRead FAIL 2 -> readLen = %d; size: %d\n", readLen, sizeof(uint32_t) + static_cast<size_t>(msgLen));
+
 				break;
 			}
+			fprintf(stderr, "UserOnUnixStreamRead 4: readLen = %d\n", readLen);
 
 			this->listener->OnConsumerSocketMessage(
-			  this,
-			  reinterpret_cast<char*>(this->buffer + msgStart + sizeof(uint32_t)),
-			  static_cast<size_t>(msgLen));
-
+				  this,
+				  reinterpret_cast<char*>(this->buffer + msgStart + sizeof(uint32_t)),
+				  static_cast<size_t>(msgLen));
 			msgStart += sizeof(uint32_t) + static_cast<size_t>(msgLen);
 		}
 

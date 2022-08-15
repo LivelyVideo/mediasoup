@@ -25,12 +25,8 @@ ChannelReadFreeFn channelReadFn (
 	// Create a ConsumerSocket object and provide a
 	// name for the socket
 
-	//Channel::ChannelSocket obj = *((Channel::ChannelSocket::Listener*) ctx);
-
 	const char* name = "/tmp/msTest.sock";
-	//Channel::ConsumerSocket lively =
-	new Channel::ConsumerSocket(name, MessageMaxLength);
-	//ctx = lively;
+	new Channel::ConsumerSocket(name, MessageMaxLength, &*((Channel::ConsumerSocket::Listener*) ctx));
 	return nullptr;
 }
 

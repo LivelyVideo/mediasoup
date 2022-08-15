@@ -205,6 +205,7 @@ RTC::Router* Worker::GetRouterFromInternal(json& internal) const
 inline void Worker::OnChannelRequest(Channel::ChannelSocket* /*channel*/, Channel::ChannelRequest* request)
 {
 	MS_TRACE();
+	fprintf(stderr, "ENTERED OnChannelRequest: Channel request received \n");
 
 	MS_DEBUG_DEV(
 	  "Channel request received [method:%s, id:%" PRIu32 "]", request->method.c_str(), request->id);
