@@ -31,6 +31,19 @@ inline static void onRead(uv_stream_t* handle, ssize_t nread, const uv_buf_t* bu
 		socket->OnUvRead(nread, buf);
 }
 
+
+inline static void onReadBuffer(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf)
+{
+	auto* socket = static_cast<UnixStreamSocket*>(handle->data);
+
+	if (socket)
+		socket->OnUvReadBuffer(nread, buf);
+}
+
+
+
+
+
 inline static void onWrite(uv_write_t* req, int status)
 {
 	auto* writeData = static_cast<UnixStreamSocket::UvWriteData*>(req->data);
@@ -75,7 +88,7 @@ inline static void onConnection(uv_stream_t *handle, int status)
 
 	uv_read_start(reinterpret_cast<uv_stream_t*> (client),
 			  	  	static_cast<uv_alloc_cb>(onAlloc),
-			  		static_cast<uv_read_cb>(onRead));
+			  		static_cast<uv_read_cb>(onReadBuffer));
 }
 /* Instance methods. */
 
@@ -343,3 +356,49 @@ inline void UnixStreamSocket::OnUvWriteError(int error)
 	// Notify the subclass.
 	UserOnUnixStreamSocketClosed();
 }
+
+
+
+
+
+
+
+inline void UnixStreamSocket::OnUvReadBuffer(ssize_t nread, const uv_buf_t* /*buf*/)
+{
+	MS_TRACE_STD();
+	  fprintf(stderr, "\nTEST: OnUvReadBuffer called\n");
+
+	if (nread == 0)
+		return;
+
+	// Data received.
+	if (nread > 0)
+	{
+		fprintf(stderr, "\nTEST OnUvRead: nread with data - calling UserOnUnix method\n");
+
+		// Update the buffer data length.
+		this->bufferDataLen += static_cast<size_t>(nread);
+
+		// Notify the subclass.
+		UserOnUnixStreamRead();
+	}
+
+	// Some error.
+	else
+	{
+		MS_ERROR_STD("read error, closing the pipe: %s", uv_strerror(nread));
+
+		this->hasError = true;
+		fprintf(stderr, "\nTEST OnUvReadBuffer 1\n");
+
+		// Close the socket.
+		Close();
+		fprintf(stderr, "\nTEST OnUvReadBuffer 2\n");
+
+		// Notify the subclass.
+		//UserOnUnixStreamSocketClosed();
+		fprintf(stderr, "\nTEST OnUvReadBuffer 3\n");
+
+	}
+}
+

@@ -56,6 +56,8 @@ public:
 	void OnUvRead(ssize_t nread, const uv_buf_t* buf);
 	void OnUvWriteError(int error);
 
+	void OnUvReadBuffer(ssize_t nread, const uv_buf_t* buf);
+
 	/* Pure virtual methods that must be implemented by the subclass. */
 protected:
 	virtual void UserOnUnixStreamRead()         = 0;
