@@ -26,7 +26,8 @@ ChannelReadFreeFn channelReadFn (
 	// name for the socket
 
 	const char* name = "/tmp/msTest.sock";
-	new Channel::ConsumerSocket(name, MessageMaxLength, &*((Channel::ConsumerSocket::Listener*) ctx));
+
+	new Channel::ConsumerSocket(name, MessageMaxLength, &*((Channel::ChannelSocket*) ctx));
 	return nullptr;
 }
 

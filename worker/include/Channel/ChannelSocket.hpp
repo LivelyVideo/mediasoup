@@ -23,7 +23,7 @@ namespace Channel
 
 	public:
 		ConsumerSocket(int fd, size_t bufferSize, Listener* listener);
-		ConsumerSocket(const char* name, size_t bufferSize, Listener* listener);
+		ConsumerSocket(const char* name, size_t bufferSize, ChannelSocket* channel);
 
 		/* Pure virtual methods inherited from ::UnixStreamSocket. */
 	public:

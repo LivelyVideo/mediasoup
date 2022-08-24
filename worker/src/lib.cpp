@@ -79,7 +79,7 @@ extern "C" int mediasoup_worker_run(
 		return 1;
 	}
 
-	try
+	/*try
 	{
 		if (payloadChannelReadFn)
 		{
@@ -101,7 +101,7 @@ extern "C" int mediasoup_worker_run(
 		DepLibUV::ClassDestroy();
 
 		return 1;
-	}
+	}*/
 
 	// Initialize the Logger.
 	// Logger::ClassInit(channel);

@@ -135,7 +135,6 @@ namespace Channel
 
 			return;
 		}
-
 		SendImpl(
 		  reinterpret_cast<const uint8_t*>(message.c_str()), static_cast<uint32_t>(message.length()));
 	}
@@ -234,12 +233,9 @@ namespace Channel
 		}
 	}
 
-	void ChannelSocket::OnConsumerSocketMessage(ConsumerSocket* /*consumerSocket*/, char* msg, size_t msgLen)
+	void ChannelSocket::OnConsumerSocketMessage(ConsumerSocket* consumerSocket, char* msg, size_t msgLen)
 	{
 		MS_TRACE_STD();
-		fprintf(stderr, "ENTERED OnConsumerSocketMessage\n");
-
-		fprintf(stderr, "%s\n", msg);
 
 		try
 		{
@@ -287,8 +283,8 @@ namespace Channel
 	}
 
 
-	ConsumerSocket::ConsumerSocket(const char* name, size_t bufferSize, Listener* listener)
-		: ::UnixStreamSocket(name, bufferSize, ::UnixStreamSocket::Role::CONSUMER), listener(listener)
+	ConsumerSocket::ConsumerSocket(const char* name, size_t bufferSize, ChannelSocket* channel)
+		: ::UnixStreamSocket(name, bufferSize, ::UnixStreamSocket::Role::CONSUMER), listener(channel)
 	{
 		// Call the UnixStreamSocket overloaded constructor
 	}
@@ -298,7 +294,6 @@ namespace Channel
 		MS_TRACE_STD();
 
 		size_t msgStart{ 0 };
-		fprintf(stderr, "ENTERED UserOnUnixStreamRead\n");
 
 		// Be ready to parse more than a single message in a single chunk.
 		while (true)
@@ -307,36 +302,22 @@ namespace Channel
 				return;
 
 			size_t readLen = this->bufferDataLen - msgStart;
-			fprintf(stderr, "UserOnUnixStreamRead 1: readLen = %d\n", readLen);
 
 			if (readLen < sizeof(uint32_t))
 			{
-				fprintf(stderr, "UserOnUnixStreamRead FAIL 1\n");
-
 				// Incomplete data.
 				break;
 			}
-			fprintf(stderr, "UserOnUnixStreamRead 2: readLen = %d\n", readLen);
-
 			uint32_t msgLen;
-
-			fprintf(stderr, "UserOnUnixStreamRead 2.1: Before memcpy msgLen = %d\n", msgLen);
 
 			// Read message length.
 			std::memcpy(&msgLen, this->buffer + msgStart, sizeof(uint32_t));
 
-
-			fprintf(stderr, "UserOnUnixStreamRead 3:readLen = %d; msgStart = %d, msgLen = %d, Buffer string: %s\n",
-					readLen, msgStart, static_cast<size_t>(msgLen), this->buffer );
-
 			if (readLen < sizeof(uint32_t) + static_cast<size_t>(msgLen))
 			{
 				// Incomplete data.
-				fprintf(stderr, "UserOnUnixStreamRead FAIL 2 -> readLen = %d; size: %d\n", readLen, sizeof(uint32_t) + static_cast<size_t>(msgLen));
-
 				break;
 			}
-			fprintf(stderr, "UserOnUnixStreamRead 4: readLen = %d\n", readLen);
 
 			this->listener->OnConsumerSocketMessage(
 				  this,

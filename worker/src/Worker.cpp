@@ -20,24 +20,25 @@ Worker::Worker(::Channel::ChannelSocket* channel, PayloadChannel::PayloadChannel
 	this->channel->SetListener(this);
 
 	// Set us as PayloadChannel's listener.
-	this->payloadChannel->SetListener(this);
+	//this->payloadChannel->SetListener(this);
 
 	// Set the signals handler.
-	this->signalsHandler = new SignalsHandler(this);
+	//this->signalsHandler = new SignalsHandler(this);
 
-#ifdef MS_EXECUTABLE
+
+/*#ifdef MS_EXECUTABLE
 	{
 		// Add signals to handle.
 		this->signalsHandler->AddSignal(SIGINT, "INT");
 		this->signalsHandler->AddSignal(SIGTERM, "TERM");
 	}
-#endif
+#endif*/
 
 	// Create the Checker instance in DepUsrSCTP.
 	DepUsrSCTP::CreateChecker();
 
 	// Tell the Node process that we are running.
-	Channel::ChannelNotifier::Emit(Logger::pid, "running");
+	//Channel::ChannelNotifier::Emit(Logger::pid, "running");
 
 	MS_DEBUG_DEV_STD("starting libuv loop");
 	DepLibUV::RunLoop();

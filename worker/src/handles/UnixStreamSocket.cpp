@@ -76,19 +76,19 @@ inline static void onShutdown(uv_shutdown_t* req, int /*status*/)
 inline static void onConnection(uv_stream_t *handle, int status)
 {
 	assert(status == 0);
-	int r;
+	int err;
 
 	uv_pipe_t *client = new uv_pipe_t;
 
 	uv_pipe_init(handle->loop, client, 0);
-	r = uv_accept(handle, (uv_stream_t *)client);
-	assert(r == 0);
+	err = uv_accept(handle, (uv_stream_t *)client);
+	assert(err == 0);
 
 	client->data = handle->data;
 
 	uv_read_start(reinterpret_cast<uv_stream_t*> (client),
 			  	  	static_cast<uv_alloc_cb>(onAlloc),
-			  		static_cast<uv_read_cb>(onReadBuffer));
+			  		static_cast<uv_read_cb>(onRead));
 }
 /* Instance methods. */
 
@@ -268,19 +268,14 @@ void UnixStreamSocket::Write(const uint8_t* data, size_t len)
 inline void UnixStreamSocket::OnUvReadAlloc(size_t /*suggestedSize*/, uv_buf_t* buf)
 {
 	MS_TRACE_STD();
-	fprintf(stderr, "\nTEST: OnUvReadAlloc called\n");
 
 	// If this is the first call to onUvReadAlloc() then allocate the receiving buffer now.
 	if (!this->buffer)
 	{
-		  fprintf(stderr, "\nTEST: OnUvReadAlloc - This is the first time allocating\n");
-
 		this->buffer = new uint8_t[this->bufferSize];
 	}
 	// Tell UV to write after the last data byte in the buffer.
 	buf->base = reinterpret_cast<char*>(this->buffer + this->bufferDataLen);
-
-	fprintf(stderr, "\nTEST: OnUvReadAlloc - this->bufferSize:%zu, this->bufferDataLen:%zu\n", this->bufferSize, this->bufferDataLen);
 
 	// Give UV all the remaining space in the buffer.
 	if (this->bufferSize > this->bufferDataLen)
@@ -298,7 +293,6 @@ inline void UnixStreamSocket::OnUvReadAlloc(size_t /*suggestedSize*/, uv_buf_t* 
 inline void UnixStreamSocket::OnUvRead(ssize_t nread, const uv_buf_t* /*buf*/)
 {
 	MS_TRACE_STD();
-	  fprintf(stderr, "\nTEST: OnUvRead called\n");
 
 	if (nread == 0)
 		return;
@@ -306,8 +300,6 @@ inline void UnixStreamSocket::OnUvRead(ssize_t nread, const uv_buf_t* /*buf*/)
 	// Data received.
 	if (nread > 0)
 	{
-		fprintf(stderr, "\nTEST OnUvRead: nread with data - calling UserOnUnix method\n");
-
 		// Update the buffer data length.
 		this->bufferDataLen += static_cast<size_t>(nread);
 
@@ -317,8 +309,6 @@ inline void UnixStreamSocket::OnUvRead(ssize_t nread, const uv_buf_t* /*buf*/)
 	// Peer disconnected.
 	else if (nread == UV_EOF || nread == UV_ECONNRESET)
 	{
-		fprintf(stderr, "\nTEST OnUvRead:EOF \n");
-
 		this->isClosedByPeer = true;
 
 		// Close local side of the pipe.
@@ -366,7 +356,6 @@ inline void UnixStreamSocket::OnUvWriteError(int error)
 inline void UnixStreamSocket::OnUvReadBuffer(ssize_t nread, const uv_buf_t* /*buf*/)
 {
 	MS_TRACE_STD();
-	  fprintf(stderr, "\nTEST: OnUvReadBuffer called\n");
 
 	if (nread == 0)
 		return;
@@ -374,8 +363,6 @@ inline void UnixStreamSocket::OnUvReadBuffer(ssize_t nread, const uv_buf_t* /*bu
 	// Data received.
 	if (nread > 0)
 	{
-		fprintf(stderr, "\nTEST OnUvRead: nread with data - calling UserOnUnix method\n");
-
 		// Update the buffer data length.
 		this->bufferDataLen += static_cast<size_t>(nread);
 
@@ -389,16 +376,10 @@ inline void UnixStreamSocket::OnUvReadBuffer(ssize_t nread, const uv_buf_t* /*bu
 		MS_ERROR_STD("read error, closing the pipe: %s", uv_strerror(nread));
 
 		this->hasError = true;
-		fprintf(stderr, "\nTEST OnUvReadBuffer 1\n");
-
 		// Close the socket.
 		Close();
-		fprintf(stderr, "\nTEST OnUvReadBuffer 2\n");
-
 		// Notify the subclass.
 		//UserOnUnixStreamSocketClosed();
-		fprintf(stderr, "\nTEST OnUvReadBuffer 3\n");
-
 	}
 }
 
