@@ -31,6 +31,33 @@ ChannelReadFreeFn channelReadFn (
 	return nullptr;
 }
 
+void after_write(uv_write_t *req, int status) {
+
+}
+
+void channelWriteFn (
+		const uint8_t*  message,
+		uint32_t  messageLen,
+		ChannelWriteCtx  ctx )
+{
+	fprintf(stderr, "ENTERED channelWriteFn 1: %s\n", message);
+
+	// Write the message to the pipe
+	if (messageLen == 0)
+			return;
+	fprintf(stderr, "ENTERED channelWriteFn 2: \n");
+
+	  //assert(status == 0);
+	  int r;
+
+	  uv_write_t *wreq = (uv_write_t *)malloc(sizeof(uv_write_t));
+	  //const char *request = "{ \"action\":\"labels\" }";
+	  const uv_buf_t buf = uv_buf_init(strdup((char *)message), messageLen);
+	  uv_write((uv_write_t *)wreq, reinterpret_cast<uv_stream_t*> (ctx), &buf, 1, after_write);
+
+	return;
+}
+
 int main(int argc, char* argv[])
 {
 	// Ensure we are called by our Node library.
@@ -53,7 +80,7 @@ int main(int argc, char* argv[])
 	  PayloadProducerChannelFd,
 	  channelReadFn,
 	  nullptr,
-	  nullptr,
+	  channelWriteFn,
 	  nullptr,
 	  nullptr,
 	  nullptr,

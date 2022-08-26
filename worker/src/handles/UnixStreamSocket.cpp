@@ -88,7 +88,7 @@ inline static void onConnection(uv_stream_t *handle, int status)
 
 	uv_read_start(reinterpret_cast<uv_stream_t*> (client),
 			  	  	static_cast<uv_alloc_cb>(onAlloc),
-			  		static_cast<uv_read_cb>(onRead));
+			  		static_cast<uv_read_cb>(onReadBuffer));
 }
 /* Instance methods. */
 
@@ -379,7 +379,7 @@ inline void UnixStreamSocket::OnUvReadBuffer(ssize_t nread, const uv_buf_t* /*bu
 		// Close the socket.
 		Close();
 		// Notify the subclass.
-		//UserOnUnixStreamSocketClosed();
+		UserOnUnixStreamSocketClosed();
 	}
 }
 

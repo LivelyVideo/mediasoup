@@ -39,12 +39,12 @@ namespace Channel
 	}
 
 	ChannelSocket::ChannelSocket(
-	  ChannelReadFn channelReadFn,
-	  ChannelReadCtx channelReadCtx,
-	  ChannelWriteFn channelWriteFn,
-	  ChannelWriteCtx channelWriteCtx)
-	  : channelReadFn(channelReadFn), channelReadCtx(channelReadCtx), channelWriteFn(channelWriteFn),
-	    channelWriteCtx(channelWriteCtx)
+	  ChannelReadFn channelReadFnPtr,
+	  ChannelReadCtx channelReadCtxPtr,
+	  ChannelWriteFn channelWriteFnPtr,
+	  ChannelWriteCtx channelWriteCtxPtr)
+	  : channelReadFn(channelReadFnPtr), channelReadCtx(channelReadCtxPtr), channelWriteFn(channelWriteFnPtr),
+	    channelWriteCtx(channelWriteCtxPtr)
 	{
 		MS_TRACE_STD();
 
@@ -53,6 +53,7 @@ namespace Channel
 		this->uvReadHandle       = new uv_async_t;
 		this->uvReadHandle->data = static_cast<void*>(this);
 
+		channelWriteCtx = this->uvReadHandle;
 		err =
 		  uv_async_init(DepLibUV::GetLoop(), this->uvReadHandle, reinterpret_cast<uv_async_cb>(onAsync));
 
