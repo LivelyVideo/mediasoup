@@ -1,5 +1,7 @@
 #include "common.hpp"
 
+std::string GetUnixSocketName();
+
 extern "C" int mediasoup_worker_run(
   int argc,
   char* argv[],

@@ -24,8 +24,60 @@
 #include <csignal>  // sigaction()
 #include <iostream> // std::cerr, std::endl
 #include <string>
+#define LEN 10
 
 void IgnoreSignals();
+
+std::string GetUnixSocketName()
+{
+	// Grab the PID of the worker
+	char line[LEN];
+	FILE *cmd = popen("pidof -s /root/build/mediasoup/worker/out/Release/mediasoup-worker", "r");
+	long pid = 0;
+	fgets(line, LEN, cmd);
+	pid = strtoul(line, NULL, 10);
+	pclose(cmd);
+
+	// Create the socket name
+	std::string socketName = "mediasoup_unix_socket_";
+	socketName.append(std::to_string(pid));
+
+	return socketName;
+}
+
+void HandleSigTerm(int sig)
+{
+	/*std::string socketPath = "/";
+	socketPath.append(dir);
+	socketPath.append("/");
+	socketPath.append(socketName);*/
+
+	// String to remove the socket
+	std::string dir = "" ;
+	if(!std::getenv("MEDIASOUP_SOCKET_DIR"))
+	{
+		dir = "tmp";
+	}
+	else
+	{
+		dir = std::getenv("MEDIASOUP_SOCKET_DIR");
+
+	}
+
+	// Now remove the socket from this dir
+	std::string socketName = GetUnixSocketName();
+	std::string delSocket_string = "rm /";
+	delSocket_string.append(dir);
+	delSocket_string.append("/");
+	delSocket_string.append(socketName);
+
+	char delSocket[LEN];
+	FILE *delSocket_cmd = popen(delSocket_string.c_str(), "r");
+	fgets(delSocket, LEN, delSocket_cmd);
+	pclose(delSocket_cmd);
+
+	exit(sig);
+}
 
 extern "C" int mediasoup_worker_run(
   int argc,
@@ -169,6 +221,10 @@ extern "C" int mediasoup_worker_run(
 		// Ignore some signals.
 		IgnoreSignals();
 #endif
+
+		struct sigaction sa;
+		sa.sa_handler = &HandleSigTerm;
+		sigaction(SIGTERM, &sa, NULL);
 
 		Settings::PrintConfiguration();
 		DepLibUV::PrintVersion();

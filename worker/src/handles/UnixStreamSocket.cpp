@@ -31,7 +31,6 @@ inline static void onRead(uv_stream_t* handle, ssize_t nread, const uv_buf_t* bu
 		socket->OnUvRead(nread, buf);
 }
 
-
 inline static void onReadBuffer(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf)
 {
 	auto* socket = static_cast<UnixStreamSocket*>(handle->data);
@@ -39,10 +38,6 @@ inline static void onReadBuffer(uv_stream_t* handle, ssize_t nread, const uv_buf
 	if (socket)
 		socket->OnUvReadBuffer(nread, buf);
 }
-
-
-
-
 
 inline static void onWrite(uv_write_t* req, int status)
 {
@@ -347,12 +342,6 @@ inline void UnixStreamSocket::OnUvWriteError(int error)
 	UserOnUnixStreamSocketClosed();
 }
 
-
-
-
-
-
-
 inline void UnixStreamSocket::OnUvReadBuffer(ssize_t nread, const uv_buf_t* /*buf*/)
 {
 	MS_TRACE_STD();
@@ -368,18 +357,6 @@ inline void UnixStreamSocket::OnUvReadBuffer(ssize_t nread, const uv_buf_t* /*bu
 
 		// Notify the subclass.
 		UserOnUnixStreamRead();
-	}
-
-	// Some error.
-	else
-	{
-		MS_ERROR_STD("read error, closing the pipe: %s", uv_strerror(nread));
-
-		this->hasError = true;
-		// Close the socket.
-		Close();
-		// Notify the subclass.
-		UserOnUnixStreamSocketClosed();
 	}
 }
 

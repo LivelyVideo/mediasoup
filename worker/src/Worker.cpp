@@ -287,6 +287,7 @@ inline void Worker::OnChannelRequest(Channel::ChannelSocket* /*channel*/, Channe
 			this->mapRouters[routerId] = router;
 
 			MS_DEBUG_DEV("Router created [routerId:%s]", routerId.c_str());
+			fprintf(stderr, "Router created [routerId:%s]\n", routerId.c_str());
 
 			request->Accept();
 
@@ -305,6 +306,8 @@ inline void Worker::OnChannelRequest(Channel::ChannelSocket* /*channel*/, Channe
 			{
 				MS_THROW_ERROR("%s [method:%s]", error.what(), request->method.c_str());
 			}
+
+			fprintf(stderr, "Router closed [id:%s]\n", router->id.c_str());
 
 			// Remove it from the map and delete it.
 			this->mapRouters.erase(router->id);
