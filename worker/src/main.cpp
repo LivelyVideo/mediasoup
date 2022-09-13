@@ -27,18 +27,22 @@ ChannelReadFreeFn channelReadFn (
 {
 	// Create a ConsumerSocket object and provide a
 	// name for the socket
-	// Get the dir from the env
+
+	// Make the socket name
+
+	// Check to see if the user set the directory in the environment variables.
 	std::string dir = "" ;
 	if(!std::getenv("MEDIASOUP_SOCKET_DIR"))
 	{
+		// If not, use the /tmp dir
 		dir = "tmp";
 	}
 	else
 	{
 		dir = std::getenv("MEDIASOUP_SOCKET_DIR");
-
 	}
 
+	// Check to see if the dir already exists
 	std::string filePathExistsStr = "/";
 	filePathExistsStr.append(dir);
 
@@ -62,10 +66,9 @@ ChannelReadFreeFn channelReadFn (
 		pclose(cmd1);
 	}
 
+	// Now create the socket name with pid under the user specified (or /tmp) dir
 	std::string socketName = GetUnixSocketName();
-
 	std::string socketDirPath = "/";
-
 	socketDirPath.append(dir);
 	socketDirPath.append("/");
 	socketDirPath.append(socketName);

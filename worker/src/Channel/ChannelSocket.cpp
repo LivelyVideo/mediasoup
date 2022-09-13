@@ -53,7 +53,10 @@ namespace Channel
 		this->uvReadHandle       = new uv_async_t;
 		this->uvReadHandle->data = static_cast<void*>(this);
 
+		// Set the handle to this member variable, so that when the channelWriteFunction pointer is called
+		// the handle is passed in as an argument.
 		channelWriteCtx = this->uvReadHandle;
+
 		err =
 		  uv_async_init(DepLibUV::GetLoop(), this->uvReadHandle, reinterpret_cast<uv_async_cb>(onAsync));
 
@@ -169,7 +172,7 @@ namespace Channel
 		size_t messageCtx;
 
 		auto free = this->channelReadFn(
-		  &message, &messageLen, &messageCtx, this->uvReadHandle, this);
+		  &message, &messageLen, &messageCtx, this->uvReadHandle, this /* pass the ChannelSocket Object as a context to the channelReadFn pointer*/);
 
 		if (free)
 		{

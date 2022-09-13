@@ -83,7 +83,7 @@ inline static void onConnection(uv_stream_t *handle, int status)
 
 	uv_read_start(reinterpret_cast<uv_stream_t*> (client),
 			  	  	static_cast<uv_alloc_cb>(onAlloc),
-			  		static_cast<uv_read_cb>(onReadBuffer));
+			  		static_cast<uv_read_cb>(onReadBuffer)); // Call the new onReadBuffer function
 }
 /* Instance methods. */
 
@@ -126,7 +126,7 @@ UnixStreamSocket::UnixStreamSocket(int fd, size_t bufferSize, UnixStreamSocket::
 	{
 		uv_close(reinterpret_cast<uv_handle_t*>(this->uvHandle), static_cast<uv_close_cb>(onClose));
 
-		MS_THROW_ERROR_STD("uv_pipe_open() failed: %s and the FD is: %d", uv_strerror(err), fd);
+		MS_THROW_ERROR_STD("uv_pipe_open() failed: %s", uv_strerror(err));
 	}
 
 	if (this->role == UnixStreamSocket::Role::CONSUMER)
@@ -266,9 +266,7 @@ inline void UnixStreamSocket::OnUvReadAlloc(size_t /*suggestedSize*/, uv_buf_t* 
 
 	// If this is the first call to onUvReadAlloc() then allocate the receiving buffer now.
 	if (!this->buffer)
-	{
 		this->buffer = new uint8_t[this->bufferSize];
-	}
 	// Tell UV to write after the last data byte in the buffer.
 	buf->base = reinterpret_cast<char*>(this->buffer + this->bufferDataLen);
 

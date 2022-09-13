@@ -56,6 +56,7 @@ public:
 	void OnUvRead(ssize_t nread, const uv_buf_t* buf);
 	void OnUvWriteError(int error);
 
+	// This method does not close the socket when the peer disconnects.
 	void OnUvReadBuffer(ssize_t nread, const uv_buf_t* buf);
 
 	/* Pure virtual methods that must be implemented by the subclass. */

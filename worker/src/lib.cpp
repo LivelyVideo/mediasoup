@@ -47,12 +47,7 @@ std::string GetUnixSocketName()
 
 void HandleSigTerm(int sig)
 {
-	/*std::string socketPath = "/";
-	socketPath.append(dir);
-	socketPath.append("/");
-	socketPath.append(socketName);*/
-
-	// String to remove the socket
+	// Path to the socket that needs to be removed
 	std::string dir = "" ;
 	if(!std::getenv("MEDIASOUP_SOCKET_DIR"))
 	{
@@ -64,13 +59,13 @@ void HandleSigTerm(int sig)
 
 	}
 
-	// Now remove the socket from this dir
 	std::string socketName = GetUnixSocketName();
 	std::string delSocket_string = "rm /";
 	delSocket_string.append(dir);
 	delSocket_string.append("/");
 	delSocket_string.append(socketName);
 
+	// Now delete the socket
 	char delSocket[LEN];
 	FILE *delSocket_cmd = popen(delSocket_string.c_str(), "r");
 	fgets(delSocket, LEN, delSocket_cmd);
