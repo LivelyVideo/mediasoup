@@ -23,16 +23,15 @@ Worker::Worker(::Channel::ChannelSocket* channel, PayloadChannel::PayloadChannel
 	//this->payloadChannel->SetListener(this);
 
 	// Set the signals handler.
-	//this->signalsHandler = new SignalsHandler(this);
+	this->signalsHandler = new SignalsHandler(this);
 
-
-/*#ifdef MS_EXECUTABLE
+#ifdef MS_EXECUTABLE
 	{
 		// Add signals to handle.
 		this->signalsHandler->AddSignal(SIGINT, "INT");
-		this->signalsHandler->AddSignal(SIGTERM, "TERM");
+		//this->signalsHandler->AddSignal(SIGTERM, "TERM");
 	}
-#endif*/
+#endif
 
 	// Create the Checker instance in DepUsrSCTP.
 	DepUsrSCTP::CreateChecker();
@@ -206,8 +205,6 @@ RTC::Router* Worker::GetRouterFromInternal(json& internal) const
 inline void Worker::OnChannelRequest(Channel::ChannelSocket* /*channel*/, Channel::ChannelRequest* request)
 {
 	MS_TRACE();
-	fprintf(stderr, "ENTERED OnChannelRequest: Channel request received \n");
-
 	MS_DEBUG_DEV(
 	  "Channel request received [method:%s, id:%" PRIu32 "]", request->method.c_str(), request->id);
 
@@ -287,7 +284,6 @@ inline void Worker::OnChannelRequest(Channel::ChannelSocket* /*channel*/, Channe
 			this->mapRouters[routerId] = router;
 
 			MS_DEBUG_DEV("Router created [routerId:%s]", routerId.c_str());
-			fprintf(stderr, "Router created [routerId:%s]\n", routerId.c_str());
 
 			request->Accept();
 
@@ -306,8 +302,6 @@ inline void Worker::OnChannelRequest(Channel::ChannelSocket* /*channel*/, Channe
 			{
 				MS_THROW_ERROR("%s [method:%s]", error.what(), request->method.c_str());
 			}
-
-			fprintf(stderr, "Router closed [id:%s]\n", router->id.c_str());
 
 			// Remove it from the map and delete it.
 			this->mapRouters.erase(router->id);

@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <sys/stat.h>
 #include "Channel/ChannelSocket.hpp"
+#include "UnixSocketSfuCpp.hpp"
 
 static constexpr int ConsumerChannelFd{ 3 };
 static constexpr int ProducerChannelFd{ 4 };
@@ -17,92 +18,6 @@ static constexpr int PayloadProducerChannelFd{ 6 };
 static constexpr size_t MessageMaxLength{ 4194308 };
 static constexpr size_t PayloadMaxLength{ 4194304 };
 #define LEN 10
-
-ChannelReadFreeFn channelReadFn (
-		uint8_t** message,
-		uint32_t* messageLen,
-		size_t* messageCtx,
-		const void* handle,
-		ChannelReadCtx ctx)
-{
-	// Create a ConsumerSocket object and provide a
-	// name for the socket
-
-	// Make the socket name
-
-	// Check to see if the user set the directory in the environment variables.
-	std::string dir = "" ;
-	if(!std::getenv("MEDIASOUP_SOCKET_DIR"))
-	{
-		// If not, use the /tmp dir
-		dir = "tmp";
-	}
-	else
-	{
-		dir = std::getenv("MEDIASOUP_SOCKET_DIR");
-	}
-
-	// Check to see if the dir already exists
-	std::string filePathExistsStr = "/";
-	filePathExistsStr.append(dir);
-
-	struct stat sb;
-	bool filepathExists = false;
-	if (stat(filePathExistsStr.c_str(), &sb) == 0)
-	{
-		filepathExists = true;
-	}
-
-	std::string makeDirStr = "mkdir ";
-	makeDirStr.append("/");
-	makeDirStr.append(dir);
-
-	// Make the directory if it does not exist
-	if (!filepathExists)
-	{
-		char line1[LEN];
-		FILE *cmd1 = popen(makeDirStr.c_str(), "r");
-		fgets(line1, LEN, cmd1);
-		pclose(cmd1);
-	}
-
-	// Now create the socket name with pid under the user specified (or /tmp) dir
-	std::string socketName = GetUnixSocketName();
-	std::string socketDirPath = "/";
-	socketDirPath.append(dir);
-	socketDirPath.append("/");
-	socketDirPath.append(socketName);
-
-	const char* name = socketDirPath.c_str();
-	new Channel::ConsumerSocket(name, MessageMaxLength, &*((Channel::ChannelSocket*) ctx));
-	return nullptr;
-}
-
-void after_write(uv_write_t *req, int status) {
-
-}
-
-void channelWriteFn (
-		const uint8_t*  message,
-		uint32_t  messageLen,
-		ChannelWriteCtx  ctx )
-{
-	fprintf(stderr, "ENTERED channelWriteFn 1: %s\n", message);
-
-	// Write the message to the pipe
-	if (messageLen == 0)
-			return;
-
-	//assert(status == 0);
-	int r;
-
-	uv_write_t *wreq = (uv_write_t *)malloc(sizeof(uv_write_t));
-	//const char *request = "{ \"action\":\"labels\" }";
-	const uv_buf_t buf = uv_buf_init(strdup((char *)message), messageLen);
-	uv_write((uv_write_t *)wreq, reinterpret_cast<uv_stream_t*> (ctx), &buf, 1, after_write);
-
-	return;
-}
 
 int main(int argc, char* argv[])
 {

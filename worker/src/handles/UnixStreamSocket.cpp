@@ -4,7 +4,6 @@
  */
 
 #define MS_CLASS "UnixStreamSocket"
-#define SOCKET_NAME "/tmp/TestSocket"
 // #define MS_LOG_DEV_LEVEL 3
 
 #include "handles/UnixStreamSocket.hpp"

@@ -24,19 +24,14 @@
 #include <csignal>  // sigaction()
 #include <iostream> // std::cerr, std::endl
 #include <string>
+#include <sys/types.h>
 #define LEN 10
 
 void IgnoreSignals();
 
 std::string GetUnixSocketName()
 {
-	// Grab the PID of the worker
-	char line[LEN];
-	FILE *cmd = popen("pidof -s /root/build/mediasoup/worker/out/Release/mediasoup-worker", "r");
-	long pid = 0;
-	fgets(line, LEN, cmd);
-	pid = strtoul(line, NULL, 10);
-	pclose(cmd);
+	pid_t pid = getpid();
 
 	// Create the socket name
 	std::string socketName = "mediasoup_unix_socket_";
@@ -60,16 +55,21 @@ void HandleSigTerm(int sig)
 	}
 
 	std::string socketName = GetUnixSocketName();
-	std::string delSocket_string = "rm /";
+	//std::string delSocket_string = "rm /";
+
+	std::string delSocket_string = "/";
 	delSocket_string.append(dir);
 	delSocket_string.append("/");
 	delSocket_string.append(socketName);
 
+	if (unlink(delSocket_string.c_str()) != 0)
+	      fprintf(stderr, "unlink() error");
+
 	// Now delete the socket
-	char delSocket[LEN];
+	/*char delSocket[LEN];
 	FILE *delSocket_cmd = popen(delSocket_string.c_str(), "r");
 	fgets(delSocket, LEN, delSocket_cmd);
-	pclose(delSocket_cmd);
+	pclose(delSocket_cmd);*/
 
 	exit(sig);
 }
@@ -126,6 +126,8 @@ extern "C" int mediasoup_worker_run(
 		return 1;
 	}
 
+	// Commenting out the RTC channel setup. Will revisit this if there is a
+	// requirement to set this channel up.
 	/*try
 	{
 		if (payloadChannelReadFn)

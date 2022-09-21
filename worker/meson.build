@@ -42,6 +42,7 @@ common_sources = [
   'src/Logger.cpp',
   'src/MediaSoupErrors.cpp',
   'src/Settings.cpp',
+  'src/UnixSocketSfuCpp.cpp',
   'src/Worker.cpp',
   'src/Utils/Crypto.cpp',
   'src/Utils/File.cpp',
