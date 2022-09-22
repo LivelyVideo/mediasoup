@@ -8,7 +8,11 @@
 #include "MediaSoupErrors.hpp"
 #include "Settings.hpp"
 #include "Channel/ChannelNotifier.hpp"
-
+#include <csignal>  // sigaction()
+#include <iostream> // std::cerr, std::endl
+#include <string>
+#include <sys/types.h>
+#include "lib.hpp"
 /* Instance methods. */
 
 Worker::Worker(::Channel::ChannelSocket* channel, PayloadChannel::PayloadChannelSocket* payloadChannel)
@@ -29,7 +33,7 @@ Worker::Worker(::Channel::ChannelSocket* channel, PayloadChannel::PayloadChannel
 	{
 		// Add signals to handle.
 		this->signalsHandler->AddSignal(SIGINT, "INT");
-		//this->signalsHandler->AddSignal(SIGTERM, "TERM");
+		this->signalsHandler->AddSignal(SIGTERM, "TERM");
 	}
 #endif
 
@@ -83,7 +87,9 @@ void Worker::Close()
 	this->channel->Close();
 
 	// Close the PayloadChannel.
-	this->payloadChannel->Close();
+	// Commenting out this cleanup of payloadChannel because it is not setup
+	// in this usecase.
+	//this->payloadChannel->Close();
 }
 
 void Worker::FillJson(json& jsonObject) const
@@ -445,6 +451,28 @@ inline void Worker::OnSignal(SignalsHandler* /*signalsHandler*/, int signum)
 
 			Close();
 
+			// Now cleanup the sockets that are created for this process.
+			std::string dir = "" ;
+			if(!std::getenv("MEDIASOUP_SOCKET_DIR"))
+			{
+				dir = "tmp";
+			}
+			else
+			{
+				dir = std::getenv("MEDIASOUP_SOCKET_DIR");
+
+			}
+
+			std::string socketName = GetUnixSocketName();
+			std::string delSocket_string = "/";
+			delSocket_string.append(dir);
+			delSocket_string.append("/");
+			delSocket_string.append(socketName);
+
+			if (unlink(delSocket_string.c_str()) != 0)
+			      fprintf(stderr, "unlink() error");
+
+			exit(signum);
 			break;
 		}
 

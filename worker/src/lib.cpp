@@ -40,40 +40,6 @@ std::string GetUnixSocketName()
 	return socketName;
 }
 
-void HandleSigTerm(int sig)
-{
-	// Path to the socket that needs to be removed
-	std::string dir = "" ;
-	if(!std::getenv("MEDIASOUP_SOCKET_DIR"))
-	{
-		dir = "tmp";
-	}
-	else
-	{
-		dir = std::getenv("MEDIASOUP_SOCKET_DIR");
-
-	}
-
-	std::string socketName = GetUnixSocketName();
-	//std::string delSocket_string = "rm /";
-
-	std::string delSocket_string = "/";
-	delSocket_string.append(dir);
-	delSocket_string.append("/");
-	delSocket_string.append(socketName);
-
-	if (unlink(delSocket_string.c_str()) != 0)
-	      fprintf(stderr, "unlink() error");
-
-	// Now delete the socket
-	/*char delSocket[LEN];
-	FILE *delSocket_cmd = popen(delSocket_string.c_str(), "r");
-	fgets(delSocket, LEN, delSocket_cmd);
-	pclose(delSocket_cmd);*/
-
-	exit(sig);
-}
-
 extern "C" int mediasoup_worker_run(
   int argc,
   char* argv[],
@@ -218,10 +184,6 @@ extern "C" int mediasoup_worker_run(
 		// Ignore some signals.
 		IgnoreSignals();
 #endif
-
-		struct sigaction sa;
-		sa.sa_handler = &HandleSigTerm;
-		sigaction(SIGTERM, &sa, NULL);
 
 		Settings::PrintConfiguration();
 		DepLibUV::PrintVersion();
