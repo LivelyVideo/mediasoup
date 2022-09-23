@@ -15,7 +15,7 @@ static constexpr int PayloadProducerChannelFd{ 6 };
 
 extern ChannelReadFreeFn channelReadFn (uint8_t** message, uint32_t* messageLen, size_t* messageCtx, const void* handle, ChannelReadCtx ctx);
 
-void channelWriteFn (const uint8_t*  message, uint32_t  messageLen, ChannelWriteCtx  ctx );
+extern void channelWriteFn (const uint8_t*  message, uint32_t  messageLen, ChannelWriteCtx  ctx );
 
 int main(int argc, char* argv[])
 {
