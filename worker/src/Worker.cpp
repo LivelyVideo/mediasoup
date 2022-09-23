@@ -88,7 +88,11 @@ void Worker::Close()
 
 	// Close the PayloadChannel.
 	// Commenting out this cleanup of payloadChannel because it is not setup
-	// in this usecase.
+	// in this usecase of adding support for unix sockets which replaces the pipe
+	// that were used for the IPC between node and the worker. In this use case,
+	// we setup the channels using the function pointers. At present, the
+	// function pointers to setup the payload channels are not required to be passed in
+	// and hence the payload channels are not setup.
 	//this->payloadChannel->Close();
 }
 
@@ -470,7 +474,7 @@ inline void Worker::OnSignal(SignalsHandler* /*signalsHandler*/, int signum)
 			delSocket_string.append(socketName);
 
 			if (unlink(delSocket_string.c_str()) != 0)
-			      fprintf(stderr, "unlink() error");
+				MS_ERROR_STD("Error removing the unix socket");
 
 			exit(signum);
 			break;

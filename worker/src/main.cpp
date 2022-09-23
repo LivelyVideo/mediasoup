@@ -7,17 +7,15 @@
 #include <string.h>
 #include <filesystem>
 #include <sys/stat.h>
-#include "Channel/ChannelSocket.hpp"
-#include "UnixSocketSfuCpp.hpp"
 
 static constexpr int ConsumerChannelFd{ 3 };
 static constexpr int ProducerChannelFd{ 4 };
 static constexpr int PayloadConsumerChannelFd{ 5 };
 static constexpr int PayloadProducerChannelFd{ 6 };
-// Binary length for a 4194304 bytes payload.
-static constexpr size_t MessageMaxLength{ 4194308 };
-static constexpr size_t PayloadMaxLength{ 4194304 };
-#define LEN 10
+
+extern ChannelReadFreeFn channelReadFn (uint8_t** message, uint32_t* messageLen, size_t* messageCtx, const void* handle, ChannelReadCtx ctx);
+
+void channelWriteFn (const uint8_t*  message, uint32_t  messageLen, ChannelWriteCtx  ctx );
 
 int main(int argc, char* argv[])
 {

@@ -92,8 +92,12 @@ extern "C" int mediasoup_worker_run(
 		return 1;
 	}
 
-	// Commenting out the RTC channel setup. Will revisit this if there is a
-	// requirement to set this channel up.
+	// Commenting out the RTC channel code because it is not setup
+	// in this usecase of adding support for unix sockets which replaces the pipe
+	// that were used for the IPC between node and the worker. In this use case,
+	// we setup the channels using the function pointers. At present, the
+	// function pointers to setup the payload channels are not required to be passed in
+	// and hence the payload channels are not setup.
 	/*try
 	{
 		if (payloadChannelReadFn)
