@@ -11,7 +11,7 @@ exports.types = types;
 /**
  * Expose mediasoup version.
  */
-exports.version = '3.9.10-lv16-notranscode';
+exports.version = '3.9.10-lv16-notranscode-mariat1';
 /**
  * Expose parseScalabilityMode() function.
  */
@@ -23,7 +23,7 @@ exports.observer = observer;
 /**
  * Create a Worker.
  */
-async function createWorker({ logLevel = 'error', logDevLevel = 'none', logTraceEnabled = false, logTags, logFile = "ms.log", rtcMinPort = 10000, rtcMaxPort = 59999, dtlsCertificateFile, dtlsPrivateKeyFile, appData, }) {
+async function createWorker({ logLevel = 'error', logDevLevel = 'none', logTraceEnabled = false, logTags, logFile = "ms.log", binStatsDisabled = false, binStatsPath = "/var/log/sfu/", rtcMinPort = 10000, rtcMaxPort = 59999, dtlsCertificateFile, dtlsPrivateKeyFile, appData, }) {
     logger.debug('createWorker()');
     if (appData && typeof appData !== 'object')
         throw new TypeError('if given, appData must be an object');
@@ -33,6 +33,8 @@ async function createWorker({ logLevel = 'error', logDevLevel = 'none', logTrace
         logDevLevel,
         logTraceEnabled,
         logFile,
+        binStatsDisabled,
+        binStatsPath,
         rtcMinPort,
         rtcMaxPort,
         dtlsCertificateFile,

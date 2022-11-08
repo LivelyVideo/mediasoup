@@ -3,6 +3,7 @@
 #include "DepLibUV.hpp"
 #include "LivelyBinLogs.hpp"
 #include "Logger.hpp"
+#include "Settings.hpp"
 #include "Utils.hpp"
 #include <cstring>
 #include <sys/stat.h>
@@ -349,9 +350,9 @@ int StatsBinLog::OnLogWrite(CallStatsRecordCtx* ctx)
 
 bool StatsBinLog::CreateBinlogDirsIfMissing()
 {
-  std::string bin_log_dir      = "/var/log/sfu/bin/";
-  std::string bin_log_curr_dir = "/var/log/sfu/bin/current/";
-  std::string bin_log_done_dir = "/var/log/sfu/bin/done/";
+  std::string bin_log_dir      = Settings::configuration.logBinStatsPath + "/bin/";
+  std::string bin_log_curr_dir = Settings::configuration.logBinStatsPath + "/bin/current/";
+  std::string bin_log_done_dir = Settings::configuration.logBinStatsPath + "/bin/done/";
   
   struct stat info;
   int ret = 0;
@@ -425,18 +426,26 @@ bool StatsBinLog::CreateBinlogDirsIfMissing()
 
 void StatsBinLog::InitLog(char type, std::string id1, std::string id2)
 {
-  #define FILENAME_LEN_MAX sizeof("/var/log/sfu/bin/current/ms_p_00000000-0000-0000-0000-000000000000_00000000-0000-0000-0000-000000000000_1652210519459.123abc.bin") * 2
+  if (Settings::configuration.logBinStatsDisabled)
+    return;
+
+  #define FILENAME_LEN_MAX 1024 
+  //sizeof("/var/log/sfu/bin/current/ms_p_00000000-0000-0000-0000-000000000000_00000000-0000-0000-0000-000000000000_1652210519459.123abc.bin") * 2
   char tmp[FILENAME_LEN_MAX];
   std::memset(tmp, '\0', FILENAME_LEN_MAX);
   switch(type)
   {
     case 'c':
-      sprintf(tmp, "/var/log/sfu/bin/current/ms_c_%s_%%llu.%s.bin", id1.c_str(), version);
+      sprintf(tmp,
+        "%s/bin/current/ms_c_%s_%%llu.%s.bin", 
+        Settings::configuration.logBinStatsPath.c_str(), id1.c_str(), version);
       this->bin_log_name_template.assign(tmp);
       MS_DEBUG_TAG(rtp, "consumers binlog %s [transportId: %s]", this->bin_log_name_template.c_str(), id2.c_str());
       break;
     case 'p':
-      sprintf(tmp, "/var/log/sfu/bin/current/ms_p_%s_%s_%%llu.%s.bin", id1.c_str(), id2.c_str(), version);
+      sprintf(tmp, 
+        "%s/bin/current/ms_p_%s_%s_%%llu.%s.bin", 
+        Settings::configuration.logBinStatsPath.c_str(), id1.c_str(), id2.c_str(), version);
       this->bin_log_name_template.assign(tmp);
       MS_DEBUG_TAG(rtp, "producer binlog %s", this->bin_log_name_template.c_str());
       break;
@@ -448,8 +457,13 @@ void StatsBinLog::InitLog(char type, std::string id1, std::string id2)
   this->log_start_ts = now;
   UpdateLogName();
 
-   MS_ASSERT(CreateBinlogDirsIfMissing(), "Cannot create binlog directories!");
-  
+  //MS_ASSERT(CreateBinlogDirsIfMissing(), "Cannot create binlog directories!");
+  if (!CreateBinlogDirsIfMissing())
+  {
+    MS_WARN_TAG(rtp, "Cannot create binlog directories under %s, disabling stats collection", Settings::configuration.logBinStatsPath.c_str());
+    Settings::configuration.logBinStatsDisabled = true;
+  }
+
   this->sampling_interval = CALL_STATS_BIN_LOG_SAMPLING;
   this->initialized = true;
 }

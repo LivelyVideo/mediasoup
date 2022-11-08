@@ -38,7 +38,7 @@ absl::flat_hash_map<LogLevel, std::string> Settings::logLevel2String =
 	{ LogLevel::LOG_NONE,  "none"  }
 };
 std::map<std::string, LogDevLevel> Settings::string2LogDevLevel =
-{
+{                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
 	{ "debug", LogDevLevel::LOG_DEV_DEBUG },
 	{ "warn",  LogDevLevel::LOG_DEV_WARN  },
 	{ "none",  LogDevLevel::LOG_DEV_NONE  }
@@ -68,6 +68,8 @@ void Settings::SetConfiguration(int argc, char* argv[])
 		{ "logTags",             optional_argument, nullptr, 't' },
 		{ "logDevLevel",         optional_argument, nullptr, 'd' },
 		{ "logTraceEnabled",     optional_argument, nullptr, 'T' },
+		{ "binStatsDisabled",    optional_argument, nullptr, 'b' },
+		{ "binStatsPath",        optional_argument, nullptr, 'B' },
 		{ "rtcMinPort",          optional_argument, nullptr, 'm' },
 		{ "rtcMaxPort",          optional_argument, nullptr, 'M' },
 		{ "dtlsCertificateFile", optional_argument, nullptr, 'c' },
@@ -118,10 +120,24 @@ void Settings::SetConfiguration(int argc, char* argv[])
 
 			case 'T':
 			{
-				stringValue = std::string(optarg); // TODO: test, not sure if it is bool or string or number?
+				stringValue = std::string(optarg);
 				SetTrace(stringValue == "true" ? true : false);
 
 				break;                                                                  
+			}
+
+			case 'b':
+			{
+				stringValue = std::string(optarg);
+				SetDisableStats(stringValue == "true" ? true : false);
+				break;
+			}
+
+			case 'B':
+			{
+				stringValue = std::string(optarg);
+				SetStatsPath(stringValue);
+				break;
 			}
 
 			case 'm':
@@ -344,6 +360,20 @@ void Settings::SetTrace(bool trace)
 	MS_TRACE();
 
 	Settings::configuration.logTraceEnabled = trace;
+}
+
+void Settings::SetDisableStats(bool disable)
+{
+	MS_TRACE();
+
+	Settings::configuration.logBinStatsDisabled = disable;
+}
+
+void Settings::SetStatsPath(std::string path)
+{
+	MS_TRACE();
+	// check that path exists? Create it if not?
+	Settings::configuration.logBinStatsPath = path;
 }
 
 void Settings::SetLogDevLevel(std::string& devLevel)

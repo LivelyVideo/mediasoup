@@ -217,7 +217,9 @@ namespace RTC
 
 		// Create the RTCP timer.
 		this->rtcpTimer = new Timer(this);
-		this->binLogTimer = new Timer(this);
+				
+		if (!Settings::configuration.logBinStatsDisabled)
+			this->binLogTimer = new Timer(this);
 	}
 
 

@@ -55,6 +55,17 @@ export type WorkerSettings =
 	logFile: string;
 
 	/**
+	 * Binary stats logs disabled 
+	**/
+	binStatsDisabled?: boolean;
+	
+	/**
+	 * Binary stats logs path, msworker will add /bin subfolder to it
+	**/
+	binStatsPath?: string;
+
+
+	/**
 	 * Minimun RTC port for ICE, DTLS, RTP, etc. Default 10000.
 	 */
 	rtcMinPort?: number;
@@ -276,6 +287,8 @@ export class Worker extends EnhancedEventEmitter<WorkerEvents>
 			logDevLevel,
 			logTraceEnabled,
 			logFile,
+			binStatsDisabled,
+			binStatsPath,
 			rtcMinPort,
 			rtcMaxPort,
 			dtlsCertificateFile,
@@ -314,6 +327,12 @@ export class Worker extends EnhancedEventEmitter<WorkerEvents>
 
 		if (typeof logTraceEnabled === 'boolean' && logTraceEnabled && logTraceEnabled === true)
 			spawnArgs.push(`--logTraceEnabled=true`);
+
+		if (typeof binStatsDisabled === 'boolean' && binStatsDisabled && binStatsDisabled === true)
+			spawnArgs.push(`--binStatsDisabled=true`);
+			
+		if (typeof binStatsPath === 'string' && binStatsPath)
+			spawnArgs.push(`--binStatsPath=${binStatsPath}`);
 
 		if (typeof rtcMinPort === 'number' && !Number.isNaN(rtcMinPort))
 			spawnArgs.push(`--rtcMinPort=${rtcMinPort}`);
