@@ -186,7 +186,7 @@ namespace RTC
 		if (!ctx)
 			return;
 
-		ctx->AddStatsRecord(log, rtpStream);
+		ctx->AddStatsRecord(log, rtpStream, IsActive());
 	}
 
 	void SvcConsumer::HandleRequest(Channel::ChannelRequest* request)
