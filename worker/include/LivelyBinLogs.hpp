@@ -8,15 +8,18 @@
 #define BINLOG_MIN_TIMESPAN   20000
 #define BINLOG_FORMAT_VERSION "c1b126"
 
-// CALL_STATS_BIN_LOG_RECORDS_NUM * sizeof(CallStatsSample) should be
-// dividible by 16 b/c of alignment concerns;
+// CALL_STATS_BIN_LOG_CONS_REC_NUM * sizeof(CallStatsSample)
+// and
+// CALL_STATS_BIN_LOG_PROD_REC_NUM * sizeof(CallStatsSample)
+// should be divisible by 16 b/c of alignment concerns;
 // otherwise, there will be random sized padding added
 // at the end of the array of records to align
 // ConsumerRecord and ProducerRecord structs to 16 bytes.
-// sizeof(CallStatsSample)== 28 bytes, CALL_STATS_BIN_LOG_RECORDS_NUM should be divisible by 4.
+// sizeof(CallStatsSample)== 28 bytes, the number of samples should be divisible by 4.
 // Alternative is to increase it to 32 at a cost of wasting 4 bytes per data record.
 
-#define CALL_STATS_BIN_LOG_RECORDS_NUM 4
+#define CALL_STATS_BIN_LOG_PROD_REC_NUM 4
+#define CALL_STATS_BIN_LOG_CONS_REC_NUM 8
 #define CALL_STATS_BIN_LOG_SAMPLING    2000
 
 #define UINT16_UNSET                   ((uint16_t)-1)
@@ -55,24 +58,24 @@ struct CallStatsSample
 // 8          4     4    16            16           
 struct ConsumerRecord
 {
-  uint64_t        start_tm {UINT64_UNSET};                 // the record start timestamp in milliseconds
-  uint32_t        ssrc {UINT32_UNSET};                     // ssrc as in original RTP stream
-  uint16_t        filled {UINT16_UNSET};                   // number of filled records in the array below
-  uint8_t         payload {0};                             // payload id as in original RTP stream
-  uint8_t         content;                                 // 'a' or 'v'
-  uint8_t         consumer_id [UUID_BYTE_LEN];             // 
-  uint8_t         producer_id [UUID_BYTE_LEN];             //
-  CallStatsSample samples[CALL_STATS_BIN_LOG_RECORDS_NUM]; // collection of data samples
+  uint64_t        start_tm {UINT64_UNSET};                  // the record start timestamp in milliseconds
+  uint32_t        ssrc {UINT32_UNSET};                      // ssrc as in original RTP stream
+  uint16_t        filled {UINT16_UNSET};                    // number of filled records in the array below
+  uint8_t         payload {0};                              // payload id as in original RTP stream
+  uint8_t         content;                                  // 'a' or 'v'
+  uint8_t         consumer_id [UUID_BYTE_LEN];              //
+  uint8_t         producer_id [UUID_BYTE_LEN];              //
+  CallStatsSample samples[CALL_STATS_BIN_LOG_CONS_REC_NUM]; // collection of data samples
 };
 
 struct ProducerRecord
 {
-  uint64_t        start_tm {UINT64_UNSET};                 // the record start timestamp in milliseconds
-  uint32_t        ssrc {UINT32_UNSET};                     // ssrc as in original RTP stream
-  uint16_t        filled {UINT16_UNSET};                   // number of filled records in the array below
-  uint8_t         payload {0};                             // payload id as in original RTP stream
-  uint8_t         content;                                 // 'a' or 'v'
-  CallStatsSample samples[CALL_STATS_BIN_LOG_RECORDS_NUM]; // collection of data samples
+  uint64_t        start_tm {UINT64_UNSET};                  // the record start timestamp in milliseconds
+  uint32_t        ssrc {UINT32_UNSET};                      // ssrc as in original RTP stream
+  uint16_t        filled {UINT16_UNSET};                    // number of filled records in the array below
+  uint8_t         payload {0};                              // payload id as in original RTP stream
+  uint8_t         content;                                  // 'a' or 'v'
+  CallStatsSample samples[CALL_STATS_BIN_LOG_PROD_REC_NUM]; // collection of data samples
 };
 
 class CallStatsRecord
@@ -89,6 +92,12 @@ class CallStatsRecord
     bool fwriteRecord(std::FILE* fd);
     
     uint32_t filled() const {return type ? record.c.filled : record.p.filled;}
+    size_t maxSamples() const {
+    	return type ?
+    			(sizeof(record.c.samples) / sizeof(CallStatsSample)) :
+				(sizeof(record.p.samples) / sizeof(CallStatsSample));
+    }
+
     void set_filled(uint32_t n)
     {
       if (type) 

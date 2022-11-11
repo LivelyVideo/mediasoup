@@ -129,8 +129,9 @@ void CallStatsRecord::resetSamples(uint64_t ts)
 
 bool CallStatsRecord::addSample(StreamStats& last, StreamStats& curr)
 {
-  MS_ASSERT(filled() >= 0 && filled() < CALL_STATS_BIN_LOG_RECORDS_NUM, 
-            "Cannot have %" PRIu32 " samples in record, quitting...", filled());
+  MS_ASSERT(filled() >= 0 && filled() < maxSamples(),
+            "Cannot have %" PRIu32 " >= %" PRIu32 " samples in record, quitting...",
+			filled(), maxSamples());
 
   MS_ASSERT(last.ts != UINT64_UNSET,
             "Timestamp of a previous sample is unset, quitting...");
@@ -161,7 +162,7 @@ bool CallStatsRecord::addSample(StreamStats& last, StreamStats& curr)
 
 bool CallStatsRecord::isPktCountZero() const
 {
-  if (filled() < CALL_STATS_BIN_LOG_RECORDS_NUM)
+  if (filled() < maxSamples())
   { 
     return false; // can be true only for full collection of samples
   }
@@ -184,7 +185,7 @@ bool CallStatsRecord::isPktCountZero() const
 void CallStatsRecordCtx::AddStatsRecord(StatsBinLog* log, RTC::RtpStream* stream, bool isActive)
 {
   // Write data if record is full, then continue collecting samples
-  if (record.filled() == CALL_STATS_BIN_LOG_RECORDS_NUM)
+  if (record.filled() == record.maxSamples())
   {
     if (nullptr != log)
     {
@@ -227,7 +228,7 @@ void CallStatsRecordCtx::AddStatsRecord(StatsBinLog* log, RTC::RtpStream* stream
   }
 
   // Should have a room to add a sample
-  MS_ASSERT(record.filled() >= 0 && record.filled() < CALL_STATS_BIN_LOG_RECORDS_NUM,
+  MS_ASSERT(record.filled() >= 0 && record.filled() < record.maxSamples(),
     "Invalid record.filled=%" PRIu32, record.filled());
 
   curr.ts = nowMs;
