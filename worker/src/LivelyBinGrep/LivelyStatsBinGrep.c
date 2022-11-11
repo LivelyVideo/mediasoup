@@ -644,11 +644,7 @@ format_output(FILE* fd, ms_binlog_config *conf)
   uint8_t                        filled;
   uint64_t                       rec_start_tm;
   stats_sample_t                 *sample;
-<<<<<<< HEAD
   uint8_t                        *samples_pos;
-=======
-  char                           *samples_pos;
->>>>>>> 11c7e2033bc451b11e628000e871751b296f6ff2
   uint32_t                       ssrc;
   uint8_t                        payload;
   uint8_t                        content;
