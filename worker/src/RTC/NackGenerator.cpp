@@ -172,7 +172,12 @@ namespace RTC
 			if (static_cast<uint16_t>(this->nackList.size()) + numNewNacks > MaxNackPackets)
 			{
 				MS_WARN_TAG(
-				  rtx, "NACK list full, clearing it and requesting a key frame [seqEnd:%" PRIu16 "]", seqEnd);
+				  rtx, 
+					"NACK list full: size=%zu incoming=%"PRIu16" limit=%zu - clearing it and requesting a key frame [seqEnd:%" PRIu16 "]",
+					this->nackList.size(), 
+					numNewNacks, 
+					MaxNackPackets, 
+					seqEnd);
 
 				this->nackList.clear();
 				this->listener->OnNackGeneratorKeyFrameRequired();

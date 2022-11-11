@@ -276,6 +276,10 @@ void Settings::PrintConfiguration()
 	  Settings::logDevLevel2String[Settings::configuration.logDevLevel].c_str());
 	MS_DEBUG_TAG_STD(info, "  logTags             : %s", logTagsStream.str().c_str());
 	MS_DEBUG_TAG_STD(info, "  logTraceEnabled     : %s", Settings::configuration.logTraceEnabled ? "true" : "false");
+
+	MS_DEBUG_TAG_STD(info, "  logBinStatsDisabled : %s", Settings::configuration.logBinStatsDisabled ? "true" : "false");
+	MS_DEBUG_TAG_STD(info, "  logBinStatsPath     : %s", Settings::configuration.logBinStatsPath.c_str());
+
 	MS_DEBUG_TAG_STD(info, "  rtcMinPort          : %" PRIu16, Settings::configuration.rtcMinPort);
 	MS_DEBUG_TAG_STD(info, "  rtcMaxPort          : %" PRIu16, Settings::configuration.rtcMaxPort);
 	if (!Settings::configuration.dtlsCertificateFile.empty())
@@ -372,7 +376,7 @@ void Settings::SetDisableStats(bool disable)
 void Settings::SetStatsPath(std::string path)
 {
 	MS_TRACE();
-	// check that path exists? Create it if not?
+	
 	Settings::configuration.logBinStatsPath = path;
 }
 
