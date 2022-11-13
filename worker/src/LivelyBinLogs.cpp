@@ -294,13 +294,13 @@ void StatsBinLog::LogClose()
   }
 
   // Move a closed file into "done" directory
-  std::string bin_log_done_dir = "/var/log/sfu/bin/done/";
+  std::string bin_log_done_dir = Settings::configuration.logBinStatsPath + "/bin/done/";
 
   std::string logname; // get filename only out of full path
   std::size_t found = this->bin_log_file_path.find_last_of("/");
   if (std::string::npos == found)
   {
-    MS_WARN_TAG(rtp, "Failed to extract binlog filename from %s, cannot move it", this->bin_log_file_path.c_str());
+    MS_WARN_TAG(rtp, "Failed to extract binlog filename from %s, won't move it to %s", this->bin_log_file_path.c_str(), bin_log_done_dir.c_str());
   }
   else
   {
