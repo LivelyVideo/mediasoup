@@ -39,11 +39,7 @@ namespace RTC
 
 		/* Methods inherited from PayloadChannel::PayloadChannelSocket::NotificationHandler. */
 	public:
-		void HandleNotification(PayloadChannel::Notification* notification) override;
-
-	private:
-		// Allocated by this.
-		uint8_t* buffer{ nullptr };
+		void HandleNotification(PayloadChannel::PayloadChannelNotification* notification) override;
 	};
 } // namespace RTC
 

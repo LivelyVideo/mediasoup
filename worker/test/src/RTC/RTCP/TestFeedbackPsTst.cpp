@@ -16,8 +16,7 @@ namespace TestFeedbackPsTstn
 		0xfa, 0x17, 0xfa, 0x17, // Sender SSRC: 0xfa17fa17
 		0x00, 0x00, 0x00, 0x00, // Media source SSRC: 0x00000000
 		0x02, 0xd0, 0x37, 0x02, // SSRC: 0x02d03702
-		0x08,                   // Seq: 8
-		      0x00, 0x00, 0x01  // Reserved, Index: 1
+		0x08, 0x00, 0x00, 0x01  // Seq: 8, Reserved, Index: 1
 	};
 	// clang-format on
 
@@ -71,7 +70,7 @@ SCENARIO("RTCP Feedback PS TSTN parsing", "[parser][rtcp][feedback-ps][tstn]")
 	{
 		FeedbackPsTstnPacket packet(senderSsrc, mediaSsrc);
 
-		FeedbackPsTstnItem* item = new FeedbackPsTstnItem(ssrc, seq, TestFeedbackPsTstn::index);
+		auto* item = new FeedbackPsTstnItem(ssrc, seq, TestFeedbackPsTstn::index);
 
 		packet.AddItem(item);
 

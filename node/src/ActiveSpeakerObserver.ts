@@ -1,9 +1,14 @@
 import { Logger } from './Logger';
-import { RtpObserver, RtpObserverEvents, RtpObserverObserverEvents } from './RtpObserver';
-import { Producer } from './Producer';
 import { EnhancedEventEmitter } from './EnhancedEventEmitter';
+import {
+	RtpObserver,
+	RtpObserverEvents,
+	RtpObserverObserverEvents,
+	RtpObserverConstructorOptions
+} from './RtpObserver';
+import { Producer } from './Producer';
 
-export interface ActiveSpeakerObserverOptions 
+export type ActiveSpeakerObserverOptions =
 {
 	interval?: number;
 
@@ -11,25 +16,27 @@ export interface ActiveSpeakerObserverOptions
 	 * Custom application data.
 	 */
 	appData?: Record<string, unknown>;
-}
+};
 
-export interface ActiveSpeakerObserverActivity 
+export type ActiveSpeakerObserverDominantSpeaker =
 {
 	/**
-	 * The producer instance.
+	 * The audio Producer instance.
 	 */
 	producer: Producer;
-}
+};
 
 export type ActiveSpeakerObserverEvents = RtpObserverEvents &
 {
-	dominantspeaker: [{ producer: Producer }];
-}
+	dominantspeaker: [ActiveSpeakerObserverDominantSpeaker];
+};
 
 export type ActiveSpeakerObserverObserverEvents = RtpObserverObserverEvents &
 {
-	dominantspeaker: [{ producer: Producer }];
-}
+	dominantspeaker: [ActiveSpeakerObserverDominantSpeaker];
+};
+
+type RtpObserverObserverConstructorOptions = RtpObserverConstructorOptions;
 
 const logger = new Logger('ActiveSpeakerObserver');
 
@@ -38,9 +45,9 @@ export class ActiveSpeakerObserver extends RtpObserver<ActiveSpeakerObserverEven
 	/**
 	 * @private
 	 */
-	constructor(params: any)
+	constructor(options: RtpObserverObserverConstructorOptions)
 	{
-		super(params);
+		super(options);
 
 		this.handleWorkerNotifications();
 	}
@@ -61,8 +68,14 @@ export class ActiveSpeakerObserver extends RtpObserver<ActiveSpeakerObserverEven
 			{
 				case 'dominantspeaker':
 				{
-					const dominantSpeaker = {
-						producer : this.getProducerById(data.producerId)
+					const producer = this.getProducerById(data.producerId);
+
+					if (!producer)
+						break;
+
+					const dominantSpeaker: ActiveSpeakerObserverDominantSpeaker =
+					{
+						producer
 					};
 
 					this.safeEmit('dominantspeaker', dominantSpeaker);

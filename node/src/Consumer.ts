@@ -2,6 +2,7 @@ import { Logger } from './Logger';
 import { EnhancedEventEmitter } from './EnhancedEventEmitter';
 import { Channel } from './Channel';
 import { PayloadChannel } from './PayloadChannel';
+import { TransportInternal } from './Transport';
 import { ProducerStat } from './Producer';
 import {
 	MediaKind,
@@ -65,7 +66,7 @@ export type ConsumerOptions =
 	 * Custom application data.
 	 */
 	appData?: Record<string, unknown>;
-}
+};
 
 /**
  * Valid types for 'trace' event.
@@ -96,7 +97,7 @@ export type ConsumerTraceEventData =
 	 * Per type information.
 	 */
 	info: any;
-}
+};
 
 export type ConsumerScore =
 {
@@ -115,7 +116,7 @@ export type ConsumerScore =
 	 * useful when the producer uses simulcast).
 	 */
 	producerScores: number[];
-}
+};
 
 export type ConsumerLayers =
 {
@@ -128,7 +129,7 @@ export type ConsumerLayers =
 	 * The temporal layer index (from 0 to N).
 	 */
 	temporalLayer?: number;
-}
+};
 
 export type ConsumerStat =
 {
@@ -153,7 +154,7 @@ export type ConsumerStat =
 	byteCount: number;
 	bitrate: number;
 	roundTripTime?: number;
-}
+};
 
 /**
  * Consumer type.
@@ -175,7 +176,7 @@ export type ConsumerEvents =
 	// Private events.
 	'@close': [];
 	'@producerclose': [];
-}
+};
 
 export type ConsumerObserverEvents =
 {
@@ -187,28 +188,30 @@ export type ConsumerObserverEvents =
 	trace: [ConsumerTraceEventData];
 	idleshmconsumer: [];
 	failedlog: [];
-}
+};
+
+type ConsumerInternal = TransportInternal &
+{
+	consumerId: string;
+};
+
+type ConsumerData =
+{
+	producerId: string;
+	kind: MediaKind;
+	rtpParameters: RtpParameters;
+	type: ConsumerType;
+};
 
 const logger = new Logger('Consumer');
 
 export class Consumer extends EnhancedEventEmitter<ConsumerEvents>
 {
 	// Internal data.
-	readonly #internal:
-	{
-		routerId: string;
-		transportId: string;
-		consumerId: string;
-	};
+	readonly #internal: ConsumerInternal;
 
 	// Consumer data.
-	readonly #data:
-	{
-		producerId: string;
-		kind: MediaKind;
-		rtpParameters: RtpParameters;
-		type: ConsumerType;
-	};
+	readonly #data: ConsumerData;
 
 	// Channel instance.
 	readonly #channel: Channel;
@@ -259,8 +262,8 @@ export class Consumer extends EnhancedEventEmitter<ConsumerEvents>
 			preferredLayers
 		}:
 		{
-			internal: any;
-			data: any;
+			internal: ConsumerInternal;
+			data: ConsumerData;
 			channel: Channel;
 			payloadChannel: PayloadChannel;
 			appData?: Record<string, unknown>;
@@ -432,7 +435,9 @@ export class Consumer extends EnhancedEventEmitter<ConsumerEvents>
 		this.#channel.removeAllListeners(this.#internal.consumerId);
 		this.#payloadChannel.removeAllListeners(this.#internal.consumerId);
 
-		this.#channel.request('consumer.close', this.#internal)
+		const reqData = { consumerId: this.#internal.consumerId };
+
+		this.#channel.request('transport.closeConsumer', this.#internal.transportId, reqData)
 			.catch(() => {});
 
 		this.emit('@close');
@@ -472,7 +477,7 @@ export class Consumer extends EnhancedEventEmitter<ConsumerEvents>
 	{
 		logger.debug('dump()');
 
-		return this.#channel.request('consumer.dump', this.#internal);
+		return this.#channel.request('consumer.dump', this.#internal.consumerId);
 	}
 
 	/**
@@ -482,7 +487,7 @@ export class Consumer extends EnhancedEventEmitter<ConsumerEvents>
 	{
 		logger.debug('getStats()');
 
-		return this.#channel.request('consumer.getStats', this.#internal);
+		return this.#channel.request('consumer.getStats', this.#internal.consumerId);
 	}
 
 	/**
@@ -494,7 +499,7 @@ export class Consumer extends EnhancedEventEmitter<ConsumerEvents>
 
 		const wasPaused = this.#paused || this.#producerPaused;
 
-		await this.#channel.request('consumer.pause', this.#internal);
+		await this.#channel.request('consumer.pause', this.#internal.consumerId);
 
 		this.#paused = true;
 
@@ -512,7 +517,7 @@ export class Consumer extends EnhancedEventEmitter<ConsumerEvents>
 
 		const wasPaused = this.#paused || this.#producerPaused;
 
-		await this.#channel.request('consumer.resume', this.#internal);
+		await this.#channel.request('consumer.resume', this.#internal.consumerId);
 
 		this.#paused = false;
 
@@ -536,7 +541,7 @@ export class Consumer extends EnhancedEventEmitter<ConsumerEvents>
 		const reqData = { spatialLayer, temporalLayer };
 
 		const data = await this.#channel.request(
-			'consumer.setPreferredLayers', this.#internal, reqData);
+			'consumer.setPreferredLayers', this.#internal.consumerId, reqData);
 
 		this.#preferredLayers = data || undefined;
 	}
@@ -551,7 +556,7 @@ export class Consumer extends EnhancedEventEmitter<ConsumerEvents>
 		const reqData = { priority };
 
 		const data = await this.#channel.request(
-			'consumer.setPriority', this.#internal, reqData);
+			'consumer.setPriority', this.#internal.consumerId, reqData);
 
 		this.#priority = data.priority;
 	}
@@ -566,7 +571,7 @@ export class Consumer extends EnhancedEventEmitter<ConsumerEvents>
 		const reqData = { priority: 1 };
 
 		const data = await this.#channel.request(
-			'consumer.setPriority', this.#internal, reqData);
+			'consumer.setPriority', this.#internal.consumerId, reqData);
 
 		this.#priority = data.priority;
 	}
@@ -578,7 +583,7 @@ export class Consumer extends EnhancedEventEmitter<ConsumerEvents>
 	{
 		logger.debug('requestKeyFrame()');
 
-		await this.#channel.request('consumer.requestKeyFrame', this.#internal);
+		await this.#channel.request('consumer.requestKeyFrame', this.#internal.consumerId);
 	}
 
 	/**
@@ -591,7 +596,7 @@ export class Consumer extends EnhancedEventEmitter<ConsumerEvents>
 		const reqData = { types };
 
 		await this.#channel.request(
-			'consumer.enableTraceEvent', this.#internal, reqData);
+			'consumer.enableTraceEvent', this.#internal.consumerId, reqData);
 	}
 
 	private handleWorkerNotifications(): void

@@ -724,7 +724,7 @@ namespace RTC
 				std::string producerId;
 
 				// This may throw.
-				SetNewProducerIdFromInternal(request->internal, producerId);
+				SetNewProducerIdFromData(request->data, producerId);
 
 				// This may throw.
 				auto* producer = new RTC::Producer(producerId, this, request->data, &lively);
@@ -893,7 +893,7 @@ namespace RTC
 				std::string consumerId;
 
 				// This may throw.
-				SetNewConsumerIdFromInternal(request->internal, consumerId);
+				SetNewConsumerIdFromData(request->data, consumerId);
 
 				// Get type.
 				auto jsonTypeIt = request->data.find("type");
@@ -1160,10 +1160,11 @@ namespace RTC
 				std::string dataProducerId;
 
 				// This may throw.
-				SetNewDataProducerIdFromInternal(request->internal, dataProducerId);
+				SetNewDataProducerIdFromData(request->data, dataProducerId);
 
 				// This may throw.
-				auto* dataProducer = new RTC::DataProducer(dataProducerId, this, request->data);
+				auto* dataProducer =
+				  new RTC::DataProducer(dataProducerId, this->maxMessageSize, this, request->data);
 
 				// Verify the type of the DataProducer.
 				switch (dataProducer->GetType())
@@ -1264,11 +1265,11 @@ namespace RTC
 				std::string dataConsumerId;
 
 				// This may throw.
-				SetNewDataConsumerIdFromInternal(request->internal, dataConsumerId);
+				SetNewDataConsumerIdFromData(request->data, dataConsumerId);
 
 				// This may throw.
 				auto* dataConsumer = new RTC::DataConsumer(
-				  dataConsumerId, dataProducerId, this, request->data, this->maxMessageSize);
+				  dataConsumerId, dataProducerId, this->sctpAssociation, this, request->data, this->maxMessageSize);
 
 				// Verify the type of the DataConsumer.
 				switch (dataConsumer->GetType())
@@ -1377,10 +1378,10 @@ namespace RTC
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::PRODUCER_CLOSE:
+			case Channel::ChannelRequest::MethodId::TRANSPORT_CLOSE_PRODUCER:
 			{
 				// This may throw.
-				RTC::Producer* producer = GetProducerFromInternal(request->internal);
+				RTC::Producer* producer = GetProducerFromData(request->data);
 
 				// Remove it from the RtpListener.
 				this->rtpListener.RemoveProducer(producer);
@@ -1412,10 +1413,10 @@ namespace RTC
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::CONSUMER_CLOSE:
+			case Channel::ChannelRequest::MethodId::TRANSPORT_CLOSE_CONSUMER:
 			{
 				// This may throw.
-				RTC::Consumer* consumer = GetConsumerFromInternal(request->internal);
+				RTC::Consumer* consumer = GetConsumerFromData(request->data);
 
 				// Remove it from the maps.
 				this->mapConsumers.erase(consumer->id);
@@ -1453,41 +1454,10 @@ namespace RTC
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::PRODUCER_DUMP:
-			case Channel::ChannelRequest::MethodId::PRODUCER_GET_STATS:
-			case Channel::ChannelRequest::MethodId::PRODUCER_PAUSE:
-			case Channel::ChannelRequest::MethodId::PRODUCER_RESUME:
-			case Channel::ChannelRequest::MethodId::PRODUCER_ENABLE_TRACE_EVENT:
+			case Channel::ChannelRequest::MethodId::TRANSPORT_CLOSE_DATA_PRODUCER:
 			{
 				// This may throw.
-				RTC::Producer* producer = GetProducerFromInternal(request->internal);
-
-				producer->HandleRequest(request);
-
-				break;
-			}
-
-			case Channel::ChannelRequest::MethodId::CONSUMER_DUMP:
-			case Channel::ChannelRequest::MethodId::CONSUMER_GET_STATS:
-			case Channel::ChannelRequest::MethodId::CONSUMER_PAUSE:
-			case Channel::ChannelRequest::MethodId::CONSUMER_RESUME:
-			case Channel::ChannelRequest::MethodId::CONSUMER_SET_PREFERRED_LAYERS:
-			case Channel::ChannelRequest::MethodId::CONSUMER_SET_PRIORITY:
-			case Channel::ChannelRequest::MethodId::CONSUMER_REQUEST_KEY_FRAME:
-			case Channel::ChannelRequest::MethodId::CONSUMER_ENABLE_TRACE_EVENT:
-			{
-				// This may throw.
-				RTC::Consumer* consumer = GetConsumerFromInternal(request->internal);
-
-				consumer->HandleRequest(request);
-
-				break;
-			}
-
-			case Channel::ChannelRequest::MethodId::DATA_PRODUCER_CLOSE:
-			{
-				// This may throw.
-				RTC::DataProducer* dataProducer = GetDataProducerFromInternal(request->internal);
+				RTC::DataProducer* dataProducer = GetDataProducerFromData(request->data);
 
 				if (dataProducer->GetType() == RTC::DataProducer::Type::SCTP)
 				{
@@ -1517,10 +1487,10 @@ namespace RTC
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::DATA_CONSUMER_CLOSE:
+			case Channel::ChannelRequest::MethodId::TRANSPORT_CLOSE_DATA_CONSUMER:
 			{
 				// This may throw.
-				RTC::DataConsumer* dataConsumer = GetDataConsumerFromInternal(request->internal);
+				RTC::DataConsumer* dataConsumer = GetDataConsumerFromData(request->data);
 
 				// Remove it from the maps.
 				this->mapDataConsumers.erase(dataConsumer->id);
@@ -1544,68 +1514,6 @@ namespace RTC
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::DATA_PRODUCER_DUMP:
-			case Channel::ChannelRequest::MethodId::DATA_PRODUCER_GET_STATS:
-			{
-				// This may throw.
-				RTC::DataProducer* dataProducer = GetDataProducerFromInternal(request->internal);
-
-				dataProducer->HandleRequest(request);
-
-				break;
-			}
-
-			case Channel::ChannelRequest::MethodId::DATA_CONSUMER_DUMP:
-			case Channel::ChannelRequest::MethodId::DATA_CONSUMER_GET_STATS:
-			{
-				// This may throw.
-				RTC::DataConsumer* dataConsumer = GetDataConsumerFromInternal(request->internal);
-
-				dataConsumer->HandleRequest(request);
-
-				break;
-			}
-
-			case Channel::ChannelRequest::MethodId::DATA_CONSUMER_GET_BUFFERED_AMOUNT:
-			{
-				// This may throw.
-				RTC::DataConsumer* dataConsumer = GetDataConsumerFromInternal(request->internal);
-
-				if (dataConsumer->GetType() != RTC::DataConsumer::Type::SCTP)
-				{
-					MS_THROW_TYPE_ERROR("invalid DataConsumer type");
-				}
-
-				if (!this->sctpAssociation)
-				{
-					MS_THROW_ERROR("no SCTP association present");
-				}
-
-				// Create status response.
-				json data = json::object();
-
-				data["bufferedAmount"] = this->sctpAssociation->GetSctpBufferedAmount();
-
-				request->Accept(data);
-
-				break;
-			}
-
-			case Channel::ChannelRequest::MethodId::DATA_CONSUMER_SET_BUFFERED_AMOUNT_LOW_THRESHOLD:
-			{
-				// This may throw.
-				RTC::DataConsumer* dataConsumer = GetDataConsumerFromInternal(request->internal);
-
-				if (dataConsumer->GetType() != RTC::DataConsumer::Type::SCTP)
-				{
-					MS_THROW_TYPE_ERROR("invalid DataConsumer type");
-				}
-
-				dataConsumer->HandleRequest(request);
-
-				break;
-			}
-
 			default:
 			{
 				MS_THROW_ERROR("unknown method '%s'", request->method.c_str());
@@ -1619,26 +1527,6 @@ namespace RTC
 
 		switch (request->methodId)
 		{
-			case PayloadChannel::PayloadChannelRequest::MethodId::DATA_CONSUMER_SEND:
-			{
-				// This may throw.
-				RTC::DataConsumer* dataConsumer = GetDataConsumerFromInternal(request->internal);
-
-				if (dataConsumer->GetType() != RTC::DataConsumer::Type::SCTP)
-				{
-					MS_THROW_TYPE_ERROR("invalid DataConsumer type");
-				}
-
-				if (!this->sctpAssociation)
-				{
-					MS_THROW_ERROR("no SCTP association present");
-				}
-
-				dataConsumer->HandleRequest(request);
-
-				break;
-			}
-
 			default:
 			{
 				MS_THROW_ERROR("unknown method '%s'", request->method.c_str());
@@ -1646,7 +1534,7 @@ namespace RTC
 		}
 	}
 
-	void Transport::HandleNotification(PayloadChannel::Notification* notification)
+	void Transport::HandleNotification(PayloadChannel::PayloadChannelNotification* notification)
 	{
 		MS_TRACE();
 
@@ -1840,13 +1728,13 @@ namespace RTC
 		this->sctpAssociation->ProcessSctpData(data, len);
 	}
 
-	void Transport::SetNewProducerIdFromInternal(json& internal, std::string& producerId) const
+	void Transport::SetNewProducerIdFromData(json& data, std::string& producerId) const
 	{
 		MS_TRACE();
 
-		auto jsonProducerIdIt = internal.find("producerId");
+		auto jsonProducerIdIt = data.find("producerId");
 
-		if (jsonProducerIdIt == internal.end() || !jsonProducerIdIt->is_string())
+		if (jsonProducerIdIt == data.end() || !jsonProducerIdIt->is_string())
 		{
 			MS_THROW_TYPE_ERROR("missing producerId");
 		}
@@ -1859,13 +1747,13 @@ namespace RTC
 		}
 	}
 
-	RTC::Producer* Transport::GetProducerFromInternal(json& internal) const
+	RTC::Producer* Transport::GetProducerFromData(json& data) const
 	{
 		MS_TRACE();
 
-		auto jsonProducerIdIt = internal.find("producerId");
+		auto jsonProducerIdIt = data.find("producerId");
 
-		if (jsonProducerIdIt == internal.end() || !jsonProducerIdIt->is_string())
+		if (jsonProducerIdIt == data.end() || !jsonProducerIdIt->is_string())
 		{
 			MS_THROW_TYPE_ERROR("missing producerId");
 		}
@@ -1880,13 +1768,13 @@ namespace RTC
 		return producer;
 	}
 
-	void Transport::SetNewConsumerIdFromInternal(json& internal, std::string& consumerId) const
+	void Transport::SetNewConsumerIdFromData(json& data, std::string& consumerId) const
 	{
 		MS_TRACE();
 
-		auto jsonConsumerIdIt = internal.find("consumerId");
+		auto jsonConsumerIdIt = data.find("consumerId");
 
-		if (jsonConsumerIdIt == internal.end() || !jsonConsumerIdIt->is_string())
+		if (jsonConsumerIdIt == data.end() || !jsonConsumerIdIt->is_string())
 		{
 			MS_THROW_TYPE_ERROR("missing consumerId");
 		}
@@ -1899,13 +1787,13 @@ namespace RTC
 		}
 	}
 
-	RTC::Consumer* Transport::GetConsumerFromInternal(json& internal) const
+	RTC::Consumer* Transport::GetConsumerFromData(json& data) const
 	{
 		MS_TRACE();
 
-		auto jsonConsumerIdIt = internal.find("consumerId");
+		auto jsonConsumerIdIt = data.find("consumerId");
 
-		if (jsonConsumerIdIt == internal.end() || !jsonConsumerIdIt->is_string())
+		if (jsonConsumerIdIt == data.end() || !jsonConsumerIdIt->is_string())
 		{
 			MS_THROW_TYPE_ERROR("missing consumerId");
 		}
@@ -1948,13 +1836,13 @@ namespace RTC
 		return consumer;
 	}
 
-	void Transport::SetNewDataProducerIdFromInternal(json& internal, std::string& dataProducerId) const
+	void Transport::SetNewDataProducerIdFromData(json& data, std::string& dataProducerId) const
 	{
 		MS_TRACE();
 
-		auto jsonDataProducerIdIt = internal.find("dataProducerId");
+		auto jsonDataProducerIdIt = data.find("dataProducerId");
 
-		if (jsonDataProducerIdIt == internal.end() || !jsonDataProducerIdIt->is_string())
+		if (jsonDataProducerIdIt == data.end() || !jsonDataProducerIdIt->is_string())
 		{
 			MS_THROW_TYPE_ERROR("missing dataProducerId");
 		}
@@ -1967,13 +1855,13 @@ namespace RTC
 		}
 	}
 
-	RTC::DataProducer* Transport::GetDataProducerFromInternal(json& internal) const
+	RTC::DataProducer* Transport::GetDataProducerFromData(json& data) const
 	{
 		MS_TRACE();
 
-		auto jsonDataProducerIdIt = internal.find("dataProducerId");
+		auto jsonDataProducerIdIt = data.find("dataProducerId");
 
-		if (jsonDataProducerIdIt == internal.end() || !jsonDataProducerIdIt->is_string())
+		if (jsonDataProducerIdIt == data.end() || !jsonDataProducerIdIt->is_string())
 		{
 			MS_THROW_TYPE_ERROR("missing dataProducerId");
 		}
@@ -1988,13 +1876,13 @@ namespace RTC
 		return dataProducer;
 	}
 
-	void Transport::SetNewDataConsumerIdFromInternal(json& internal, std::string& dataConsumerId) const
+	void Transport::SetNewDataConsumerIdFromData(json& data, std::string& dataConsumerId) const
 	{
 		MS_TRACE();
 
-		auto jsonDataConsumerIdIt = internal.find("dataConsumerId");
+		auto jsonDataConsumerIdIt = data.find("dataConsumerId");
 
-		if (jsonDataConsumerIdIt == internal.end() || !jsonDataConsumerIdIt->is_string())
+		if (jsonDataConsumerIdIt == data.end() || !jsonDataConsumerIdIt->is_string())
 		{
 			MS_THROW_TYPE_ERROR("missing dataConsumerId");
 		}
@@ -2007,13 +1895,13 @@ namespace RTC
 		}
 	}
 
-	RTC::DataConsumer* Transport::GetDataConsumerFromInternal(json& internal) const
+	RTC::DataConsumer* Transport::GetDataConsumerFromData(json& data) const
 	{
 		MS_TRACE();
 
-		auto jsonDataConsumerIdIt = internal.find("dataConsumerId");
+		auto jsonDataConsumerIdIt = data.find("dataConsumerId");
 
-		if (jsonDataConsumerIdIt == internal.end() || !jsonDataConsumerIdIt->is_string())
+		if (jsonDataConsumerIdIt == data.end() || !jsonDataConsumerIdIt->is_string())
 		{
 			MS_THROW_TYPE_ERROR("missing dataConsumerId");
 		}
@@ -2335,7 +2223,7 @@ namespace RTC
 			case RTC::RTCP::Type::SDES:
 			{
 				// According to RFC 3550 section 6.1 "a CNAME item MUST be included in
-				// in each compound RTCP packet". So this is true even for compound
+				// each compound RTCP packet". So this is true even for compound
 				// packets sent by endpoints that are not sending any RTP stream to us
 				// (thus chunks in such a SDES will have an SSCR does not match with
 				// any Producer created in this Transport).
@@ -2426,51 +2314,49 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		std::unique_ptr<RTC::RTCP::CompoundPacket> packet{ nullptr };
+		std::unique_ptr<RTC::RTCP::CompoundPacket> packet{ new RTC::RTCP::CompoundPacket() };
 
 		for (auto& kv : this->mapConsumers)
 		{
 			auto* consumer = kv.second;
+			auto rtcpAdded = consumer->GetRtcp(packet.get(), nowMs);
 
-			for (auto* rtpStream : consumer->GetRtpStreams())
+			// RTCP data couldn't be added because the Compound packet is full.
+			// Send the RTCP compound packet and request for RTCP again.
+			if (!rtcpAdded)
 			{
-				// Reset the Compound packet.
+				SendRtcpCompoundPacket(packet.get());
+
+				// Create a new compount packet.
 				packet.reset(new RTC::RTCP::CompoundPacket());
 
-				consumer->GetRtcp(packet.get(), rtpStream, nowMs);
-
-				// Send the RTCP compound packet if there is a sender report.
-				if (packet->HasSenderReport())
-				{
-					packet->Serialize(RTC::RTCP::Buffer);
-					SendRtcpCompoundPacket(packet.get());
-				}
+				// Retrieve the RTCP again.
+				consumer->GetRtcp(packet.get(), nowMs);
 			}
 		}
-
-		// Reset the Compound packet.
-		packet.reset(new RTC::RTCP::CompoundPacket());
 
 		for (auto& kv : this->mapProducers)
 		{
 			auto* producer = kv.second;
+			auto rtcpAdded = producer->GetRtcp(packet.get(), nowMs);
 
-			producer->GetRtcp(packet.get(), nowMs);
-
-			// One more RR would exceed the MTU, send the compound packet now.
-			if (packet->GetSize() + sizeof(RTCP::ReceiverReport::Header) > RTC::MtuSize)
+			// RTCP data couldn't be added because the Compound packet is full.
+			// Send the RTCP compound packet and request for RTCP again.
+			if (!rtcpAdded)
 			{
-				packet->Serialize(RTC::RTCP::Buffer);
 				SendRtcpCompoundPacket(packet.get());
 
-				// Reset the Compound packet.
+				// Create a new compount packet.
 				packet.reset(new RTC::RTCP::CompoundPacket());
+
+				// Retrieve the RTCP again.
+				producer->GetRtcp(packet.get(), nowMs);
 			}
 		}
 
-		if (packet->GetReceiverReportCount() != 0u)
+		// Send the RTCP compound packet if there is any sender or receiver report.
+		if (packet->GetReceiverReportCount() > 0u || packet->GetSenderReportCount() > 0u)
 		{
-			packet->Serialize(RTC::RTCP::Buffer);
 			SendRtcpCompoundPacket(packet.get());
 		}
 	}
@@ -3238,34 +3124,12 @@ namespace RTC
 
 			SendRtcp(nowMs);
 
-			// Recalculate next RTCP interval.
-			if (!this->mapConsumers.empty())
-			{
-				// Transmission rate in kbps.
-				uint32_t rate{ 0 };
-
-				// Get the RTP sending rate.
-				for (auto& kv : this->mapConsumers)
-				{
-					auto* consumer = kv.second;
-
-					rate += consumer->GetTransmissionRate(nowMs) / 1000;
-				}
-
-				// Calculate bandwidth: 360 / transmission bandwidth in kbit/s.
-				if (rate != 0u)
-					interval = 360000 / rate;
-
-				if (interval > RTC::RTCP::MaxVideoIntervalMs)
-					interval = RTC::RTCP::MaxVideoIntervalMs;
-			}
-
 			/*
 			 * The interval between RTCP packets is varied randomly over the range
-			 * [0.5,1.5] times the calculated interval to avoid unintended synchronization
+			 * [1.0,1.5] times the calculated interval to avoid unintended synchronization
 			 * of all participants.
 			 */
-			interval *= static_cast<float>(Utils::Crypto::GetRandomUInt(5, 15)) / 10;
+			interval *= static_cast<float>(Utils::Crypto::GetRandomUInt(10, 15)) / 10;
 
 			this->rtcpTimer->Start(interval);
 		}

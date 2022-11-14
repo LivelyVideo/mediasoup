@@ -2,6 +2,7 @@
 // #define MS_LOG_DEV_LEVEL 3
 
 #include "RTC/PlainTransport.hpp"
+#include "ChannelMessageHandlers.hpp"
 #include "Logger.hpp"
 #include "MediaSoupErrors.hpp"
 #include "Utils.hpp"
@@ -183,7 +184,6 @@ namespace RTC
 		try
 		{
 			// This may throw.
-			// This may throw.
 			if (port != 0)
 				this->udpSocket = new RTC::UdpSocket(this, this->listenIp.ip, port);
 			else
@@ -194,6 +194,13 @@ namespace RTC
 				// This may throw.
 				this->rtcpUdpSocket = new RTC::UdpSocket(this, this->listenIp.ip);
 			}
+
+			// NOTE: This may throw.
+			ChannelMessageHandlers::RegisterHandler(
+			  this->id,
+			  /*channelRequestHandler*/ this,
+			  /*payloadChannelRequestHandler*/ this,
+			  /*payloadChannelNotificationHandler*/ this);
 		}
 		catch (const MediaSoupError& error)
 		{
@@ -210,6 +217,8 @@ namespace RTC
 	PlainTransport::~PlainTransport()
 	{
 		MS_TRACE();
+
+		ChannelMessageHandlers::UnregisterHandler(this->id);
 
 		delete this->udpSocket;
 		this->udpSocket = nullptr;
@@ -689,7 +698,7 @@ namespace RTC
 		}
 	}
 
-	void PlainTransport::HandleNotification(PayloadChannel::Notification* notification)
+	void PlainTransport::HandleNotification(PayloadChannel::PayloadChannelNotification* notification)
 	{
 		MS_TRACE();
 
@@ -780,6 +789,8 @@ namespace RTC
 
 		if (!IsConnected())
 			return;
+
+		packet->Serialize(RTC::RTCP::Buffer);
 
 		const uint8_t* data = packet->GetData();
 		auto intLen         = static_cast<int>(packet->GetSize());

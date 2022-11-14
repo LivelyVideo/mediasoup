@@ -86,7 +86,7 @@ class Worker extends EnhancedEventEmitter_1.EnhancedEventEmitter {
         // options
         {
             env: {
-                MEDIASOUP_VERSION: '3.9.10-lv17-notranscode',
+                MEDIASOUP_VERSION: '3.11.3-lv1-notranscode-mariat1',
                 // Let the worker process inherit all environment variables, useful
                 // if a custom and not in the path GCC is used so the user can set
                 // LD_LIBRARY_PATH environment variable for runtime.
@@ -321,11 +321,13 @@ class Worker extends EnhancedEventEmitter_1.EnhancedEventEmitter {
         logger.debug('createWebRtcServer()');
         if (appData && typeof appData !== 'object')
             throw new TypeError('if given, appData must be an object');
-        const internal = { webRtcServerId: (0, uuid_1.v4)() };
-        const reqData = { listenInfos };
-        await this.#channel.request('worker.createWebRtcServer', internal, reqData);
+        const reqData = {
+            webRtcServerId: (0, uuid_1.v4)(),
+            listenInfos
+        };
+        await this.#channel.request('worker.createWebRtcServer', undefined, reqData);
         const webRtcServer = new WebRtcServer_1.WebRtcServer({
-            internal,
+            internal: { webRtcServerId: reqData.webRtcServerId },
             channel: this.#channel,
             appData
         });
@@ -344,11 +346,13 @@ class Worker extends EnhancedEventEmitter_1.EnhancedEventEmitter {
             throw new TypeError('if given, appData must be an object');
         // This may throw.
         const rtpCapabilities = ortc.generateRouterRtpCapabilities(mediaCodecs);
-        const internal = { routerId: (0, uuid_1.v4)() };
-        await this.#channel.request('worker.createRouter', internal);
+        const reqData = { routerId: (0, uuid_1.v4)() };
+        await this.#channel.request('worker.createRouter', undefined, reqData);
         const data = { rtpCapabilities };
         const router = new Router_1.Router({
-            internal,
+            internal: {
+                routerId: reqData.routerId
+            },
             data,
             channel: this.#channel,
             payloadChannel: this.#payloadChannel,

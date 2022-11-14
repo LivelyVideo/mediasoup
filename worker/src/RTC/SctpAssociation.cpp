@@ -392,7 +392,7 @@ namespace RTC
 
 		const auto& parameters = dataConsumer->GetSctpStreamParameters();
 
-		// Fill stcp_sendv_spa.
+		// Fill sctp_sendv_spa.
 		struct sctp_sendv_spa spa; // NOLINT(cppcoreguidelines-pro-type-member-init)
 
 		std::memset(&spa, 0, sizeof(spa));
@@ -772,7 +772,8 @@ namespace RTC
 							static const size_t BufferSize{ 1024 };
 							thread_local static char buffer[BufferSize];
 
-							uint32_t len = notification->sn_header.sn_length;
+							uint32_t len =
+							  notification->sn_assoc_change.sac_length - sizeof(struct sctp_assoc_change);
 
 							for (uint32_t i{ 0 }; i < len; ++i)
 							{
@@ -840,7 +841,8 @@ namespace RTC
 							static const size_t BufferSize{ 1024 };
 							thread_local static char buffer[BufferSize];
 
-							uint32_t len = notification->sn_header.sn_length;
+							uint32_t len =
+							  notification->sn_assoc_change.sac_length - sizeof(struct sctp_assoc_change);
 
 							for (uint32_t i{ 0 }; i < len; ++i)
 							{

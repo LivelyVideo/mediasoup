@@ -11,7 +11,7 @@
 mod tests;
 
 use crate::data_structures::{AppData, ListenIp, Protocol};
-use crate::messages::{WebRtcServerCloseRequest, WebRtcServerDumpRequest, WebRtcServerInternal};
+use crate::messages::{WebRtcServerCloseRequest, WebRtcServerDumpRequest};
 use crate::transport::TransportId;
 use crate::uuid_based_wrapper_type;
 use crate::webrtc_transport::WebRtcTransport;
@@ -59,7 +59,7 @@ pub struct WebRtcServerTupleHash {
     pub webrtc_transport_id: TransportId,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[doc(hidden)]
 #[non_exhaustive]
@@ -83,7 +83,8 @@ pub struct WebRtcServerListenInfo {
     #[serde(flatten)]
     pub listen_ip: ListenIp,
     /// Listening port.
-    pub port: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
 }
 
 /// Struct that protects an invariant of having non-empty list of listen infos.
@@ -151,6 +152,7 @@ impl WebRtcServerOptions {
 }
 
 #[derive(Default)]
+#[allow(clippy::type_complexity)]
 struct Handlers {
     new_webrtc_transport: BagOnce<Box<dyn Fn(&WebRtcTransport) + Send>>,
     worker_close: BagOnce<Box<dyn FnOnce() + Send>>,
@@ -184,13 +186,11 @@ impl Inner {
             {
                 let channel = self.channel.clone();
                 let request = WebRtcServerCloseRequest {
-                    internal: WebRtcServerInternal {
-                        webrtc_server_id: self.id,
-                    },
+                    webrtc_server_id: self.id,
                 };
                 self.executor
                     .spawn(async move {
-                        if let Err(error) = channel.request(request).await {
+                        if let Err(error) = channel.request("", request).await {
                             error!("WebRTC server closing failed on drop: {}", error);
                         }
                     })
@@ -292,11 +292,7 @@ impl WebRtcServer {
 
         self.inner
             .channel
-            .request(WebRtcServerDumpRequest {
-                internal: WebRtcServerInternal {
-                    webrtc_server_id: self.inner.id,
-                },
-            })
+            .request(self.id(), WebRtcServerDumpRequest {})
             .await
     }
 

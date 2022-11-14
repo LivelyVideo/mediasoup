@@ -28,7 +28,7 @@ export type WorkerLogTag =
   | 'svc'
   | 'sctp'
   | 'xcode'
-  | 'message'
+  | 'message';
 
 export type WorkerSettings =
 {
@@ -80,7 +80,7 @@ export type WorkerSettings =
 	 * Custom application data.
 	 */
 	appData?: Record<string, unknown>;
-}
+};
 
 export type WorkerUpdateableSettings = Pick<WorkerSettings, 'logLevel' | 'logTags' | 'logDevLevel' | 'logTraceEnabled'>;
 
@@ -175,7 +175,7 @@ export type WorkerResourceUsage =
 	ru_nivcsw: number;
 
 	/* eslint-enable camelcase */
-}
+};
 
 export type WorkerLoggerErrorType = 'open' | 'rotate' | 'write';
 
@@ -209,7 +209,7 @@ export type WorkerEvents =
 	// Private events.
 	'@success': [];
 	'@failure': [Error];
-}
+};
 
 export type WorkerObserverEvents = 
 {
@@ -217,7 +217,7 @@ export type WorkerObserverEvents =
 	newwebrtcserver: [WebRtcServer];
 	newrouter: [Router];
 	failedlog: [WorkerLoggerError];
-}
+};
 
 // If env MEDIASOUP_WORKER_BIN is given, use it as worker binary.
 // Otherwise if env MEDIASOUP_BUILDTYPE is 'Debug' use the Debug binary.
@@ -691,15 +691,18 @@ export class Worker extends EnhancedEventEmitter<WorkerEvents>
 		if (appData && typeof appData !== 'object')
 			throw new TypeError('if given, appData must be an object');
 
-		const internal = { webRtcServerId: uuidv4() };
-		const reqData = { listenInfos };
+		const reqData =
+		{
+			webRtcServerId : uuidv4(),
+			listenInfos
+		};
 
-		await this.#channel.request('worker.createWebRtcServer', internal, reqData);
+		await this.#channel.request('worker.createWebRtcServer', undefined, reqData);
 
 		const webRtcServer = new WebRtcServer(
 			{
-				internal,
-				channel : this.#channel,
+				internal : { webRtcServerId: reqData.webRtcServerId },
+				channel  : this.#channel,
 				appData
 			});
 
@@ -729,14 +732,17 @@ export class Worker extends EnhancedEventEmitter<WorkerEvents>
 		// This may throw.
 		const rtpCapabilities = ortc.generateRouterRtpCapabilities(mediaCodecs);
 
-		const internal = { routerId: uuidv4() };
+		const reqData = { routerId: uuidv4() };
 
-		await this.#channel.request('worker.createRouter', internal);
+		await this.#channel.request('worker.createRouter', undefined, reqData);
 
 		const data = { rtpCapabilities };
 		const router = new Router(
 			{
-				internal,
+				internal : 
+				{
+					routerId : reqData.routerId
+				},
 				data,
 				channel        : this.#channel,
 				payloadChannel : this.#payloadChannel,

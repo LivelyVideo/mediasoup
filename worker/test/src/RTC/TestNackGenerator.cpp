@@ -37,28 +37,28 @@ class TestPayloadDescriptorHandler : public Codecs::PayloadDescriptorHandler
 {
 public:
 	explicit TestPayloadDescriptorHandler(bool isKeyFrame) : isKeyFrame(isKeyFrame){};
-	~TestPayloadDescriptorHandler() = default;
-	void Dump() const
+	~TestPayloadDescriptorHandler() override = default;
+	void Dump() const override
 	{
 		return;
 	};
-	bool Process(Codecs::EncodingContext* /*context*/, uint8_t* /*data*/, bool& /*marker*/)
+	bool Process(Codecs::EncodingContext* /*context*/, uint8_t* /*data*/, bool& /*marker*/) override
 	{
 		return true;
 	};
-	void Restore(uint8_t* /*data*/)
+	void Restore(uint8_t* /*data*/) override
 	{
 		return;
 	};
-	uint8_t GetSpatialLayer() const
+	uint8_t GetSpatialLayer() const override
 	{
 		return 0;
 	};
-	uint8_t GetTemporalLayer() const
+	uint8_t GetTemporalLayer() const override
 	{
 		return 0;
 	};
-	bool IsKeyFrame() const
+	bool IsKeyFrame() const override
 	{
 		return this->isKeyFrame;
 	};
@@ -111,9 +111,9 @@ private:
 // clang-format off
 uint8_t rtpBuffer[] =
 {
-	0b10000000, 0b01111011, 0b01010010, 0b00001110,
-	0b01011011, 0b01101011, 0b11001010, 0b10110101,
-	0, 0, 0, 2
+	0x80, 0x7b, 0x52, 0x0e,
+	0x5b, 0x6b, 0xca, 0xb5,
+	0x00, 0x00, 0x00, 0x02
 };
 // clang-format on
 
@@ -129,7 +129,7 @@ void validate(std::vector<TestNackGeneratorInput>& inputs)
 	{
 		listener.Reset(input);
 
-		TestPayloadDescriptorHandler* tpdh = new TestPayloadDescriptorHandler(input.isKeyFrame);
+		auto* tpdh = new TestPayloadDescriptorHandler(input.isKeyFrame);
 
 		packet->SetPayloadDescriptorHandler(tpdh);
 		packet->SetSequenceNumber(input.seq);

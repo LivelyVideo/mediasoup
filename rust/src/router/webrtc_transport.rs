@@ -9,8 +9,8 @@ use crate::data_structures::{
     SctpState, TransportTuple,
 };
 use crate::messages::{
-    TransportCloseRequest, TransportConnectRequestWebRtcData, TransportConnectWebRtcRequest,
-    TransportInternal, TransportRestartIceRequest, WebRtcTransportData,
+    TransportCloseRequest, TransportConnectWebRtcRequest, TransportRestartIceRequest,
+    WebRtcTransportData,
 };
 use crate::producer::{Producer, ProducerId, ProducerOptions};
 use crate::router::transport::{TransportImpl, TransportType};
@@ -183,7 +183,7 @@ impl WebRtcTransportOptions {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[doc(hidden)]
 #[non_exhaustive]
@@ -258,7 +258,7 @@ pub struct WebRtcTransportStat {
 }
 
 /// Remote parameters for [`WebRtcTransport`].
-#[derive(Debug, Clone, PartialOrd, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialOrd, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WebRtcTransportRemoteParameters {
     /// Remote DTLS parameters.
@@ -266,6 +266,7 @@ pub struct WebRtcTransportRemoteParameters {
 }
 
 #[derive(Default)]
+#[allow(clippy::type_complexity)]
 struct Handlers {
     new_producer: Bag<Arc<dyn Fn(&Producer) + Send + Sync>, Producer>,
     new_consumer: Bag<Arc<dyn Fn(&Consumer) + Send + Sync>, Consumer>,
@@ -343,16 +344,14 @@ impl Inner {
 
             if close_request {
                 let channel = self.channel.clone();
+                let router_id = self.router.id();
                 let request = TransportCloseRequest {
-                    internal: TransportInternal {
-                        router_id: self.router.id(),
-                        transport_id: self.id,
-                    },
+                    transport_id: self.id,
                 };
 
                 self.executor
                     .spawn(async move {
-                        if let Err(error) = channel.request(request).await {
+                        if let Err(error) = channel.request(router_id, request).await {
                             error!("transport closing failed on drop: {}", error);
                         }
                     })
@@ -761,12 +760,12 @@ impl WebRtcTransport {
         let response = self
             .inner
             .channel
-            .request(TransportConnectWebRtcRequest {
-                internal: self.get_internal(),
-                data: TransportConnectRequestWebRtcData {
+            .request(
+                self.id(),
+                TransportConnectWebRtcRequest {
                     dtls_parameters: remote_parameters.dtls_parameters,
                 },
-            })
+            )
             .await?;
 
         self.inner.data.dtls_parameters.lock().role = response.dtls_local_role;
@@ -868,9 +867,7 @@ impl WebRtcTransport {
         let response = self
             .inner
             .channel
-            .request(TransportRestartIceRequest {
-                internal: self.get_internal(),
-            })
+            .request(self.id(), TransportRestartIceRequest {})
             .await?;
 
         Ok(response.ice_parameters)
@@ -934,13 +931,6 @@ impl WebRtcTransport {
     pub fn downgrade(&self) -> WeakWebRtcTransport {
         WeakWebRtcTransport {
             inner: Arc::downgrade(&self.inner),
-        }
-    }
-
-    fn get_internal(&self) -> TransportInternal {
-        TransportInternal {
-            router_id: self.router().id(),
-            transport_id: self.id(),
         }
     }
 }

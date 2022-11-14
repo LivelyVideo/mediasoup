@@ -3,8 +3,7 @@ mod tests;
 
 use crate::data_structures::AppData;
 use crate::messages::{
-    RtpObserverAddProducerRequest, RtpObserverAddRemoveProducerRequestData,
-    RtpObserverCloseRequest, RtpObserverInternal, RtpObserverPauseRequest,
+    RtpObserverAddProducerRequest, RtpObserverCloseRequest, RtpObserverPauseRequest,
     RtpObserverRemoveProducerRequest, RtpObserverResumeRequest,
 };
 use crate::producer::{Producer, ProducerId};
@@ -60,6 +59,7 @@ pub struct AudioLevelObserverVolume {
 }
 
 #[derive(Default)]
+#[allow(clippy::type_complexity)]
 struct Handlers {
     volumes: Bag<Arc<dyn Fn(&[AudioLevelObserverVolume]) + Send + Sync>>,
     silence: Bag<Arc<dyn Fn() + Send + Sync>>,
@@ -118,16 +118,14 @@ impl Inner {
 
             if close_request {
                 let channel = self.channel.clone();
+                let router_id = self.router.id();
                 let request = RtpObserverCloseRequest {
-                    internal: RtpObserverInternal {
-                        router_id: self.router.id(),
-                        rtp_observer_id: self.id,
-                    },
+                    rtp_observer_id: self.id,
                 };
 
                 self.executor
                     .spawn(async move {
-                        if let Err(error) = channel.request(request).await {
+                        if let Err(error) = channel.request(router_id, request).await {
                             error!("audio level observer closing failed on drop: {}", error);
                         }
                     })
@@ -188,9 +186,7 @@ impl RtpObserver for AudioLevelObserver {
 
         self.inner
             .channel
-            .request(RtpObserverPauseRequest {
-                internal: self.get_internal(),
-            })
+            .request(self.id(), RtpObserverPauseRequest {})
             .await?;
 
         let was_paused = self.inner.paused.swap(true, Ordering::SeqCst);
@@ -207,9 +203,7 @@ impl RtpObserver for AudioLevelObserver {
 
         self.inner
             .channel
-            .request(RtpObserverResumeRequest {
-                internal: self.get_internal(),
-            })
+            .request(self.id(), RtpObserverResumeRequest {})
             .await?;
 
         let was_paused = self.inner.paused.swap(false, Ordering::SeqCst);
@@ -233,10 +227,7 @@ impl RtpObserver for AudioLevelObserver {
         };
         self.inner
             .channel
-            .request(RtpObserverAddProducerRequest {
-                internal: self.get_internal(),
-                data: RtpObserverAddRemoveProducerRequestData { producer_id },
-            })
+            .request(self.id(), RtpObserverAddProducerRequest { producer_id })
             .await?;
 
         self.inner.handlers.add_producer.call_simple(&producer);
@@ -253,10 +244,7 @@ impl RtpObserver for AudioLevelObserver {
         };
         self.inner
             .channel
-            .request(RtpObserverRemoveProducerRequest {
-                internal: self.get_internal(),
-                data: RtpObserverAddRemoveProducerRequestData { producer_id },
-            })
+            .request(self.id(), RtpObserverRemoveProducerRequest { producer_id })
             .await?;
 
         self.inner.handlers.remove_producer.call_simple(&producer);
@@ -402,13 +390,6 @@ impl AudioLevelObserver {
     pub fn downgrade(&self) -> WeakAudioLevelObserver {
         WeakAudioLevelObserver {
             inner: Arc::downgrade(&self.inner),
-        }
-    }
-
-    fn get_internal(&self) -> RtpObserverInternal {
-        RtpObserverInternal {
-            router_id: self.inner.router.id(),
-            rtp_observer_id: self.inner.id,
         }
     }
 }

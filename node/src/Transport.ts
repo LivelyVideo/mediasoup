@@ -5,8 +5,13 @@ import * as utils from './utils';
 import * as ortc from './ortc';
 import { Channel } from './Channel';
 import { PayloadChannel } from './PayloadChannel';
+import { RouterInternal } from './Router';
+import { WebRtcTransportData } from './WebRtcTransport';
+import { PlainTransportData } from './PlainTransport';
+import { PipeTransportData } from './PipeTransport';
+import { DirectTransportData } from './DirectTransport';
 import { Producer, ProducerOptions } from './Producer';
-import { Consumer, ConsumerOptions } from './Consumer';
+import { Consumer, ConsumerOptions, ConsumerType } from './Consumer';
 import {
 	DataProducer,
 	DataProducerOptions,
@@ -18,9 +23,9 @@ import {
 	DataConsumerType
 } from './DataConsumer';
 import { RtpCapabilities } from './RtpParameters';
-import { SctpParameters, SctpStreamParameters } from './SctpParameters';
+import { SctpStreamParameters } from './SctpParameters';
 
-export interface TransportListenIp
+export type TransportListenIp =
 {
 	/**
 	 * Listening IPv4 or IPv6.
@@ -32,21 +37,21 @@ export interface TransportListenIp
 	 * private IP).
 	 */
 	announcedIp?: string;
-}
+};
 
 /**
  * Transport protocol.
  */
 export type TransportProtocol = 'udp' | 'tcp';
 
-export interface TransportTuple
+export type TransportTuple =
 {
 	localIp: string;
 	localPort: number;
 	remoteIp?: string;
 	remotePort?: number;
 	protocol: TransportProtocol;
-}
+};
 
 /**
  * Valid types for 'trace' event.
@@ -56,7 +61,7 @@ export type TransportTraceEventType = 'probation' | 'bwe';
 /**
  * 'trace' event data.
  */
-export interface TransportTraceEventData
+export type TransportTraceEventData =
 {
 	/**
 	 * Trace type.
@@ -77,7 +82,7 @@ export interface TransportTraceEventData
 	 * Per type information.
 	 */
 	info: any;
-}
+};
 
 export type SctpState = 'new' | 'connecting' | 'connected' | 'failed' | 'closed';
 
@@ -93,7 +98,7 @@ export type TransportEvents =
 	'@newdataproducer': [DataProducer];
 	'@dataproducerclose': [DataProducer];
 	'@listenserverclose': [];
-}
+};
 
 export type TransportObserverEvents =
 {
@@ -103,7 +108,30 @@ export type TransportObserverEvents =
 	newdataproducer: [DataProducer];
 	newdataconsumer: [DataConsumer];
 	trace: [TransportTraceEventData];
-}
+};
+
+export type TransportConstructorOptions =
+{
+	internal: TransportInternal;
+	data: TransportData;
+	channel: Channel;
+	payloadChannel: PayloadChannel;
+	appData?: Record<string, unknown>;
+	getRouterRtpCapabilities: () => RtpCapabilities;
+	getProducerById: (producerId: string) => Producer | undefined;
+	getDataProducerById: (dataProducerId: string) => DataProducer | undefined;
+};
+
+export type TransportInternal = RouterInternal &
+{
+	transportId: string;
+};
+
+type TransportData =
+  | WebRtcTransportData
+  | PlainTransportData
+  | PipeTransportData
+  | DirectTransportData;
 
 const logger = new Logger('Transport');
 
@@ -112,18 +140,10 @@ export class Transport<Events extends TransportEvents = TransportEvents,
 	extends EnhancedEventEmitter<Events>
 {
 	// Internal data.
-	protected readonly internal:
-	{
-		routerId: string;
-		transportId: string;
-	};
+	protected readonly internal: TransportInternal;
 
 	// Transport data. This is set by the subclass.
-	readonly #data:
-	{
-		sctpParameters?: SctpParameters;
-		sctpState?: SctpState;
-	};
+	readonly #data: TransportData;
 
 	// Channel instance.
 	protected readonly channel: Channel;
@@ -141,10 +161,11 @@ export class Transport<Events extends TransportEvents = TransportEvents,
 	readonly #getRouterRtpCapabilities: () => RtpCapabilities;
 
 	// Method to retrieve a Producer.
-	protected readonly getProducerById: (producerId: string) => Producer;
+	protected readonly getProducerById: (producerId: string) => Producer | undefined;
 
 	// Method to retrieve a DataProducer.
-	protected readonly getDataProducerById: (dataProducerId: string) => DataProducer;
+	protected readonly getDataProducerById:
+		(dataProducerId: string) => DataProducer | undefined;
 
 	// Producers map.
 	readonly #producers: Map<string, Producer> = new Map();
@@ -187,17 +208,7 @@ export class Transport<Events extends TransportEvents = TransportEvents,
 			getRouterRtpCapabilities,
 			getProducerById,
 			getDataProducerById
-		}:
-		{
-			internal: any;
-			data: any;
-			channel: Channel;
-			payloadChannel: PayloadChannel;
-			appData?: Record<string, unknown>;
-			getRouterRtpCapabilities: () => RtpCapabilities;
-			getProducerById: (producerId: string) => Producer;
-			getDataProducerById: (dataProducerId: string) => DataProducer;
-		}
+		}: TransportConstructorOptions
 	)
 	{
 		super();
@@ -279,7 +290,9 @@ export class Transport<Events extends TransportEvents = TransportEvents,
 		this.channel.removeAllListeners(this.internal.transportId);
 		this.payloadChannel.removeAllListeners(this.internal.transportId);
 
-		this.channel.request('transport.close', this.internal)
+		const reqData = { transportId: this.internal.transportId };
+
+		this.channel.request('router.closeTransport', this.internal.routerId, reqData)
 			.catch(() => {});
 
 		// Close every Producer.
@@ -452,7 +465,7 @@ export class Transport<Events extends TransportEvents = TransportEvents,
 	{
 		logger.debug('dump()');
 
-		return this.channel.request('transport.dump', this.internal);
+		return this.channel.request('transport.dump', this.internal.transportId);
 	}
 
 	/**
@@ -488,7 +501,7 @@ export class Transport<Events extends TransportEvents = TransportEvents,
 		const reqData = { bitrate };
 
 		await this.channel.request(
-			'transport.setMaxIncomingBitrate', this.internal, reqData);
+			'transport.setMaxIncomingBitrate', this.internal.transportId, reqData);
 	}
 
 	/**
@@ -501,7 +514,7 @@ export class Transport<Events extends TransportEvents = TransportEvents,
 		const reqData = { bitrate };
 
 		await this.channel.request(
-			'transport.setMaxOutgoingBitrate', this.internal, reqData);
+			'transport.setMaxOutgoingBitrate', this.internal.transportId, reqData);
 	}
 
 	/**
@@ -578,10 +591,19 @@ export class Transport<Events extends TransportEvents = TransportEvents,
 		logger.debug("produce(): consumableRtpParameters=%o", consumableRtpParameters);
 
 		const internal = { ...this.internal, producerId: id || uuidv4() };
-		const reqData = { kind, rtpParameters, rtpMapping, keyFrameRequestDelay, paused, appData };
+		const reqData =
+		{
+			producerId : id || uuidv4(),
+			kind,
+			rtpParameters,
+			rtpMapping,
+			keyFrameRequestDelay,
+			paused,
+			appData,
+		};
 
 		const status =
-			await this.channel.request('transport.produce', internal, reqData);
+			await this.channel.request('transport.produce', this.internal.transportId, reqData);
 
 		const data =
 		{
@@ -593,7 +615,11 @@ export class Transport<Events extends TransportEvents = TransportEvents,
 
 		const producer = new Producer(
 			{
-				internal,
+				internal :
+				{
+					...this.internal,
+					producerId : reqData.producerId
+				},
 				data,
 				channel        : this.channel,
 				payloadChannel : this.payloadChannel,
@@ -677,9 +703,9 @@ export class Transport<Events extends TransportEvents = TransportEvents,
 			}
 		}
 
-		const internal = { ...this.internal, consumerId: uuidv4() };
 		const reqData =
 		{
+			consumerId             : uuidv4(),
 			producerId,
 			kind                   : producer.kind,
 			rtpParameters,
@@ -692,19 +718,23 @@ export class Transport<Events extends TransportEvents = TransportEvents,
 		};
 
 		const status =
-			await this.channel.request('transport.consume', internal, reqData);
+			await this.channel.request('transport.consume', this.internal.transportId, reqData);
 
 		const data =
 		{
 			producerId,
 			kind : producer.kind,
 			rtpParameters,
-			type : pipe ? 'pipe' : producer.type
+			type : pipe ? 'pipe' : producer.type as ConsumerType
 		};
 
 		const consumer = new Consumer(
 			{
-				internal,
+				internal :
+				{
+					...this.internal,
+					consumerId : reqData.consumerId
+				},
 				data,
 				channel         : this.channel,
 				payloadChannel  : this.payloadChannel,
@@ -767,9 +797,9 @@ export class Transport<Events extends TransportEvents = TransportEvents,
 			}
 		}
 
-		const internal = { ...this.internal, dataProducerId: id || uuidv4() };
 		const reqData =
 		{
+			dataProducerId : id || uuidv4(),
 			type,
 			sctpStreamParameters,
 			label,
@@ -777,11 +807,15 @@ export class Transport<Events extends TransportEvents = TransportEvents,
 		};
 
 		const data =
-			await this.channel.request('transport.produceData', internal, reqData);
+			await this.channel.request('transport.produceData', this.internal.transportId, reqData);
 
 		const dataProducer = new DataProducer(
 			{
-				internal,
+				internal :
+				{
+					...this.internal,
+					dataProducerId : reqData.dataProducerId
+				},
 				data,
 				channel        : this.channel,
 				payloadChannel : this.payloadChannel,
@@ -874,9 +908,9 @@ export class Transport<Events extends TransportEvents = TransportEvents,
 
 		const { label, protocol } = dataProducer;
 
-		const internal = { ...this.internal, dataConsumerId: uuidv4() };
 		const reqData =
 		{
+			dataConsumerId : uuidv4(),
 			dataProducerId,
 			type,
 			sctpStreamParameters,
@@ -885,11 +919,15 @@ export class Transport<Events extends TransportEvents = TransportEvents,
 		};
 
 		const data =
-			await this.channel.request('transport.consumeData', internal, reqData);
+			await this.channel.request('transport.consumeData', this.internal.transportId, reqData);
 
 		const dataConsumer = new DataConsumer(
 			{
-				internal,
+				internal :
+				{
+					...this.internal,
+					dataConsumerId : reqData.dataConsumerId
+				},
 				data,
 				channel        : this.channel,
 				payloadChannel : this.payloadChannel,
@@ -928,7 +966,7 @@ export class Transport<Events extends TransportEvents = TransportEvents,
 		const reqData = { types };
 
 		await this.channel.request(
-			'transport.enableTraceEvent', this.internal, reqData);
+			'transport.enableTraceEvent', this.internal.transportId, reqData);
 	}
 
 	private getNextSctpStreamId(): number
@@ -938,7 +976,7 @@ export class Transport<Events extends TransportEvents = TransportEvents,
 			typeof this.#data.sctpParameters.MIS !== 'number'
 		)
 		{
-			throw new TypeError('missing data.sctpParameters.MIS');
+			throw new TypeError('missing sctpParameters.MIS');
 		}
 
 		const numStreams = this.#data.sctpParameters.MIS;

@@ -1,5 +1,17 @@
 # Changelog
 
+# 0.11.2
+
+* Updates from mediasoup TypeScript `3.10.11..=3.11.2`.
+
+# 0.11.1
+
+* Updates from mediasoup TypeScript `3.10.7..=3.10.10`.
+
+# 0.11.0
+
+* Updates from mediasoup TypeScript `3.10.2..=3.10.6`.
+
 # 0.10.0
 
 * Updates from mediasoup TypeScript `3.9.10..=3.10.1`.
@@ -70,7 +82,7 @@
 
 * Add convenience methods for getting information from `TransportTuple` enum, especially local IP/port
 * Add `mid` option in `ConsumerOptions` to provide way to override MID
-* Add convenience method `ConsumerStats::cosumer_stat()`
+* Add convenience method `ConsumerStats::consumer_stat()`
 
 ### 0.8.0
 

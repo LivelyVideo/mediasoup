@@ -2,7 +2,7 @@ import { Logger } from './Logger';
 import { EnhancedEventEmitter } from './EnhancedEventEmitter';
 import { v4 as uuidv4 } from 'uuid';
 import * as ortc from './ortc';
-import { Consumer, ConsumerOptions } from './Consumer';
+import { Consumer, ConsumerOptions, ConsumerType } from './Consumer';
 
 import { Transport,
 	TransportListenIp
@@ -137,7 +137,7 @@ export class ShmTransport extends Transport
 	{
 		logger.debug('ShmTransport.getStats()');
 
-		return this.channel.request('transport.getStats', this.internal);
+		return this.channel.request('transport.getStats', this.internal.transportId);
 	}
 
 	/**
@@ -160,7 +160,7 @@ export class ShmTransport extends Transport
 
 		const reqData = { shm };
 
-		await this.channel.request('transport.connect', this.internal, reqData);
+		await this.channel.request('transport.connect', this.internal.transportId, reqData);
 	}
 
 	/**
@@ -220,9 +220,15 @@ export class ShmTransport extends Transport
 		};
 
 		const status =
-			await this.channel.request('transport.consume', internal, reqData);
+			await this.channel.request('transport.consume', this.internal.transportId, reqData);
 
-		const data = { kind: producer.kind, rtpParameters, type: 'shm' };
+		const data = 
+		{ 
+			producerId,
+			kind : producer.kind,
+			rtpParameters,
+			type : 'shm' as ConsumerType
+		};
 
 		const consumer = new Consumer(
 			{
@@ -271,7 +277,7 @@ export class ShmTransport extends Transport
 			log: this._log
 		};
 
-		await this.channel.request('transport.consumeStreamMeta', this.internal, reqData);
+		await this.channel.request('transport.consumeStreamMeta', this.internal.transportId, reqData);
 	}
 
 	/**

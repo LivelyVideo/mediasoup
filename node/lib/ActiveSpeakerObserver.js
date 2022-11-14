@@ -8,8 +8,8 @@ class ActiveSpeakerObserver extends RtpObserver_1.RtpObserver {
     /**
      * @private
      */
-    constructor(params) {
-        super(params);
+    constructor(options) {
+        super(options);
         this.handleWorkerNotifications();
     }
     /**
@@ -23,8 +23,11 @@ class ActiveSpeakerObserver extends RtpObserver_1.RtpObserver {
             switch (event) {
                 case 'dominantspeaker':
                     {
+                        const producer = this.getProducerById(data.producerId);
+                        if (!producer)
+                            break;
                         const dominantSpeaker = {
-                            producer: this.getProducerById(data.producerId)
+                            producer
                         };
                         this.safeEmit('dominantspeaker', dominantSpeaker);
                         this.observer.safeEmit('dominantspeaker', dominantSpeaker);

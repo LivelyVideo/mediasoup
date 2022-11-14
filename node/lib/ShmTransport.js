@@ -67,7 +67,7 @@ class ShmTransport extends Transport_1.Transport {
      */
     async getStats() {
         logger.debug('ShmTransport.getStats()');
-        return this.channel.request('transport.getStats', this.internal);
+        return this.channel.request('transport.getStats', this.internal.transportId);
     }
     /**
      * Provide the ShmTransport remote parameters.
@@ -80,7 +80,7 @@ class ShmTransport extends Transport_1.Transport {
     async connect({ shm }) {
         logger.debug('ShmTransport.connect()');
         const reqData = { shm };
-        await this.channel.request('transport.connect', this.internal, reqData);
+        await this.channel.request('transport.connect', this.internal.transportId, reqData);
     }
     /**
      * Create a shm Consumer.
@@ -118,8 +118,13 @@ class ShmTransport extends Transport_1.Transport {
             preferredLayers,
             appData,
         };
-        const status = await this.channel.request('transport.consume', internal, reqData);
-        const data = { kind: producer.kind, rtpParameters, type: 'shm' };
+        const status = await this.channel.request('transport.consume', this.internal.transportId, reqData);
+        const data = {
+            producerId,
+            kind: producer.kind,
+            rtpParameters,
+            type: 'shm'
+        };
         const consumer = new Consumer_1.Consumer({
             internal,
             data,
@@ -152,7 +157,7 @@ class ShmTransport extends Transport_1.Transport {
             shm: this._shm,
             log: this._log
         };
-        await this.channel.request('transport.consumeStreamMeta', this.internal, reqData);
+        await this.channel.request('transport.consumeStreamMeta', this.internal.transportId, reqData);
     }
     /**
      * Does nothing, should not be called like this

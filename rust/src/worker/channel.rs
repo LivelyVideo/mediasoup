@@ -9,11 +9,12 @@ use log::{debug, error, trace, warn};
 use lru::LruCache;
 use mediasoup_sys::UvAsyncT;
 use parking_lot::Mutex;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
 use std::any::TypeId;
 use std::collections::VecDeque;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
+use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 
@@ -37,6 +38,7 @@ pub(super) enum InternalMessage {
     Unexpected(Vec<u8>),
 }
 
+#[allow(clippy::type_complexity)]
 pub(crate) struct BufferMessagesGuard {
     target_id: SubscriptionTarget,
     buffered_notifications_for: Arc<Mutex<HashedMap<SubscriptionTarget, Vec<Vec<u8>>>>>,
@@ -105,14 +107,6 @@ fn deserialize_message(bytes: &[u8]) -> ChannelReceiveMessage {
     }
 }
 
-#[derive(Debug, Serialize)]
-struct RequestMessage<'a, R: Serialize> {
-    id: u32,
-    method: &'static str,
-    #[serde(flatten)]
-    request: &'a R,
-}
-
 struct ResponseError {
     reason: String,
 }
@@ -158,6 +152,7 @@ struct OutgoingMessageBuffer {
     messages: VecDeque<Arc<AtomicTake<Vec<u8>>>>,
 }
 
+#[allow(clippy::type_complexity)]
 struct Inner {
     outgoing_message_buffer: Arc<Mutex<OutgoingMessageBuffer>>,
     internal_message_receiver: async_channel::Receiver<InternalMessage>,
@@ -220,7 +215,9 @@ impl Channel {
             let buffered_notifications_for = Arc::clone(&buffered_notifications_for);
             // This this contain cache of targets that are known to not have buffering, so
             // that we can avoid Mutex locking overhead for them
-            let mut non_buffered_notifications = LruCache::<SubscriptionTarget, ()>::new(1000);
+            let mut non_buffered_notifications = LruCache::<SubscriptionTarget, ()>::new(
+                NonZeroUsize::new(1000).expect("Not zero; qed"),
+            );
 
             move |message| {
                 trace!("received raw message: {}", String::from_utf8_lossy(message));
@@ -307,9 +304,14 @@ impl Channel {
         }
     }
 
-    pub(crate) async fn request<R>(&self, request: R) -> Result<R::Response, RequestError>
+    pub(crate) async fn request<R, HandlerId>(
+        &self,
+        handler_id: HandlerId,
+        request: R,
+    ) -> Result<R::Response, RequestError>
     where
-        R: Request + 'static,
+        R: Request<HandlerId = HandlerId> + 'static,
+        HandlerId: Display,
     {
         let method = request.as_method();
 
@@ -337,13 +339,14 @@ impl Channel {
 
         debug!("request() [method:{}, id:{}]: {:?}", method, id, request);
 
+        // TODO: Todo pre-allocate fixed size string sufficient for most cases by default
+        // TODO: Refactor to avoid extra allocation during JSON serialization if possible
         let message = Arc::new(AtomicTake::new(
-            serde_json::to_vec(&RequestMessage {
-                id,
-                method,
-                request: &request,
-            })
-            .unwrap(),
+            format!(
+                "{id}:{method}:{handler_id}:{}",
+                serde_json::to_string(&request).unwrap()
+            )
+            .into_bytes(),
         ));
 
         {
