@@ -93,6 +93,9 @@ namespace RTC
 	void PipeConsumer::FillBinLogStats(Lively::StatsBinLog* log)
 	{
 		MS_TRACE();
+		
+		if (Settings::configuration.logBinStatsDisabled)
+			return;
 
 		if (this->rtpStreams.size() != 1)
 		{

@@ -116,6 +116,9 @@ namespace RTC
 	void SimpleConsumer::FillBinLogStats(Lively::StatsBinLog* log)
 	{
 		MS_TRACE();
+		
+		if (Settings::configuration.logBinStatsDisabled)
+			return;
 
 		Lively::CallStatsRecordCtx* ctx = this->rtpStreamBinLogRecord;
 		if (!ctx)

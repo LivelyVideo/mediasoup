@@ -37,6 +37,8 @@ public:
 		LogDevLevel logDevLevel{LogDevLevel::LOG_DEV_NONE};
 		bool logTraceEnabled{false};
 		struct LogTags logTags;
+		bool logBinStatsDisabled{false};
+		std::string logBinStatsPath;
 		uint16_t rtcMinPort{ 10000u };
 		uint16_t rtcMaxPort{ 59999u };
 		std::string dtlsCertificateFile;
@@ -53,6 +55,8 @@ private:
 	static void SetLogTags(const std::vector<std::string>& tags);
 	static void SetLogDevLevel(std::string& devLevel);
 	static void SetTrace(bool trace);
+	static void SetDisableStats(bool disable);
+	static void SetStatsPath(std::string path);
 	static void SetDtlsCertificateAndPrivateKeyFiles();
 
 public:

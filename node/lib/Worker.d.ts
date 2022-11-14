@@ -23,6 +23,14 @@ export declare type WorkerSettings = {
     **/
     logFile: string;
     /**
+     * Binary stats logs disabled
+    **/
+    binStatsDisabled?: boolean;
+    /**
+     * Binary stats logs path, msworker will add /bin subfolder to it
+    **/
+    binStatsPath?: string;
+    /**
      * Minimun RTC port for ICE, DTLS, RTP, etc. Default 10000.
      */
     rtcMinPort?: number;
@@ -154,7 +162,7 @@ export declare class Worker extends EnhancedEventEmitter<WorkerEvents> {
     /**
      * @private
      */
-    constructor({ logLevel, logTags, logDevLevel, logTraceEnabled, logFile, rtcMinPort, rtcMaxPort, dtlsCertificateFile, dtlsPrivateKeyFile, appData }: WorkerSettings);
+    constructor({ logLevel, logTags, logDevLevel, logTraceEnabled, logFile, binStatsDisabled, binStatsPath, rtcMinPort, rtcMaxPort, dtlsCertificateFile, dtlsPrivateKeyFile, appData }: WorkerSettings);
     /**
      * Worker process identifier (PID).
      */

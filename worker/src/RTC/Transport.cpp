@@ -217,7 +217,9 @@ namespace RTC
 
 		// Create the RTCP timer.
 		this->rtcpTimer = new Timer(this);
-		this->binLogTimer = new Timer(this);
+				
+		if (!Settings::configuration.logBinStatsDisabled)
+			this->binLogTimer = new Timer(this);
 	}
 
 
@@ -276,8 +278,11 @@ namespace RTC
 		delete this->rtcpTimer;
 		this->rtcpTimer = nullptr;
 
-		delete this->binLogTimer;
-		this->binLogTimer = nullptr;
+		if (!Settings::configuration.logBinStatsDisabled)
+		{
+			delete this->binLogTimer;
+			this->binLogTimer = nullptr;
+		}
 
 		consumersBinLog.DeinitLog();
 
@@ -1575,7 +1580,8 @@ namespace RTC
 		this->rtcpTimer->Start(static_cast<uint64_t>(RTC::RTCP::MaxVideoIntervalMs / 2));
 
 		// Bin log timer
-		this->binLogTimer->Start(CALL_STATS_BIN_LOG_SAMPLING);
+		if (!Settings::configuration.logBinStatsDisabled)
+			this->binLogTimer->Start(CALL_STATS_BIN_LOG_SAMPLING);
 
 		// Tell the TransportCongestionControlClient.
 		if (this->tccClient)
@@ -1614,8 +1620,9 @@ namespace RTC
 
 		// Stop the RTCP timer.
 		this->rtcpTimer->Stop();
-
-		this->binLogTimer->Stop();
+		
+		if (!Settings::configuration.logBinStatsDisabled)
+			this->binLogTimer->Stop();
 
 		// Tell the TransportCongestionControlClient.
 		if (this->tccClient)
@@ -3135,7 +3142,7 @@ namespace RTC
 		}
 
 		//Binary log timer
-		else if (timer == this->binLogTimer)
+		else if (!Settings::configuration.logBinStatsDisabled && timer == this->binLogTimer)
 		{
 			for (auto& kv : this->mapProducers)
 			{

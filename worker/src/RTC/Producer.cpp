@@ -502,6 +502,9 @@ namespace RTC
 	{
 		MS_TRACE();
 
+		if (Settings::configuration.logBinStatsDisabled)
+			return;
+
 		if (this->rtpStreamByEncodingIdx.size() != 1)
 		{
 			MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData, "producer %s has %zu streams", this->id.c_str(), this->rtpStreamByEncodingIdx.size());

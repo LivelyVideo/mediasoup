@@ -9,7 +9,7 @@ export { types };
 /**
  * Expose mediasoup version.
  */
-export declare const version = "3.11.3-lv1-notranscode-mariat1";
+export declare const version = "3.11.3-lv1-notranscode-mariat2";
 /**
  * Expose parseScalabilityMode() function.
  */
@@ -25,7 +25,7 @@ export { observer };
 /**
  * Create a Worker.
  */
-export declare function createWorker({ logLevel, logDevLevel, logTraceEnabled, logTags, logFile, rtcMinPort, rtcMaxPort, dtlsCertificateFile, dtlsPrivateKeyFile, appData, }: WorkerSettings): Promise<Worker>;
+export declare function createWorker({ logLevel, logDevLevel, logTraceEnabled, logTags, logFile, binStatsDisabled, binStatsPath, rtcMinPort, rtcMaxPort, dtlsCertificateFile, dtlsPrivateKeyFile, appData, }: WorkerSettings): Promise<Worker>;
 /**
  * Get a cloned copy of the mediasoup supported RTP capabilities.
  */
