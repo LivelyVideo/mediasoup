@@ -88,6 +88,7 @@ static const char *header[][3] = {
   {"producer_id                         ", "Producer ID", "ID of a consumer's producer or empty field"}, 
   {"start_ts",  "Start Time",            "The statime of the epoch (HH:MM:SS,sss)"},
   {"type",     "Stream Type",           "0 - producer, 1 - consumer"},
+  {"ssrc",  "Ssrc",                    "32  bits of SSRC as in original RTP stream"},
   {"pay",  "Payload Id",                  "Payload Id as in original RTP stream"},
   {"content",  "Content",               "Content type: audio or video"},
   {"ssrc",  "Ssrc",                    "32 bits of SSRC as in original RTP stream"},
@@ -631,11 +632,11 @@ int parse_file_name(ms_binlog_config *conf)
 int
 format_output(FILE* fd, ms_binlog_config *conf)
 {
-  char                        buf_c[CONSUMER_RECORD_LEN * MAX_RECORDS_IN_BUFFER];
-  char                        buf_p[PRODUCER_RECORD_LEN * MAX_RECORDS_IN_BUFFER];
+  uint8_t                     buf_c[CONSUMER_RECORD_LEN * MAX_RECORDS_IN_BUFFER];
+  uint8_t                     buf_p[PRODUCER_RECORD_LEN * MAX_RECORDS_IN_BUFFER];
   size_t                      len;  // in bytes
-  char                        *first_c;
-  char                        *first_p;
+  uint8_t                     *first_c;
+  uint8_t                     *first_p;
 
   int                            m, k, i, num_bytes, num_rec, num_tm_align_rec;
   stats_consumer_record_header_t *rec_c;
@@ -643,10 +644,10 @@ format_output(FILE* fd, ms_binlog_config *conf)
   uint8_t                        filled;
   uint64_t                       rec_start_tm;
   stats_sample_t                 *sample;
-  char                           *samples_pos;
+  uint8_t                        *samples_pos;
   uint32_t                       ssrc;
   uint8_t                        payload;
-  char                           content;
+  uint8_t                        content;
 
   stats_sample_t              sample_align[MAX_TIME_ALIGN];
   uint64_t                    sample_ts[MAX_TIME_ALIGN];

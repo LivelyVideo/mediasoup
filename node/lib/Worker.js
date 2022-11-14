@@ -48,7 +48,7 @@ class Worker extends EnhancedEventEmitter_1.EnhancedEventEmitter {
     /**
      * @private
      */
-    constructor({ logLevel, logTags, logDevLevel, logTraceEnabled, logFile, rtcMinPort, rtcMaxPort, dtlsCertificateFile, dtlsPrivateKeyFile, appData }) {
+    constructor({ logLevel, logTags, logDevLevel, logTraceEnabled, logFile, binStatsDisabled, binStatsPath, rtcMinPort, rtcMaxPort, dtlsCertificateFile, dtlsPrivateKeyFile, appData }) {
         super();
         logger.debug('constructor()');
         let spawnBin = workerBin;
@@ -69,6 +69,10 @@ class Worker extends EnhancedEventEmitter_1.EnhancedEventEmitter {
             spawnArgs.push(`--logDevLevel=${logDevLevel}`);
         if (typeof logTraceEnabled === 'boolean' && logTraceEnabled && logTraceEnabled === true)
             spawnArgs.push(`--logTraceEnabled=true`);
+        if (typeof binStatsDisabled === 'boolean' && binStatsDisabled && binStatsDisabled === true)
+            spawnArgs.push(`--binStatsDisabled=true`);
+        if (typeof binStatsPath === 'string' && binStatsPath)
+            spawnArgs.push(`--binStatsPath=${binStatsPath}`);
         if (typeof rtcMinPort === 'number' && !Number.isNaN(rtcMinPort))
             spawnArgs.push(`--rtcMinPort=${rtcMinPort}`);
         if (typeof rtcMaxPort === 'number' && !Number.isNaN(rtcMaxPort))
@@ -86,7 +90,7 @@ class Worker extends EnhancedEventEmitter_1.EnhancedEventEmitter {
         // options
         {
             env: {
-                MEDIASOUP_VERSION: '3.9.10-lv17-notranscode',
+                MEDIASOUP_VERSION: '3.9.10-lv18-notranscode',
                 // Let the worker process inherit all environment variables, useful
                 // if a custom and not in the path GCC is used so the user can set
                 // LD_LIBRARY_PATH environment variable for runtime.
