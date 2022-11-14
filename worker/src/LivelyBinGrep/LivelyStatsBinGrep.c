@@ -18,9 +18,11 @@
 //#include <regex.h>
 
 // These defines should match LivelyBinLogs.hpp values
-#define BINLOG_FORMAT_VERSION "c1b125"
+#define BINLOG_FORMAT_VERSION "c1b126"
 
-#define CALL_STATS_BIN_LOG_RECORDS_NUM 8 
+//#define CALL_STATS_BIN_LOG_RECORDS_NUM 8
+#define CALL_STATS_BIN_LOG_PROD_REC_NUM 4
+#define CALL_STATS_BIN_LOG_CONS_REC_NUM 8
 #define CALL_STATS_BIN_LOG_SAMPLING    2000
 
 #define MAX_TIME_ALIGN        10
@@ -76,10 +78,10 @@ typedef struct {
 // Bytes to skip over and start reading stats_sample_t
 #define CONSUMER_HEADER_LEN 48
 // Total size of a record: header and samples
-#define CONSUMER_RECORD_LEN (CONSUMER_HEADER_LEN + SAMPLE_SIZE * CALL_STATS_BIN_LOG_RECORDS_NUM)
+#define CONSUMER_RECORD_LEN (CONSUMER_HEADER_LEN + SAMPLE_SIZE * CALL_STATS_BIN_LOG_CONS_REC_NUM)
 
 #define PRODUCER_HEADER_LEN 16
-#define PRODUCER_RECORD_LEN (PRODUCER_HEADER_LEN + SAMPLE_SIZE * CALL_STATS_BIN_LOG_RECORDS_NUM)
+#define PRODUCER_RECORD_LEN (PRODUCER_HEADER_LEN + SAMPLE_SIZE * CALL_STATS_BIN_LOG_PROD_REC_NUM)
 
 
 static const char *header[][3] = {
@@ -207,300 +209,6 @@ print_headers(ms_binlog_config *conf)
 // even - audio, odd - video
 #define SET_RAND_VIDEO_RECORD(f, s, r) rec.samples[j].f = (i % 2) ? s + rand() % r : 0;
 #define SET_RAND_RECORD(f, s, r) rec.samples[j].f = s + rand() % r;
-
-// Creates a single test file with data for several consumers
-int
-load_test_cfiles(ms_binlog_config *conf)
-{
-  /*
-  BUGBUG: rewrite this function to accomodate for changes in data sizes, etc.
-  int                 fd;
-  char                filename[256];
-
-	uint64_t            start_ts[LOAD_TEST_MAX_FILES];
-  uint64_t            last_ts[LOAD_TEST_MAX_FILES];
-  uint64_t            end_ts[LOAD_TEST_MAX_FILES];
-	uint64_t            active[LOAD_TEST_MAX_FILES];
-  uint8_t             payload[LOAD_TEST_MAX_FILES];
-  uint64_t            tmp;
-  uint16_t            active_consumers_cnt;
-
-  uint8_t             object_id[LOAD_TEST_MAX_FILES][UUID_BYTE_LEN];
-  uint8_t             producer_id[LOAD_TEST_MAX_FILES][UUID_BYTE_LEN];
-  
-  int                 i, j;
-  int                 count;
-  int                 source;
-
-  stats_consumer_record_t rec;
-  stats_sample_t sample;
-  stats_sample_t prev_sample[LOAD_TEST_MAX_FILES];
-
-	struct timeval             tv;
-	uint64_t                   start_tm, cur_tm;
-	useconds_t                 sleep;
-
-	memset(start_ts, 0, sizeof(start_ts));
-	memset(last_ts, 0, sizeof(last_ts));
-	memset(end_ts, 0, sizeof(end_ts));
-	memset(active, 0, sizeof(active));
-	memset(&rec, 0, sizeof(rec));
-  memset(&sample, 0, sizeof(sample));
-	memset(prev_sample, 0, sizeof(prev_sample));
-  memset(object_id, 0, sizeof(object_id));
-  memset(producer_id, 0, sizeof(producer_id));
-
-	if (gettimeofday(&tv, NULL) < 0)
-  {
-		fprintf(stderr, "gettimeofday failed. err=%s\n", strerror(errno));
-		exit(1);
-	}
-	
-  start_tm = tv.tv_sec * 1000 + tv.tv_usec / 1000;
-  
-  snprintf(filename, sizeof(filename), "c_%s_%lu.bin.log", conf->filename, start_tm);
-
-  srand(tv.tv_usec);
-
-	for (i = 0; i < conf->load_test_num_cfiles; i++)
-  {
-		// start and end times
-		start_ts[i] = start_tm + (rand() % (5 * LOAD_TEST_FILE_MIN_DUR)); // start sooner than just wait
-		end_ts[i] = start_tm + LOAD_TEST_FILE_MIN_DUR + (rand() % (LOAD_TEST_FILE_MAX_DUR - LOAD_TEST_FILE_MIN_DUR));
-    if (end_ts[i] < start_ts[i])
-    {
-      tmp = end_ts[i]; end_ts[i] = start_ts[i]; start_ts[i] = tmp;
-    }
-    // TODO: payload is rand uint8_t unless there are some restrictions
-    payload[i] = rand() % 255;
-    active[i] = 1;
-    rand_pseudo_uuid_bytes(object_id[i]);
-    rand_pseudo_uuid_bytes(producer_id[i]);
-  }
-
-  fd = open(filename, O_WRONLY|O_CREAT|O_TRUNC, 0666);
-  if (fd < 0)
-  {
-    fprintf(stderr, "failed to open file %s. err=%s\n", filename, strerror(errno));
-    exit(1);
-  } 
-
-	for (count = 0; count < 0xFFFFFF; count++)
-  {
-		if (gettimeofday(&tv, NULL) < 0)
-    {
-			fprintf(stderr, "gettimeofday failed. err=%s\n", strerror(errno));
-			exit(1);
-		}
-
-		cur_tm = tv.tv_sec * 1000 + tv.tv_usec / 1000;
-
-		for (i = 0, active_consumers_cnt = 0; i < conf->load_test_num_cfiles; i++)
-    {
-      if (0 == active[i])
-      {
-        continue;
-      }
-      if (cur_tm < start_ts[i])
-      {
-        active_consumers_cnt++;
-        continue;
-      }
-
-			rec.start_tm  = last_ts[i] ? 
-          last_ts[i] + CALL_STATS_BIN_LOG_SAMPLING + rand() % 100 : 
-          cur_tm;
-
-      memcpy(rec.consumer_id, object_id[i], UUID_BYTE_LEN);
-      memcpy(rec.producer_id, producer_id[i], UUID_BYTE_LEN);
-      rec.payload = payload[i];
-      rec.filled = CALL_STATS_BIN_LOG_RECORDS_NUM;
-
-      prev_sample[i].max_pts = cur_tm + 500;
-      prev_sample[i].epoch_len = CALL_STATS_BIN_LOG_SAMPLING;
-
-      for (j = 0; j < CALL_STATS_BIN_LOG_RECORDS_NUM; j++)
-      {
-        memset(&(rec.samples[j]), 0, sizeof(stats_sample_t));
-        
-        rec.samples[j].epoch_len = CALL_STATS_BIN_LOG_SAMPLING * (j + 1);
-        SET_RAND_RECORD(packets_count, 0, 2000)
-        SET_RAND_RECORD(packets_lost, 0, 100)
-        SET_RAND_RECORD(packets_discarded, 0, 20)
-        SET_RAND_VIDEO_RECORD(packets_retransmitted, 0, 10)
-        SET_RAND_VIDEO_RECORD(packets_repaired, 0, 10)
-        SET_RAND_VIDEO_RECORD(nack_count, 0, 10)
-        SET_RAND_VIDEO_RECORD(nack_pkt_count, 0, 10)
-        SET_RAND_VIDEO_RECORD(kf_count, 0, 3)
-        SET_RAND_RECORD(rtt, 50, 300)
-        SET_RAND_RECORD(max_pts, prev_sample[i].max_pts, 1000)
-        SET_RAND_RECORD(bytes_count, 1000, 1000000)
-
-        prev_sample[i] = rec.samples[j];
-      }
-
-      last_ts[i] = rec.start_tm + CALL_STATS_BIN_LOG_SAMPLING * CALL_STATS_BIN_LOG_RECORDS_NUM;
-
-			if (write(fd, &rec, sizeof(rec)) < 0)
-      {
-				fprintf(stderr, "failed to write to file %d. err=%s\n", fd, strerror(errno));
-				exit(1);
-			}
-
-      if (cur_tm > end_ts[i])
-      {
-        active[i] = 0; // wrote at least one record for each consumer
-      }
-      active_consumers_cnt++;
-		}
-
-    if (0 == active_consumers_cnt)
-    { 
-      close(fd);
-      return 0;
-    }
-
-    sleep = (LOAD_TEST_MIN_SLEEP + rand() % 200) * 1000;
-		usleep(sleep);
-	}
-
-  close(fd);*/
-  return 0;
-}
-
-
-int
-load_test_pfiles(ms_binlog_config *conf)
-{
-  /*
-  char                filename[LOAD_TEST_MAX_FILES][256];
-  int                 fd[LOAD_TEST_MAX_FILES]; // set into -1 explicitly after file is closed, not to be confused with error state
-  uint64_t            last_ts[LOAD_TEST_MAX_FILES];
-	uint64_t            end_ts[LOAD_TEST_MAX_FILES];
-  uint8_t             payload[LOAD_TEST_MAX_FILES];
-  int                 fopened_count;
-  
-  char                object_id[LOAD_TEST_MAX_FILES][UUID_CHAR_LEN + 1];
-  int                 source, mime;
-  int                 i, j, count;
-
-  stats_producer_record_t rec;
-  stats_sample_t sample;
-  stats_sample_t prev_sample[LOAD_TEST_MAX_FILES];
-
-	struct timeval             tv;
-	uint64_t                   cur_tm;
-	useconds_t                 sleep;
-
-	memset(fd, 0, sizeof(fd));
-  memset(last_ts, 0, sizeof(last_ts));
-	memset(end_ts, 0, sizeof(end_ts));
-	memset(&rec, 0, sizeof(rec));
-  memset(&sample, 0, sizeof(sample));
-	memset(prev_sample, 0, sizeof(prev_sample));
-
-	if (gettimeofday(&tv, NULL) < 0)
-  {
-		fprintf(stderr, "gettimeofday failed. err=%s\n", strerror(errno));
-		exit(1);
-	}
-
-	cur_tm = tv.tv_sec * 1000 + tv.tv_usec / 1000;
-
-  srand(tv.tv_usec);
-
-	for (i = 0; i < conf->load_test_num_pfiles; i++)
-  {
-		// end time for this file
-		end_ts[i] = cur_tm +
-				(rand() % (LOAD_TEST_FILE_MAX_DUR + 1 - LOAD_TEST_FILE_MIN_DUR)) +
-				LOAD_TEST_FILE_MIN_DUR;
-
-    rand_pseudo_uuid(object_id[i]);
-    payload[i] = rand() % 255;
-    snprintf(filename[i], sizeof(filename) / LOAD_TEST_MAX_FILES, "p_%s_%s_%lu.bin.log", conf->filename, object_id[i], cur_tm + i);
-		fd[i] = open(filename[i], O_WRONLY|O_CREAT|O_TRUNC, 0666);
-		if (fd[i] < 0) {
-			fprintf(stderr, "failed to open file %s. err=%s\n",
-					filename[i], strerror(errno));
-			exit(1);
-		}
-  }
-
-	for (count = 0; count < 0xFFFFFF; count++)
-  {
-		if (gettimeofday(&tv, NULL) < 0) {
-			fprintf(stderr, "gettimeofday failed. err=%s\n", strerror(errno));
-			exit(1);
-		}
-
-		cur_tm = tv.tv_sec * 1000 + tv.tv_usec / 1000;
-
-		for (i = 0, fopened_count = 0; i < conf->load_test_num_pfiles; i++)
-    {
-      if (fd[i] < 0)
-        continue;
-
-			rec.start_tm  = last_ts[i] ? 
-          last_ts[i] + CALL_STATS_BIN_LOG_SAMPLING + rand() % 100 : 
-          cur_tm;
-
-      rec.payload = payload[i];
-      rec.filled = CALL_STATS_BIN_LOG_RECORDS_NUM;
-
-      prev_sample[i].max_pts = cur_tm + 1000;
-      prev_sample[i].epoch_len = CALL_STATS_BIN_LOG_SAMPLING;
-
-      for (j = 0; j < CALL_STATS_BIN_LOG_RECORDS_NUM; j++)
-      {
-        memset(&(rec.samples[j]), 0, sizeof(stats_sample_t));
-
-        rec.samples[j].epoch_len = CALL_STATS_BIN_LOG_SAMPLING * (j + 1);
-        SET_RAND_RECORD(packets_count, 0, 2000)
-        SET_RAND_RECORD(packets_lost, 0, 100)
-        SET_RAND_RECORD(packets_discarded, 0, 20)
-        SET_RAND_VIDEO_RECORD(packets_retransmitted, 0, 10)
-        SET_RAND_VIDEO_RECORD(packets_repaired, 0, 10)
-        SET_RAND_VIDEO_RECORD(nack_count, 0, 10)
-        SET_RAND_VIDEO_RECORD(nack_pkt_count, 0, 10)
-        SET_RAND_VIDEO_RECORD(kf_count, 0, 3)
-        SET_RAND_RECORD(rtt, 50, 300)
-        SET_RAND_RECORD(max_pts, prev_sample[i].max_pts, 1000)
-        SET_RAND_RECORD(bytes_count, 1000, 1000000)
-
-        prev_sample[i] = rec.samples[j];
-      }
-      
-      last_ts[i] = rec.start_tm + CALL_STATS_BIN_LOG_SAMPLING * CALL_STATS_BIN_LOG_RECORDS_NUM;
-
-			if (write(fd[i], &rec, sizeof(rec)) < 0)
-      {
-				fprintf(stderr, "failed to write to file %d. err=%s\n",
-						fd[i], strerror(errno));
-				exit(1);
-			}
-
-			if (cur_tm > end_ts[i])
-      {
-				close(fd[i]);
-        fd[i] = -1;
-			}
-      else
-      {
-        fopened_count++; // count files which are still open
-      }
-		} // for 0...conf->load_test_num_pfiles
-
-    sleep = (LOAD_TEST_MIN_SLEEP + rand() % 200) * 1000;
-		usleep(sleep);
-
-    if (0 == fopened_count)
-      return 0;
-	}
-*/
-  return 0;
-}
-
 
 int
 time_alignment(
@@ -642,6 +350,7 @@ format_output(FILE* fd, ms_binlog_config *conf)
   stats_consumer_record_header_t *rec_c;
   stats_producer_record_header_t *rec_p;
   uint8_t                        filled;
+  uint8_t                        rec_num;
   uint64_t                       rec_start_tm;
   stats_sample_t                 *sample;
   uint8_t                        *samples_pos;
@@ -679,6 +388,7 @@ format_output(FILE* fd, ms_binlog_config *conf)
   }
 
   len = (conf->type == 'c') ? CONSUMER_RECORD_LEN * MAX_RECORDS_IN_BUFFER : PRODUCER_RECORD_LEN * MAX_RECORDS_IN_BUFFER;
+  rec_num = (conf->type == 'c') ? CALL_STATS_BIN_LOG_CONS_REC_NUM : CALL_STATS_BIN_LOG_PROD_REC_NUM;
 
   if (FORMAT_CSV_HEADERS == conf->format)
     print_headers(conf);
@@ -705,7 +415,7 @@ format_output(FILE* fd, ms_binlog_config *conf)
         rec_start_tm = rec_p->start_tm;
         //printf("\nRecord sizeof()=%zu payload=%d ssrc=%"PRIu32" content=%c filled=%d\n", rec_p->payload, rec_p->ssrc, rec_p->content, filled);
       }
-      if (filled > CALL_STATS_BIN_LOG_RECORDS_NUM)
+      if (filled > rec_num)
         continue;
 
       if (conf->type == 'c')
@@ -838,10 +548,8 @@ int main(int argc, char* argv[])
     switch(c)
     {
     	case 0xFF01:
-    		conf.load_test_num_cfiles = atoi(optarg);
     		break;
     	case 0xFF02:
-    		conf.load_test_num_pfiles = atoi(optarg);
     		break;
       case 't':
         conf.time_align = atoi(optarg);
@@ -871,18 +579,6 @@ int main(int argc, char* argv[])
   }
 
   conf.filename = argv[optind];
-
-  if (conf.load_test_num_cfiles)
-  {
-    load_test_cfiles(&conf);
-    return 0;
-  }
-  
-  if (conf.load_test_num_pfiles)
-  {
-    load_test_pfiles(&conf);
-    return 0;
-  }
 
   fd = fopen(conf.filename, "r+");
   if (!fd)
