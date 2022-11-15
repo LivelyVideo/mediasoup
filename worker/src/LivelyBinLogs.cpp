@@ -130,8 +130,9 @@ void CallStatsRecord::resetSamples(uint64_t ts)
 
 bool CallStatsRecord::addSample(StreamStats& last, StreamStats& curr)
 {
-  MS_ASSERT(filled() >= 0 && filled() < CALL_STATS_BIN_LOG_RECORDS_NUM, 
-            "Cannot have %" PRIu32 " samples in record, quitting...", filled());
+  MS_ASSERT(filled() >= 0 && filled() < maxSamples(),
+            "Cannot have %" PRIu32 " >= %" PRIu32 " samples in record, quitting...",
+			filled(), maxSamples());
 
   MS_ASSERT(last.ts != UINT64_UNSET,
             "Timestamp of a previous sample is unset, quitting...");
@@ -162,12 +163,12 @@ bool CallStatsRecord::addSample(StreamStats& last, StreamStats& curr)
 
 bool CallStatsRecord::isPktCountZero() const
 {
-  if (filled() < CALL_STATS_BIN_LOG_RECORDS_NUM)
+  if (filled() < maxSamples())
   { 
     return false; // can be true only for full collection of samples
   }
 
-  for (auto i = 0; i < filled(); i++)
+  for (uint32_t i = 0; i < filled(); i++)
   {
     CallStatsSample s = type ? record.c.samples[i] : record.p.samples[0];
     if (s.packets_count)
@@ -185,7 +186,7 @@ bool CallStatsRecord::isPktCountZero() const
 void CallStatsRecordCtx::AddStatsRecord(StatsBinLog* log, RTC::RtpStream* stream, bool isActive)
 {
   // Write data if record is full, then continue collecting samples
-  if (record.filled() == CALL_STATS_BIN_LOG_RECORDS_NUM)
+  if (record.filled() == record.maxSamples())
   {
     if (nullptr != log)
     {
@@ -197,7 +198,13 @@ void CallStatsRecordCtx::AddStatsRecord(StatsBinLog* log, RTC::RtpStream* stream
     {
       if (warnIdleStats) // did not warn yet, and all samples in a record have 0 incoming pkts
       {
-        MS_WARN_TAG(rtp, "Zero pkts in stats record: callid=%s %s id=%s ssrc=%"PRIu32" start_tm=%"PRIu64" state=%s", record.call_id.c_str(), record.type ? "consumer": "producer", record.object_id.c_str(), record.ssrc(), record.start_tm(), isActive ? "active" : "inactive");
+        MS_WARN_TAG(rtp,
+        		"Zero pkts in stats record: callid=%s %s id=%s ssrc=%" PRIu32
+				" start_tm=%" PRIu64" state=%s", record.call_id.c_str(),
+				(record.type ? "consumer": "producer"),
+				record.object_id.c_str(), record.ssrc(), record.start_tm(),
+				(isActive ? "active" : "inactive"));
+
         warnIdleStats = false; // only write one warning for this series of 0s; allow to write it again after number of pkts > 0
       }
     }
@@ -222,7 +229,7 @@ void CallStatsRecordCtx::AddStatsRecord(StatsBinLog* log, RTC::RtpStream* stream
   }
 
   // Should have a room to add a sample
-  MS_ASSERT(record.filled() >= 0 && record.filled() < CALL_STATS_BIN_LOG_RECORDS_NUM,
+  MS_ASSERT(record.filled() >= 0 && record.filled() < record.maxSamples(),
     "Invalid record.filled=%" PRIu32, record.filled());
 
   curr.ts = nowMs;
