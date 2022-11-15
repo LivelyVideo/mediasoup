@@ -1,6 +1,6 @@
 {
   "name": "@livelyvideo/mediasoup",
-  "version": "3.9.10-lv18-notranscode-rtp2ms",
+  "version": "3.9.10-lv19-notranscode",
   "description": "Cutting Edge WebRTC Video Conferencing",
   "contributors": [
     "Iñaki Baz Castillo <ibc@aliax.net> (https://inakibaz.me)",
