@@ -93,7 +93,7 @@ namespace RTC
 		}
 
 	public:
-		void Update(RTC::RtpPacket* packet);
+		void Update(RTC::RtpPacket* packet, bool parseNAL = false);
 		uint32_t GetBitrate(uint64_t nowMs)
 		{
 			return this->rate.GetRate(nowMs);
@@ -106,10 +106,16 @@ namespace RTC
 		{
 			return this->rate.GetBytes();
 		}
+		size_t GetFrameCount() const
+		{
+			return this->frames;
+		}
 
 	private:
 		RateCalculator rate;
 		size_t packets{ 0u };
+		size_t frames{ 0u };
+		uint32_t last_ts{ 0u };
 	};
 } // namespace RTC
 

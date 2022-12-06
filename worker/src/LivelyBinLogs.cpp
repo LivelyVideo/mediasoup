@@ -146,6 +146,7 @@ bool CallStatsRecord::addSample(StreamStats& last, StreamStats& curr)
   s[idx].epoch_len = static_cast<uint16_t>(curr.ts - last.ts);
   s[idx].packets_count = static_cast<uint16_t>(curr.packetsCount - last.packetsCount);
   s[idx].bytes_count = static_cast<uint32_t>(curr.bytesCount - last.bytesCount);
+  s[idx].frames_count = static_cast<uint32_t>(curr.framesCount - last.framesCount);
   s[idx].packets_lost = (curr.packetsLost > last.packetsLost) ? static_cast<uint16_t>(curr.packetsLost - last.packetsLost) : 0;
   s[idx].packets_discarded = static_cast<uint16_t>(curr.packetsDiscarded - last.packetsDiscarded);
   s[idx].packets_repaired = static_cast<uint16_t>(curr.packetsRepaired - last.packetsRepaired);
@@ -220,7 +221,7 @@ void CallStatsRecordCtx::AddStatsRecord(StatsBinLog* log, RTC::RtpStream* stream
 
   if (UINT64_UNSET == last.ts) // the first measurement ever during this session
   {
-    stream->FillStats(last.packetsCount, last.bytesCount, last.packetsLost, last.packetsDiscarded,
+    stream->FillStats(last.packetsCount, last.bytesCount, last.framesCount, last.packetsLost, last.packetsDiscarded,
                       last.packetsRetransmitted, last.packetsRepaired, last.nackCount,
                       last.nackPacketCount, last.kfCount, last.rtt, last.maxPacketTs);
     last.ts = nowMs;
@@ -233,7 +234,7 @@ void CallStatsRecordCtx::AddStatsRecord(StatsBinLog* log, RTC::RtpStream* stream
     "Invalid record.filled=%" PRIu32, record.filled());
 
   curr.ts = nowMs;
-  stream->FillStats(curr.packetsCount, curr.bytesCount, curr.packetsLost, curr.packetsDiscarded,
+  stream->FillStats(curr.packetsCount, curr.bytesCount, curr.framesCount, curr.packetsLost, curr.packetsDiscarded,
                     curr.packetsRetransmitted, curr.packetsRepaired, curr.nackCount,
                     curr.nackPacketCount, curr.kfCount, curr.rtt, curr.maxPacketTs);
 

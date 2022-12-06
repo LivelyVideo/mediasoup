@@ -212,7 +212,7 @@ namespace RTC
 			StorePacket(packet, sharedPacket);
 
 		// Increase transmission counter.
-		this->transmissionCounter.Update(packet);
+		this->transmissionCounter.Update(packet, this->GetMimeType().type == RTC::RtpCodecMimeType::Type::VIDEO);
 
 		return true;
 	}

@@ -18,7 +18,7 @@
 //#include <regex.h>
 
 // These defines should match LivelyBinLogs.hpp values
-#define BINLOG_FORMAT_VERSION "c1b126"
+#define BINLOG_FORMAT_VERSION "3b55f9"
 
 //#define CALL_STATS_BIN_LOG_RECORDS_NUM 8
 #define CALL_STATS_BIN_LOG_PROD_REC_NUM 4
@@ -53,9 +53,10 @@ typedef struct {
   uint16_t            rtt;
   uint32_t            max_pts;
   uint32_t            bytes_count;
+  uint32_t            frames_count; 
 } stats_sample_t;
 
-#define SAMPLE_SIZE 28
+#define SAMPLE_SIZE 32
 
 typedef struct {
   uint64_t       start_tm;                    // the record start timestamp in milliseconds
@@ -90,16 +91,16 @@ static const char *header[][3] = {
   {"producer_id                         ", "Producer ID", "ID of a consumer's producer or empty field"}, 
   {"start_ts",  "Start Time",            "The statime of the epoch (HH:MM:SS,sss)"},
   {"type",     "Stream Type",           "0 - producer, 1 - consumer"},
-  {"ssrc",  "Ssrc",                    "32  bits of SSRC as in original RTP stream"},
-  {"pay",  "Payload Id",                  "Payload Id as in original RTP stream"},
-  {"content",  "Content",               "Content type: audio or video"},
+  {"pay ",  "Payload Id",                  "Payload Id as in original RTP stream"},
+  {"cont",  "Content",               "Content type: audio or video"},
   {"ssrc",  "Ssrc",                    "32 bits of SSRC as in original RTP stream"},
   {"pkt ",  "Packets Count",         "Packets received or sent during epoch"},
+  {"frm ",  "Frames Count",         "Frames received or sent during epoch"},
   {"lost ", "Packets Lost",          "Packets lost during epoch"},
   {"disc ", "Packets Discarded",     "Packets discarded during epoch"},
   {"rtx ",  "Packets Retransmitted", "Packets Retransmitted during epoch"},
-  {"repair",  "Packets Repaired",      "Packets repaired during epoch"},
-  {"nacks",  "NACK Count",            "NACKs during epoch"},
+  {"rep",  "Packets Repaired",      "Packets repaired during epoch"},
+  {"nack",  "NACK Count",            "NACKs during epoch"},
   {"nackpkt",  "NACK Packets",          "Number of NACK packets requested"},
   {"kf",        "Keyframe Requests",     "Keyframe requests during epoch"},
   {"rtt",       "RTT",                   "RTT in milliseconds"},
@@ -481,13 +482,13 @@ format_output(FILE* fd, ms_binlog_config *conf)
           fprintf(stdout, 
             "%s\t%s\t%s"
             "\t%"PRIu64
-            "\t%c\t%"PRIu8"\t%c\t%"PRIu32"\t%"PRIu16
+            "\t%c\t%"PRIu8"\t%c\t%"PRIu32"\t%"PRIu16"\t%"PRIu32
             "\t%"PRIu16"\t%"PRIu16"\t%"PRIu16
             "\t%"PRIu16"\t%"PRIu16"\t%"PRIu16
             "\t%"PRIu16"\t%"PRIu16"\t%"PRIu32"\t%"PRIu32"\n",
             call_id, object_id, producer_id,
             sample_ts[i],
-            conf->type, payload, content, ssrc, sample[i].packets_count,
+            conf->type, payload, content, ssrc, sample[i].packets_count, sample[i].frames_count,
             sample[i].packets_lost, sample[i].packets_discarded, sample[i].packets_retransmitted,
             sample[i].packets_repaired, sample[i].nack_count, sample[i].nack_pkt_count,
             sample[i].kf_count, sample[i].rtt, sample[i].max_pts, sample[i].bytes_count);

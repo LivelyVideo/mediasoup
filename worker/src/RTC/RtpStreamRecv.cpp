@@ -291,7 +291,7 @@ namespace RTC
 		this->transmissionCounter.Update(packet);
 
 		// Increase media transmission counter.
-		this->mediaTransmissionCounter.Update(packet);
+		this->mediaTransmissionCounter.Update(packet, this->GetMimeType().type == RTC::RtpCodecMimeType::Type::VIDEO);
 
 		// Not inactive anymore.
 		if (this->inactive)

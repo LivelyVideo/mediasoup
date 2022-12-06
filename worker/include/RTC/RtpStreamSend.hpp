@@ -70,12 +70,13 @@ namespace RTC
 		  RTC::RtpStreamSend::Listener* listener, RTC::RtpStream::Params& params, std::string& mid);
 		~RtpStreamSend() override;
 
-		void FillStats(size_t& packetsCount, size_t& bytesCount, uint32_t& packetsLost, size_t& packetsDiscarded,
+		void FillStats(size_t& packetsCount, size_t& bytesCount, size_t& framesCount, uint32_t& packetsLost, size_t& packetsDiscarded,
 									 size_t& packetsRetransmitted, size_t& packetsRepaired, size_t& nackCount,
 									 size_t& nackPacketCount, size_t& kfCount, float& rtt, uint32_t& maxPacketTs) override
 		{
 			packetsCount = this->transmissionCounter.GetPacketCount();
 			bytesCount = this->transmissionCounter.GetBytes();
+			framesCount = this->transmissionCounter.GetFrameCount();
 			packetsLost = this->packetsLost;
 			packetsDiscarded = this->packetsDiscarded;
 			packetsRetransmitted = this->packetsRetransmitted;

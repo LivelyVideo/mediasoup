@@ -6,7 +6,8 @@
 #include "RTC/RtpStream.hpp"
 
 #define BINLOG_MIN_TIMESPAN   20000
-#define BINLOG_FORMAT_VERSION "c1b126"
+#define BINLOG_FORMAT_VERSION "3b55f9"
+//"c1b126"
 
 // CALL_STATS_BIN_LOG_CONS_REC_NUM * sizeof(CallStatsSample)
 // and
@@ -49,6 +50,7 @@ struct CallStatsSample
   uint16_t rtt;
   uint32_t max_pts;
   uint32_t bytes_count;
+  uint32_t frames_count;          // frames count based on pkt timestamps
 };
 
 // Record headers are aligned to 16 bytes.
@@ -140,6 +142,7 @@ class CallStatsRecord
     uint64_t ts {UINT64_UNSET}; // ts when data was received from a stream        
     size_t packetsCount {0};
     size_t bytesCount {0};
+    size_t framesCount {0};
     uint32_t packetsLost {0};
     size_t packetsDiscarded {0};
     size_t packetsRetransmitted {0};

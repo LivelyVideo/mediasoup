@@ -62,7 +62,7 @@ namespace RTC
 		RtpStream(RTC::RtpStream::Listener* listener, RTC::RtpStream::Params& params, uint8_t initialScore);
 		virtual ~RtpStream();
 
-		virtual void FillStats(size_t& packetsCount, size_t& bytesCount, uint32_t& packetsLost, size_t& packetsDiscarded,
+		virtual void FillStats(size_t& packetsCount, size_t& bytesCount, size_t& framesCount, uint32_t& packetsLost, size_t& packetsDiscarded,
 													 size_t& packetsRetransmitted, size_t& packetsRepaired, size_t& nackCount,
 													 size_t& nackPacketCount, size_t& kfCount, float& rtt, uint32_t& maxPacketTs) = 0;
 

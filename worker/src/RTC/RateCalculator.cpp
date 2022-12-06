@@ -114,11 +114,30 @@ namespace RTC
 		}
 	}
 
-	void RtpDataCounter::Update(RTC::RtpPacket* packet)
+	void RtpDataCounter::Update(RTC::RtpPacket* packet, bool parseNAL)
 	{
 		uint64_t nowMs = DepLibUV::GetTimeMs();
 
 		this->packets++;
 		this->rate.Update(packet->GetSize(), nowMs);
+
+		//update frame cnt
+		uint32_t ts = packet->GetTimestamp();
+		if (ts == this->last_ts)
+			return;
+		
+		if (this->last_ts == 0u || ts > this->last_ts) // first frame or newer pkt
+		{
+			this->frames++;
+			this->last_ts = ts;
+		}
+		else if( parseNAL && ts < this->last_ts) // video: if older pkt arrived, and it is either single or aggregate, let's increment
+		{
+			uint8_t const* cdata   = packet->GetPayload();
+			uint8_t nal = cdata ? *(cdata) & 0x1F : 0u;
+
+			if (nal >= 1 && nal <= 24)
+				this->frames++;
+		}
 	}
 } // namespace RTC
