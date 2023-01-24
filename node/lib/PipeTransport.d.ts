@@ -2,7 +2,7 @@ import { Transport, TransportListenIp, TransportTuple, TransportEvents, Transpor
 import { Consumer } from './Consumer';
 import { SctpParameters, NumSctpStreams } from './SctpParameters';
 import { SrtpParameters } from './SrtpParameters';
-export declare type PipeTransportOptions = {
+export type PipeTransportOptions = {
     /**
      * Listening IP address.
      */
@@ -52,7 +52,7 @@ export declare type PipeTransportOptions = {
      */
     appData?: Record<string, unknown>;
 };
-export declare type PipeTransportStat = {
+export type PipeTransportStat = {
     type: string;
     transportId: string;
     timestamp: number;
@@ -77,7 +77,7 @@ export declare type PipeTransportStat = {
     disableOriginCheck: boolean;
     tuple: TransportTuple;
 };
-export declare type PipeConsumerOptions = {
+export type PipeConsumerOptions = {
     /**
      * The id of the Producer to consume.
      */
@@ -87,16 +87,16 @@ export declare type PipeConsumerOptions = {
      */
     appData?: Record<string, unknown>;
 };
-export declare type PipeTransportEvents = TransportEvents & {
+export type PipeTransportEvents = TransportEvents & {
     sctpstatechange: [SctpState];
 };
-export declare type PipeTransportObserverEvents = TransportObserverEvents & {
+export type PipeTransportObserverEvents = TransportObserverEvents & {
     sctpstatechange: [SctpState];
 };
-declare type PipeTransportConstructorOptions = TransportConstructorOptions & {
+type PipeTransportConstructorOptions = TransportConstructorOptions & {
     data: PipeTransportData;
 };
-export declare type PipeTransportData = {
+export type PipeTransportData = {
     disableOriginCheck?: boolean;
     tuple: TransportTuple;
     sctpParameters?: SctpParameters;

@@ -1,7 +1,7 @@
 import { EnhancedEventEmitter } from './EnhancedEventEmitter';
 import { RtpObserver, RtpObserverEvents, RtpObserverObserverEvents, RtpObserverConstructorOptions } from './RtpObserver';
 import { Producer } from './Producer';
-export declare type AudioLevelObserverOptions = {
+export type AudioLevelObserverOptions = {
     /**
      * Maximum number of entries in the 'volumes”' event. Default 1.
      */
@@ -20,7 +20,7 @@ export declare type AudioLevelObserverOptions = {
      */
     appData?: Record<string, unknown>;
 };
-export declare type AudioLevelObserverVolume = {
+export type AudioLevelObserverVolume = {
     /**
      * The audio Producer instance.
      */
@@ -31,15 +31,15 @@ export declare type AudioLevelObserverVolume = {
      */
     volume: number;
 };
-export declare type AudioLevelObserverEvents = RtpObserverEvents & {
+export type AudioLevelObserverEvents = RtpObserverEvents & {
     volumes: [AudioLevelObserverVolume[]];
     silence: [];
 };
-export declare type AudioLevelObserverObserverEvents = RtpObserverObserverEvents & {
+export type AudioLevelObserverObserverEvents = RtpObserverObserverEvents & {
     volumes: [AudioLevelObserverVolume[]];
     silence: [];
 };
-declare type AudioLevelObserverConstructorOptions = RtpObserverConstructorOptions;
+type AudioLevelObserverConstructorOptions = RtpObserverConstructorOptions;
 export declare class AudioLevelObserver extends RtpObserver<AudioLevelObserverEvents> {
     /**
      * @private

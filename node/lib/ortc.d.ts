@@ -1,6 +1,6 @@
 import { RtpCapabilities, RtpCodecCapability, RtpHeaderExtension, RtpParameters, RtpCodecParameters, RtcpFeedback, RtpEncodingParameters, RtpHeaderExtensionParameters, RtcpParameters } from './RtpParameters';
 import { SctpCapabilities, NumSctpStreams, SctpParameters, SctpStreamParameters } from './SctpParameters';
-declare type RtpMapping = {
+type RtpMapping = {
     codecs: {
         payloadType: number;
         mappedPayloadType: number;

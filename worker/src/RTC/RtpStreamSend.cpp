@@ -66,8 +66,15 @@ namespace RTC
 
 	void RtpStreamSend::StorageItemBuffer::Insert(uint16_t seq, StorageItem* storageItem)
 	{
+		int branch = 0;
+		uint16_t saved_idx = 0;
+		uint16_t saved_startSeq = this->startSeq;
+		uint16_t saved_buffersize = static_cast<uint16_t>(this->buffer.size());
+
 		if (this->buffer.empty())
 		{
+			branch = 1;
+
 			this->startSeq = seq;
 			this->buffer.push_back(storageItem);
 		}
@@ -75,11 +82,16 @@ namespace RTC
 		else if (RTC::SeqManager<uint16_t>::IsSeqHigherThan(seq, this->startSeq))
 		{
 			auto idx{ static_cast<uint16_t>(seq - this->startSeq) };
+			saved_idx = idx;			
 
 			// Packet arrived out of order, so we already have a slot allocated for it.
 			if (idx <= static_cast<uint16_t>(this->buffer.size() - 1))
 			{
-				MS_ASSERT(this->buffer[idx] == nullptr, "Must insert into empty slot");
+				branch = 2;
+	
+				MS_ASSERT(this->buffer[idx] == nullptr, 
+					"Must insert into empty slot, idx=%" PRIu16 " seq=%" PRIu16 " startSeq=%" PRIu16 " buffer.size=%zu MaxSeq=%" PRIu16,
+					saved_idx, seq, saved_startSeq, this->buffer.size(), MaxSeq);
 
 				this->buffer[idx] = storageItem;
 			}
@@ -87,7 +99,15 @@ namespace RTC
 			{
 				// Calculate how many elements would it be necessary to add when pushing new item
 				// to the back of the deque.
-				auto addToBack = static_cast<uint16_t>(seq - (this->startSeq + this->buffer.size() - 1));
+				branch = 3;
+
+				uint16_t addToBack_old = static_cast<uint16_t>(seq - (this->startSeq + this->buffer.size() - 1));
+				uint16_t addToBack = idx - static_cast<uint16_t>(this->buffer.size() - 1);
+				if (addToBack != addToBack_old)
+				{
+					MS_WARN_TAG(rtp, "CALCULATION BUG: addToBack=%" PRIu16 " addToBack_old=%" PRIu16 "idx=%" PRIu16 " seq=%" PRIu16 " startSeq=%" PRIu16 " buffer.size=%zu MaxSeq=%" PRIu16,
+						addToBack, addToBack_old, saved_idx, seq, saved_startSeq, this->buffer.size(), MaxSeq);
+				}
 
 				// Packets can arrive out of order, add blank slots.
 				for (uint16_t i{ 1 }; i < addToBack; ++i)
@@ -101,6 +121,8 @@ namespace RTC
 		{
 			// Calculate how many elements would it be necessary to add when pushing new item
 			// to the front of the deque.
+			branch = 4;
+
 			auto addToFront = static_cast<uint16_t>(this->startSeq - seq);
 
 			// Packets can arrive out of order, add blank slots.
@@ -113,8 +135,8 @@ namespace RTC
 
 		MS_ASSERT(
 		  this->buffer.size() <= MaxSeq,
-		  "StorageItemBuffer contains more than %" PRIu16 " entries",
-		  MaxSeq);
+		  "StorageItemBuffer contains more than %" PRIu16 " entries branch=%d idx=%" PRIu16 " seq=%" PRIu16 " startSeq=%" PRIu16 " buffer.size=%zu saved_buffersize=%" PRIu16,
+			MaxSeq, branch, saved_idx, seq, saved_startSeq, this->buffer.size(), saved_buffersize);
 	}
 
 	void RtpStreamSend::StorageItemBuffer::RemoveFirst()

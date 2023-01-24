@@ -1,7 +1,7 @@
 import { Transport, TransportListenIp, TransportTuple, TransportEvents, TransportObserverEvents, TransportConstructorOptions, SctpState } from './Transport';
 import { SctpParameters, NumSctpStreams } from './SctpParameters';
 import { SrtpParameters, SrtpCryptoSuite } from './SrtpParameters';
-export declare type PlainTransportOptions = {
+export type PlainTransportOptions = {
     /**
      * Listening IP address.
      */
@@ -60,7 +60,7 @@ export declare type PlainTransportOptions = {
      */
     appData?: Record<string, unknown>;
 };
-export declare type PlainTransportStat = {
+export type PlainTransportStat = {
     type: string;
     transportId: string;
     timestamp: number;
@@ -88,20 +88,20 @@ export declare type PlainTransportStat = {
     tuple: TransportTuple;
     rtcpTuple?: TransportTuple;
 };
-export declare type PlainTransportEvents = TransportEvents & {
+export type PlainTransportEvents = TransportEvents & {
     tuple: [TransportTuple];
     rtcptuple: [TransportTuple];
     sctpstatechange: [SctpState];
 };
-export declare type PlainTransportObserverEvents = TransportObserverEvents & {
+export type PlainTransportObserverEvents = TransportObserverEvents & {
     tuple: [TransportTuple];
     rtcptuple: [TransportTuple];
     sctpstatechange: [SctpState];
 };
-declare type PlainTransportConstructorOptions = TransportConstructorOptions & {
+type PlainTransportConstructorOptions = TransportConstructorOptions & {
     data: PlainTransportData;
 };
-export declare type PlainTransportData = {
+export type PlainTransportData = {
     rtcpMux?: boolean;
     comedia?: boolean;
     disableOriginCheck?: boolean;

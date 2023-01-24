@@ -2,7 +2,7 @@ import { Transport, TransportListenIp, TransportProtocol, TransportTuple, Transp
 import { WebRtcServer } from './WebRtcServer';
 import { SctpParameters, NumSctpStreams } from './SctpParameters';
 import { Either } from './utils';
-export declare type WebRtcTransportListenIndividual = {
+export type WebRtcTransportListenIndividual = {
     /**
      * Listening IP address or addresses in order of preference (first one is the
      * preferred one). Mandatory unless webRtcServer is given.
@@ -14,14 +14,14 @@ export declare type WebRtcTransportListenIndividual = {
      */
     port?: number;
 };
-export declare type WebRtcTransportListenServer = {
+export type WebRtcTransportListenServer = {
     /**
      * Instance of WebRtcServer. Mandatory unless listenIps is given.
      */
     webRtcServer: WebRtcServer;
 };
-export declare type WebRtcTransportListen = Either<WebRtcTransportListenIndividual, WebRtcTransportListenServer>;
-export declare type WebRtcTransportOptionsBase = {
+export type WebRtcTransportListen = Either<WebRtcTransportListenIndividual, WebRtcTransportListenServer>;
+export type WebRtcTransportOptionsBase = {
     /**
      * Listen in UDP. Default true.
      */
@@ -65,13 +65,13 @@ export declare type WebRtcTransportOptionsBase = {
      */
     appData?: Record<string, unknown>;
 };
-export declare type WebRtcTransportOptions = WebRtcTransportOptionsBase & WebRtcTransportListen;
-export declare type IceParameters = {
+export type WebRtcTransportOptions = WebRtcTransportOptionsBase & WebRtcTransportListen;
+export type IceParameters = {
     usernameFragment: string;
     password: string;
     iceLite?: boolean;
 };
-export declare type IceCandidate = {
+export type IceCandidate = {
     foundation: string;
     priority: number;
     ip: string;
@@ -80,7 +80,7 @@ export declare type IceCandidate = {
     type: 'host';
     tcpType: 'passive' | undefined;
 };
-export declare type DtlsParameters = {
+export type DtlsParameters = {
     role?: DtlsRole;
     fingerprints: DtlsFingerprint[];
 };
@@ -90,14 +90,14 @@ export declare type DtlsParameters = {
  * certificate fingerprint value (in lowercase hex string as expressed utilizing
  * the syntax of "fingerprint" in RFC 4572 Section 5).
  */
-export declare type DtlsFingerprint = {
+export type DtlsFingerprint = {
     algorithm: string;
     value: string;
 };
-export declare type IceState = 'new' | 'connected' | 'completed' | 'disconnected' | 'closed';
-export declare type DtlsRole = 'auto' | 'client' | 'server';
-export declare type DtlsState = 'new' | 'connecting' | 'connected' | 'failed' | 'closed';
-export declare type WebRtcTransportStat = {
+export type IceState = 'new' | 'connected' | 'completed' | 'disconnected' | 'closed';
+export type DtlsRole = 'auto' | 'client' | 'server';
+export type DtlsState = 'new' | 'connecting' | 'connected' | 'failed' | 'closed';
+export type WebRtcTransportStat = {
     type: string;
     transportId: string;
     timestamp: number;
@@ -124,22 +124,22 @@ export declare type WebRtcTransportStat = {
     iceSelectedTuple?: TransportTuple;
     dtlsState: DtlsState;
 };
-export declare type WebRtcTransportEvents = TransportEvents & {
+export type WebRtcTransportEvents = TransportEvents & {
     icestatechange: [IceState];
     iceselectedtuplechange: [TransportTuple];
     dtlsstatechange: [DtlsState];
     sctpstatechange: [SctpState];
 };
-export declare type WebRtcTransportObserverEvents = TransportObserverEvents & {
+export type WebRtcTransportObserverEvents = TransportObserverEvents & {
     icestatechange: [IceState];
     iceselectedtuplechange: [TransportTuple];
     dtlsstatechange: [DtlsState];
     sctpstatechange: [SctpState];
 };
-declare type WebRtcTransportConstructorOptions = TransportConstructorOptions & {
+type WebRtcTransportConstructorOptions = TransportConstructorOptions & {
     data: WebRtcTransportData;
 };
-export declare type WebRtcTransportData = {
+export type WebRtcTransportData = {
     iceRole: 'controlled';
     iceParameters: IceParameters;
     iceCandidates: IceCandidate[];

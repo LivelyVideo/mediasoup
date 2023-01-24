@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { Transport, TransportEvents, TransportObserverEvents, TransportConstructorOptions } from './Transport';
 import { SctpParameters } from './SctpParameters';
-export declare type DirectTransportOptions = {
+export type DirectTransportOptions = {
     /**
      * Maximum allowed size for direct messages sent from DataProducers.
      * Default 262144.
@@ -12,7 +12,7 @@ export declare type DirectTransportOptions = {
      */
     appData?: Record<string, unknown>;
 };
-export declare type DirectTransportStat = {
+export type DirectTransportStat = {
     type: string;
     transportId: string;
     timestamp: number;
@@ -34,16 +34,16 @@ export declare type DirectTransportStat = {
     availableIncomingBitrate?: number;
     maxIncomingBitrate?: number;
 };
-export declare type DirectTransportEvents = TransportEvents & {
+export type DirectTransportEvents = TransportEvents & {
     rtcp: [Buffer];
 };
-export declare type DirectTransportObserverEvents = TransportObserverEvents & {
+export type DirectTransportObserverEvents = TransportObserverEvents & {
     rtcp: [Buffer];
 };
-declare type DirectTransportConstructorOptions = TransportConstructorOptions & {
+type DirectTransportConstructorOptions = TransportConstructorOptions & {
     data: DirectTransportData;
 };
-export declare type DirectTransportData = {
+export type DirectTransportData = {
     sctpParameters?: SctpParameters;
 };
 export declare class DirectTransport extends Transport<DirectTransportEvents, DirectTransportObserverEvents> {
