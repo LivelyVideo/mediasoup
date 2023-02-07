@@ -2,6 +2,7 @@
 // #define MS_LOG_DEV_LEVEL 3
 
 #include "RTC/RateCalculator.hpp"
+#include "RTC/SeqManager.hpp"
 #include "Logger.hpp"
 #include <cmath> // std::trunc()
 
@@ -126,12 +127,12 @@ namespace RTC
 		if (ts == this->last_ts)
 			return;
 		
-		if (this->last_ts == 0u || ts > this->last_ts) // first frame or newer pkt
+		if (this->last_ts == 0u || RTC::SeqManager<uint32_t>::IsSeqHigherThan(ts, this->last_ts)) // first frame or newer pkt
 		{
 			this->frames++;
 			this->last_ts = ts;
 		}
-		else if( parseNAL && ts < this->last_ts) // video: if older pkt arrived, and it is either single or aggregate, let's increment
+		else if( parseNAL && RTC::SeqManager<uint32_t>::IsSeqLowerThan(ts, this->last_ts)) // video: if older pkt arrived, and it is either single or aggregate, let's increment
 		{
 			uint8_t const* cdata   = packet->GetPayload();
 			uint8_t nal = cdata ? *(cdata) & 0x1F : 0u;
