@@ -2,7 +2,7 @@ import { EnhancedEventEmitter } from './EnhancedEventEmitter';
 import { Channel } from './Channel';
 import { TransportProtocol } from './Transport';
 import { WebRtcTransport } from './WebRtcTransport';
-export declare type WebRtcServerListenInfo = {
+export type WebRtcServerListenInfo = {
     /**
      * Network protocol.
      */
@@ -21,7 +21,7 @@ export declare type WebRtcServerListenInfo = {
      */
     port?: number;
 };
-export declare type WebRtcServerOptions = {
+export type WebRtcServerOptions = {
     /**
      * Listen infos.
      */
@@ -31,16 +31,16 @@ export declare type WebRtcServerOptions = {
      */
     appData?: Record<string, unknown>;
 };
-export declare type WebRtcServerEvents = {
+export type WebRtcServerEvents = {
     workerclose: [];
     '@close': [];
 };
-export declare type WebRtcServerObserverEvents = {
+export type WebRtcServerObserverEvents = {
     close: [];
     webrtctransporthandled: [WebRtcTransport];
     webrtctransportunhandled: [WebRtcTransport];
 };
-declare type WebRtcServerInternal = {
+type WebRtcServerInternal = {
     webRtcServerId: string;
 };
 export declare class WebRtcServer extends EnhancedEventEmitter<WebRtcServerEvents> {

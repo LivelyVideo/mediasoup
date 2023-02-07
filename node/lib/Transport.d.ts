@@ -11,7 +11,7 @@ import { Consumer, ConsumerOptions } from './Consumer';
 import { DataProducer, DataProducerOptions } from './DataProducer';
 import { DataConsumer, DataConsumerOptions } from './DataConsumer';
 import { RtpCapabilities } from './RtpParameters';
-export declare type TransportListenIp = {
+export type TransportListenIp = {
     /**
      * Listening IPv4 or IPv6.
      */
@@ -25,8 +25,8 @@ export declare type TransportListenIp = {
 /**
  * Transport protocol.
  */
-export declare type TransportProtocol = 'udp' | 'tcp';
-export declare type TransportTuple = {
+export type TransportProtocol = 'udp' | 'tcp';
+export type TransportTuple = {
     localIp: string;
     localPort: number;
     remoteIp?: string;
@@ -36,11 +36,11 @@ export declare type TransportTuple = {
 /**
  * Valid types for 'trace' event.
  */
-export declare type TransportTraceEventType = 'probation' | 'bwe';
+export type TransportTraceEventType = 'probation' | 'bwe';
 /**
  * 'trace' event data.
  */
-export declare type TransportTraceEventData = {
+export type TransportTraceEventData = {
     /**
      * Trace type.
      */
@@ -58,8 +58,8 @@ export declare type TransportTraceEventData = {
      */
     info: any;
 };
-export declare type SctpState = 'new' | 'connecting' | 'connected' | 'failed' | 'closed';
-export declare type TransportEvents = {
+export type SctpState = 'new' | 'connecting' | 'connected' | 'failed' | 'closed';
+export type TransportEvents = {
     routerclose: [];
     listenserverclose: [];
     trace: [TransportTraceEventData];
@@ -70,7 +70,7 @@ export declare type TransportEvents = {
     '@dataproducerclose': [DataProducer];
     '@listenserverclose': [];
 };
-export declare type TransportObserverEvents = {
+export type TransportObserverEvents = {
     close: [];
     newproducer: [Producer];
     newconsumer: [Consumer];
@@ -78,7 +78,7 @@ export declare type TransportObserverEvents = {
     newdataconsumer: [DataConsumer];
     trace: [TransportTraceEventData];
 };
-export declare type TransportConstructorOptions = {
+export type TransportConstructorOptions = {
     internal: TransportInternal;
     data: TransportData;
     channel: Channel;
@@ -88,10 +88,10 @@ export declare type TransportConstructorOptions = {
     getProducerById: (producerId: string) => Producer | undefined;
     getDataProducerById: (dataProducerId: string) => DataProducer | undefined;
 };
-export declare type TransportInternal = RouterInternal & {
+export type TransportInternal = RouterInternal & {
     transportId: string;
 };
-declare type TransportData = WebRtcTransportData | PlainTransportData | PipeTransportData | DirectTransportData;
+type TransportData = WebRtcTransportData | PlainTransportData | PipeTransportData | DirectTransportData;
 export declare class Transport<Events extends TransportEvents = TransportEvents, ObserverEvents extends TransportObserverEvents = TransportObserverEvents> extends EnhancedEventEmitter<Events> {
     #private;
     protected readonly internal: TransportInternal;

@@ -3,28 +3,28 @@ import { Channel } from './Channel';
 import { PayloadChannel } from './PayloadChannel';
 import { RouterInternal } from './Router';
 import { Producer } from './Producer';
-export declare type RtpObserverEvents = {
+export type RtpObserverEvents = {
     routerclose: [];
     '@close': [];
 };
-export declare type RtpObserverObserverEvents = {
+export type RtpObserverObserverEvents = {
     close: [];
     pause: [];
     resume: [];
     addproducer: [Producer];
     removeproducer: [Producer];
 };
-export declare type RtpObserverConstructorOptions = {
+export type RtpObserverConstructorOptions = {
     internal: RtpObserverObserverInternal;
     channel: Channel;
     payloadChannel: PayloadChannel;
     appData?: Record<string, unknown>;
     getProducerById: (producerId: string) => Producer | undefined;
 };
-export declare type RtpObserverObserverInternal = RouterInternal & {
+export type RtpObserverObserverInternal = RouterInternal & {
     rtpObserverId: string;
 };
-export declare type RtpObserverAddRemoveProducerOptions = {
+export type RtpObserverAddRemoveProducerOptions = {
     /**
      * The id of the Producer to be added or removed.
      */

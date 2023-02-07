@@ -4,7 +4,7 @@ import { Channel } from './Channel';
 import { PayloadChannel } from './PayloadChannel';
 import { TransportInternal } from './Transport';
 import { SctpStreamParameters } from './SctpParameters';
-export declare type DataConsumerOptions = {
+export type DataConsumerOptions = {
     /**
      * The id of the DataProducer to consume.
      */
@@ -35,7 +35,7 @@ export declare type DataConsumerOptions = {
      */
     appData?: Record<string, unknown>;
 };
-export declare type DataConsumerStat = {
+export type DataConsumerStat = {
     type: string;
     timestamp: number;
     label: string;
@@ -47,8 +47,8 @@ export declare type DataConsumerStat = {
 /**
  * DataConsumer type.
  */
-export declare type DataConsumerType = 'sctp' | 'direct';
-export declare type DataConsumerEvents = {
+export type DataConsumerType = 'sctp' | 'direct';
+export type DataConsumerEvents = {
     transportclose: [];
     dataproducerclose: [];
     message: [Buffer, number];
@@ -57,13 +57,13 @@ export declare type DataConsumerEvents = {
     '@close': [];
     '@dataproducerclose': [];
 };
-export declare type DataConsumerObserverEvents = {
+export type DataConsumerObserverEvents = {
     close: [];
 };
-declare type DataConsumerInternal = TransportInternal & {
+type DataConsumerInternal = TransportInternal & {
     dataConsumerId: string;
 };
-declare type DataConsumerData = {
+type DataConsumerData = {
     dataProducerId: string;
     type: DataConsumerType;
     sctpStreamParameters?: SctpStreamParameters;

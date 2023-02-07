@@ -4,7 +4,7 @@ import { Channel } from './Channel';
 import { PayloadChannel } from './PayloadChannel';
 import { TransportInternal } from './Transport';
 import { SctpStreamParameters } from './SctpParameters';
-export declare type DataProducerOptions = {
+export type DataProducerOptions = {
     /**
      * DataProducer id (just for Router.pipeToRouter() method).
      */
@@ -27,7 +27,7 @@ export declare type DataProducerOptions = {
      */
     appData?: Record<string, unknown>;
 };
-export declare type DataProducerStat = {
+export type DataProducerStat = {
     type: string;
     timestamp: number;
     label: string;
@@ -38,18 +38,18 @@ export declare type DataProducerStat = {
 /**
  * DataProducer type.
  */
-export declare type DataProducerType = 'sctp' | 'direct';
-export declare type DataProducerEvents = {
+export type DataProducerType = 'sctp' | 'direct';
+export type DataProducerEvents = {
     transportclose: [];
     '@close': [];
 };
-export declare type DataProducerObserverEvents = {
+export type DataProducerObserverEvents = {
     close: [];
 };
-declare type DataProducerInternal = TransportInternal & {
+type DataProducerInternal = TransportInternal & {
     dataProducerId: string;
 };
-declare type DataProducerData = {
+type DataProducerData = {
     type: DataProducerType;
     sctpStreamParameters?: SctpStreamParameters;
     label: string;

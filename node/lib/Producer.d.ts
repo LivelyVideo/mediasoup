@@ -4,7 +4,7 @@ import { Channel } from './Channel';
 import { PayloadChannel } from './PayloadChannel';
 import { TransportInternal } from './Transport';
 import { MediaKind, RtpParameters } from './RtpParameters';
-export declare type ProducerOptions = {
+export type ProducerOptions = {
     /**
      * Producer id (just for Router.pipeToRouter() method).
      */
@@ -34,11 +34,11 @@ export declare type ProducerOptions = {
 /**
  * Valid types for 'trace' event.
  */
-export declare type ProducerTraceEventType = 'rtp' | 'keyframe' | 'nack' | 'pli' | 'fir';
+export type ProducerTraceEventType = 'rtp' | 'keyframe' | 'nack' | 'pli' | 'fir';
 /**
  * 'trace' event data.
  */
-export declare type ProducerTraceEventData = {
+export type ProducerTraceEventData = {
     /**
      * Trace type.
      */
@@ -56,7 +56,7 @@ export declare type ProducerTraceEventData = {
      */
     info: any;
 };
-export declare type ProducerScore = {
+export type ProducerScore = {
     /**
      * SSRC of the RTP stream.
      */
@@ -70,7 +70,7 @@ export declare type ProducerScore = {
      */
     score: number;
 };
-export declare type ProducerVideoOrientation = {
+export type ProducerVideoOrientation = {
     /**
      * Whether the source is a video camera.
      */
@@ -84,7 +84,7 @@ export declare type ProducerVideoOrientation = {
      */
     rotation: number;
 };
-export declare type ProducerStat = {
+export type ProducerStat = {
     type: string;
     timestamp: number;
     ssrc: number;
@@ -113,15 +113,15 @@ export declare type ProducerStat = {
 /**
  * Producer type.
  */
-export declare type ProducerType = 'simple' | 'simulcast' | 'svc';
-export declare type ProducerEvents = {
+export type ProducerType = 'simple' | 'simulcast' | 'svc';
+export type ProducerEvents = {
     transportclose: [];
     score: [ProducerScore[]];
     videoorientationchange: [ProducerVideoOrientation];
     trace: [ProducerTraceEventData];
     '@close': [];
 };
-export declare type ProducerObserverEvents = {
+export type ProducerObserverEvents = {
     close: [];
     pause: [];
     resume: [];
@@ -129,10 +129,10 @@ export declare type ProducerObserverEvents = {
     videoorientationchange: [ProducerVideoOrientation];
     trace: [ProducerTraceEventData];
 };
-declare type ProducerInternal = TransportInternal & {
+type ProducerInternal = TransportInternal & {
     producerId: string;
 };
-declare type ProducerData = {
+type ProducerData = {
     kind: MediaKind;
     rtpParameters: RtpParameters;
     type: ProducerType;
