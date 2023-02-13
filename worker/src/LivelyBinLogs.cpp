@@ -250,8 +250,8 @@ int StatsBinLog::LogOpen()
 {
   int ret = 0;
 
-  this->fd = std::fopen(this->bin_log_file_path.c_str(), "a");
-  if (!this->fd)
+  // Check that binlog directories are in place, try to restore them if not, then open fd
+  if (!CreateBinlogDirsIfMissing() || !(this->fd = std::fopen(this->bin_log_file_path.c_str(), "a")))
   {
     MS_WARN_TAG(
       rtp,
@@ -315,7 +315,8 @@ void StatsBinLog::LogClose()
     auto logname = this->bin_log_file_path.substr(found + 1);
     auto dst = bin_log_done_dir;
     dst.append(logname);
-    if (std::rename(this->bin_log_file_path.c_str(), dst.c_str()))
+    
+    if (!CreateBinlogDirsIfMissing() || std::rename(this->bin_log_file_path.c_str(), dst.c_str()))
     {
       MS_WARN_TAG(rtp, "failed to move %s to %s", this->bin_log_file_path.c_str(), bin_log_done_dir.c_str());
     }
@@ -392,6 +393,8 @@ int StatsBinLog::OnLogWrite(CallStatsRecordCtx* ctx)
 }
 
 
+// If Settings::configuration.logBinStatsPath does not exist and can't be created, then disable stats collection: Settings::configuration.logBinStatsDisabled = true;
+// If subdirectories creation fails then we will keep trying again because automated scripts may delete empty directories during runtime
 bool StatsBinLog::CreateBinlogDirsIfMissing()
 {
   std::string bin_log_dir      = Settings::configuration.logBinStatsPath + "/bin/";
@@ -400,6 +403,33 @@ bool StatsBinLog::CreateBinlogDirsIfMissing()
   
   struct stat info;
   int ret = 0;
+
+  if (Settings::configuration.logBinStatsDisabled)
+    return false;
+  
+  if( stat( Settings::configuration.logBinStatsPath.c_str(), &info ) != 0 )
+  {
+    if (errno == ENOENT)
+    {
+      ret = mkdir(bin_log_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+      if (ret != 0 && errno != EEXIST)
+      {
+        MS_WARN_TAG(rtp, "failed to create top folder %s for binlog files management: %s, disabling stats collection", Settings::configuration.logBinStatsPath.c_str(), std::strerror(errno));
+        Settings::configuration.logBinStatsDisabled = true;
+        return false;
+      }
+    }
+  }
+  else
+  {
+    if (!S_ISDIR(info.st_mode))
+    {
+      MS_WARN_TAG(rtp, "found %s but it is not a directory, disabling stats collection", Settings::configuration.logBinStatsPath.c_str());
+      Settings::configuration.logBinStatsDisabled = true;
+      return false;
+    }
+  }
+
   if( stat( bin_log_dir.c_str(), &info ) != 0 )
   {
     if (errno == ENOENT)
@@ -470,6 +500,8 @@ bool StatsBinLog::CreateBinlogDirsIfMissing()
 
 void StatsBinLog::InitLog(char type, std::string id1, std::string id2)
 {
+  this->initialized = false;
+  
   if (Settings::configuration.logBinStatsDisabled)
     return;
 
@@ -477,6 +509,7 @@ void StatsBinLog::InitLog(char type, std::string id1, std::string id2)
   //sizeof("/var/log/sfu/bin/current/ms_p_00000000-0000-0000-0000-000000000000_00000000-0000-0000-0000-000000000000_1652210519459.123abc.bin") * 2
   char tmp[FILENAME_LEN_MAX];
   std::memset(tmp, '\0', FILENAME_LEN_MAX);
+  
   switch(type)
   {
     case 'c':
@@ -501,12 +534,9 @@ void StatsBinLog::InitLog(char type, std::string id1, std::string id2)
   this->log_start_ts = now;
   UpdateLogName();
 
-  //MS_ASSERT(CreateBinlogDirsIfMissing(), "Cannot create binlog directories!");
-  if (!CreateBinlogDirsIfMissing())
-  {
-    MS_WARN_TAG(rtp, "Cannot create binlog directories under %s, disabling stats collection", Settings::configuration.logBinStatsPath.c_str());
-    Settings::configuration.logBinStatsDisabled = true;
-  }
+  CreateBinlogDirsIfMissing();
+  if (Settings::configuration.logBinStatsDisabled)
+    return;
 
   this->sampling_interval = CALL_STATS_BIN_LOG_SAMPLING;
   this->initialized = true;
