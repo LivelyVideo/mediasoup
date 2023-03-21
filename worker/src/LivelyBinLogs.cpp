@@ -339,9 +339,12 @@ int StatsBinLog::OnLogWrite(CallStatsRecordCtx* ctx)
   if (!this->initialized)
     return ret;
 
-  if (now - this->log_start_ts > DAY_IN_MS)
+  // Rotate log if it has been around for more than a day, or at the end of the day
+  if (now - this->log_start_ts > DAY_IN_MS
+      || now > next_day_start_ts)
   {
     this->log_start_ts = now;
+    this->next_day_start_ts = ((now / DAY_IN_MS) + 1) * DAY_IN_MS;
     UpdateLogName();
     signal_set = true;
   }
@@ -532,6 +535,7 @@ void StatsBinLog::InitLog(char type, std::string id1, std::string id2)
 
   uint64_t now = Utils::Time::currentStdEpochMs();
   this->log_start_ts = now;
+  this->next_day_start_ts = ((now / DAY_IN_MS) + 1) * DAY_IN_MS;
   UpdateLogName();
 
   CreateBinlogDirsIfMissing();
@@ -558,6 +562,7 @@ void StatsBinLog::DeinitLog()
 
   this->initialized = false;
   this->log_start_ts = UINT64_UNSET;
+  this->next_day_start_ts = UINT64_UNSET;
   this->bin_log_name_template.clear();
   this->bin_log_file_path.clear();
 }
