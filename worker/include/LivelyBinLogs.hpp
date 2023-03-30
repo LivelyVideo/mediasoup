@@ -184,9 +184,9 @@ class CallStatsRecord
     std::string   bin_log_name_template;          // Log name template, use to rotate log, keep same name except for timestamp
     const char    version[7] = BINLOG_FORMAT_VERSION;
 
-    uint64_t      log_start_ts {UINT64_UNSET};      // Timestamp included into log's name; used to rotate logs daily
-    uint64_t      next_day_start_ts {UINT64_UNSET}; // Timestamp for start of the next day; rotate logs at the beginning of each day
-    uint64_t      log_last_ts {UINT64_UNSET};       // Timestamp of the last record in the log; various sources may share same logfile
+    uint64_t      log_start_ts {UINT64_UNSET};      // Timestamp included into log's name; used to discard short logs, may be used for log rotation based on time passed 
+    uint64_t      next_day_start_ts {UINT64_UNSET}; // Timestamp for start of the next day; used to rotate logs at the beginning of each day
+    uint64_t      log_last_ts {UINT64_UNSET};       // Timestamp of the last record in the log, various sources may share same logfile; used to discard short logs
 
   public:
     StatsBinLog() = default;
@@ -198,7 +198,7 @@ class CallStatsRecord
   private:
     int LogOpen();
     void LogClose();
-    void UpdateLogName();
+    void UpdateLogTimestamps(uint64_t now);
     bool CreateBinlogDirsIfMissing();
   };
 } //Lively

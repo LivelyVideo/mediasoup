@@ -265,7 +265,9 @@ int StatsBinLog::LogOpen()
   {
     MS_DEBUG_TAG(
       rtp,
-      "binlog opened '%s'", this->bin_log_file_path.c_str()
+      "binlog opened '%s' [next_day_start_ts: %" PRIu64 "]",
+      this->bin_log_file_path.c_str(),
+      this->next_day_start_ts
     );
   }
 
@@ -339,13 +341,12 @@ int StatsBinLog::OnLogWrite(CallStatsRecordCtx* ctx)
   if (!this->initialized)
     return ret;
 
-  // Rotate log if it has been around for more than a day, or at the end of the day
-  if (now - this->log_start_ts > DAY_IN_MS
-      || now > next_day_start_ts)
+  // Rotate logs at the end of the day.
+  // Log rotation based on their duration is disabled
+  // because desired logs duration is < DAY_IN_MS anyway
+  // if (now - this->log_start_ts > timespan_less_than_day_in_ms || ... to enable
+  if (now > this->next_day_start_ts)
   {
-    this->log_start_ts = now;
-    this->next_day_start_ts = ((now / DAY_IN_MS) + 1) * DAY_IN_MS;
-    UpdateLogName();
     signal_set = true;
   }
 
@@ -353,14 +354,13 @@ int StatsBinLog::OnLogWrite(CallStatsRecordCtx* ctx)
   {
     if (this->fd)
     {
-      std::fclose(this->fd);
-      this->fd = 0;
+      LogClose();
     }
-
-    if (this->initialized)
+    if (signal_set)
     {
-      LogOpen();
+      UpdateLogTimestamps(now);
     }
+    LogOpen();
   }
 
   if (!this->fd)
@@ -385,10 +385,11 @@ int StatsBinLog::OnLogWrite(CallStatsRecordCtx* ctx)
       ret = errno;
       std::fclose(this->fd);
       this->fd = 0;
+      LogClose(); // must still call LogClose() to copy this log file into "done" directory
     }
     else
     {
-      this->log_last_ts = ctx->LastTs(); // to tell later if the binlog is too short to be valuable
+      this->log_last_ts = ctx->LastTs();
     }
     std::fflush(this->fd);
   }
@@ -534,9 +535,7 @@ void StatsBinLog::InitLog(char type, std::string id1, std::string id2)
   }
 
   uint64_t now = Utils::Time::currentStdEpochMs();
-  this->log_start_ts = now;
-  this->next_day_start_ts = ((now / DAY_IN_MS) + 1) * DAY_IN_MS;
-  UpdateLogName();
+  UpdateLogTimestamps(now);
 
   CreateBinlogDirsIfMissing();
   if (Settings::configuration.logBinStatsDisabled)
@@ -547,10 +546,15 @@ void StatsBinLog::InitLog(char type, std::string id1, std::string id2)
 }
 
 
-void StatsBinLog::UpdateLogName()
+void StatsBinLog::UpdateLogTimestamps(uint64_t now)
 {
   char buff[100];
   memset(buff, '\0', 100);
+
+  this->log_start_ts = now;
+
+  this->next_day_start_ts = ((now / DAY_IN_MS) + 1) * DAY_IN_MS;
+
   sprintf(buff, this->bin_log_name_template.c_str(), this->log_start_ts);
   this->bin_log_file_path.assign(buff);
 }
@@ -560,9 +564,12 @@ void StatsBinLog::DeinitLog()
 {
   LogClose();
 
-  this->initialized = false;
-  this->log_start_ts = UINT64_UNSET;
+  this->initialized       = false;
+  
+  this->log_start_ts      = UINT64_UNSET;
   this->next_day_start_ts = UINT64_UNSET;
+  this->log_last_ts       = UINT64_UNSET;
+
   this->bin_log_name_template.clear();
   this->bin_log_file_path.clear();
 }
