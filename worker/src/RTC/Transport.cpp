@@ -734,7 +734,7 @@ namespace RTC
 				SetNewProducerIdFromData(request->data, producerId);
 
 				// This may throw.
-				auto* producer = new RTC::Producer(producerId, this, request->data, &lively);
+				auto* producer = new RTC::Producer(producerId, this, request->data, this->producerBinLogEnabled, &lively);
 				
 				// Insert the Producer into the RtpListener.
 				// This may throw. If so, delete the Producer and throw.

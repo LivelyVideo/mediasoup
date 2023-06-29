@@ -32,7 +32,8 @@ namespace RTC
 
 	/* Instance methods. */
 
-	Producer::Producer(const std::string& id, RTC::Producer::Listener* listener, json& data, Lively::AppData* appData)
+	Producer::Producer(
+	        const std::string& id, RTC::Producer::Listener* listener, json& data, bool producerBinLogEnabled, Lively::AppData* appData)
 	  : id(id), listener(listener)
 	{
 		MS_TRACE();
@@ -65,13 +66,17 @@ namespace RTC
 		lively.id = id;
 		this->appData = lively.ToStr();
 
-		if (lively.callId.empty())
-			MS_WARN_TAG(rtp, "Missing callId, cannot init producer binlog [id: %s] [data: %s]", lively.id.c_str(), data.dump().c_str());
-		else
-		{
-			MS_DEBUG_TAG(rtp, "XXXXX creating producer bin log. lively=%s", lively.ToStr().c_str());
+		if (producerBinLogEnabled) {
+	        if (lively.callId.empty())
+	            MS_WARN_TAG(rtp, "Missing callId, cannot init producer binlog [id: %s] [data: %s]", lively.id.c_str(), data.dump().c_str());
+	        else
+	        {
+	            MS_DEBUG_TAG(rtp, "XXXXX creating producer bin log. lively=%s", lively.ToStr().c_str());
 
-			this->binLog.InitLog('p', lively.callId, lively.id);
+	            this->binLog.InitLog('p', lively.callId, lively.id);
+	        }
+		} else {
+            MS_DEBUG_TAG(rtp, "XXXXX producer bin log is disabled. lively=%s", lively.ToStr().c_str());
 		}
 		
 		// This may throw.
@@ -504,7 +509,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		if (Settings::configuration.logBinStatsDisabled)
+		if (Settings::configuration.logBinStatsDisabled || !binLog.IsInitialized())
 			return;
 
 		if (this->rtpStreamByEncodingIdx.size() != 1)

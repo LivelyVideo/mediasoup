@@ -34,6 +34,8 @@ namespace RTC
 	{
 		MS_TRACE();
 
+		producerBinLogEnabled = true;
+
 		bool enableUdp{ true };
 		auto jsonEnableUdpIt = data.find("enableUdp");
 
@@ -257,6 +259,8 @@ namespace RTC
 	    webRtcTransportListener(webRtcTransportListener), iceCandidates(iceCandidates)
 	{
 		MS_TRACE();
+
+		producerBinLogEnabled = true;
 
 		try
 		{
