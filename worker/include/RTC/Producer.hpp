@@ -94,7 +94,7 @@ namespace RTC
 		};
 
 	public:
-		Producer(const std::string& id, RTC::Producer::Listener* listener, json& data, Lively::AppData* appData = nullptr);
+		Producer(const std::string& id, RTC::Producer::Listener* listener, json& data, bool producerBinLogEnabled, Lively::AppData* appData = nullptr);
 		virtual ~Producer();
 
 	public:

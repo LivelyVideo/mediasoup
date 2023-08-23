@@ -298,11 +298,13 @@ namespace RTC
 		std::string appData;
 	
 	// binary log stuff
-	private:
+	protected:
 		Lively::AppData lively;
 		
 		Timer* binLogTimer{ nullptr };
 		Lively::StatsBinLog consumersBinLog;
+
+		bool producerBinLogEnabled{false};
 
 		bool AddCallStatsSample(); // adds a new record, tells the caller if it's ready to write data out
 

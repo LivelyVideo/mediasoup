@@ -30,6 +30,8 @@ constexpr uint8_t hexVal[256] = {
     0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 };
 
+#define FILENAME_LEN_MAX                    1024
+#define DAY_IN_MS           ((uint64_t)86400000)
 
 CallStatsRecord::CallStatsRecord(uint64_t type, uint16_t ssrc, uint8_t payload, char content, std::string callId, std::string obj, std::string producer)
   : type(type), call_id(callId), object_id(obj), producer_id(producer)
@@ -314,17 +316,21 @@ void StatsBinLog::LogClose()
   }
   else
   {
+    char tmp[FILENAME_LEN_MAX];
     auto logname = this->bin_log_file_path.substr(found + 1);
-    auto dst = bin_log_done_dir;
-    dst.append(logname);
+    uint64_t now = Utils::Time::currentStdEpochMs();
+    snprintf(tmp, sizeof(tmp), "%s/bin/done/%s.%" PRIu64,
+            Settings::configuration.logBinStatsPath.c_str(),
+            logname.c_str(),
+            now/1000);
     
-    if (!CreateBinlogDirsIfMissing() || std::rename(this->bin_log_file_path.c_str(), dst.c_str()))
+    if (!CreateBinlogDirsIfMissing() || std::rename(this->bin_log_file_path.c_str(), tmp))
     {
-      MS_WARN_TAG(rtp, "failed to move %s to %s", this->bin_log_file_path.c_str(), bin_log_done_dir.c_str());
+      MS_WARN_TAG(rtp, "failed to move %s to %s", this->bin_log_file_path.c_str(), tmp);
     }
     else
     {
-      MS_DEBUG_TAG(rtp, "moved binlog %s to %s", this->bin_log_file_path.c_str(), bin_log_done_dir.c_str());
+      MS_DEBUG_TAG(rtp, "moved binlog %s to %s", this->bin_log_file_path.c_str(), tmp);
     }
   }
 }
@@ -332,7 +338,6 @@ void StatsBinLog::LogClose()
 
 int StatsBinLog::OnLogWrite(CallStatsRecordCtx* ctx)
 {
-  #define DAY_IN_MS (uint64_t)86400000
   int ret = 0;
   bool signal_set = false;
 
@@ -348,6 +353,22 @@ int StatsBinLog::OnLogWrite(CallStatsRecordCtx* ctx)
   if (now > this->next_day_start_ts)
   {
     signal_set = true;
+  }
+
+  if(this->fd && ctx && (ctx->record.filled() || signal_set))
+  {
+    if (!ctx->record.fwriteRecord(this->fd))
+    {
+      ret = errno;
+      std::fclose(this->fd);
+      this->fd = 0;
+      LogClose(); // must still call LogClose() to copy this log file into "done" directory
+    }
+    else
+    {
+      this->log_last_ts = ctx->LastTs();
+    }
+    std::fflush(this->fd);
   }
 
   if(signal_set || !this->fd)
@@ -378,21 +399,6 @@ int StatsBinLog::OnLogWrite(CallStatsRecordCtx* ctx)
     );
   }
 
-  if(this->fd && ctx && ctx->record.filled())
-  {
-    if (!ctx->record.fwriteRecord(this->fd))
-    {
-      ret = errno;
-      std::fclose(this->fd);
-      this->fd = 0;
-      LogClose(); // must still call LogClose() to copy this log file into "done" directory
-    }
-    else
-    {
-      this->log_last_ts = ctx->LastTs();
-    }
-    std::fflush(this->fd);
-  }
   return ret;
 }
 
@@ -509,7 +515,7 @@ void StatsBinLog::InitLog(char type, std::string id1, std::string id2)
   if (Settings::configuration.logBinStatsDisabled)
     return;
 
-  #define FILENAME_LEN_MAX 1024 
+
   //sizeof("/var/log/sfu/bin/current/ms_p_00000000-0000-0000-0000-000000000000_00000000-0000-0000-0000-000000000000_1652210519459.123abc.bin") * 2
   char tmp[FILENAME_LEN_MAX];
   std::memset(tmp, '\0', FILENAME_LEN_MAX);

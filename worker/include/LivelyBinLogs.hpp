@@ -191,6 +191,7 @@ class CallStatsRecord
   public:
     StatsBinLog() = default;
 
+    bool IsInitialized() {return initialized;}
     void InitLog(char type, std::string id1, std::string id2); // if type is producer, then log name is a combo of callid, producerid and timestamp
     int OnLogWrite(CallStatsRecordCtx* ctx);
     void DeinitLog();   // Closes log file and deinitializes state variables
