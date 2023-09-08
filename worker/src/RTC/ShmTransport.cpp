@@ -386,7 +386,7 @@ namespace RTC
 	}
 
 
-	void ShmTransport::HandleNotification(PayloadChannel::Notification* notification)
+	void ShmTransport::HandleNotification(PayloadChannel::PayloadChannelNotification* notification)
 	{
 		MS_TRACE();
 
