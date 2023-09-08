@@ -246,7 +246,7 @@ namespace RTC
 	}
 
 
-	void ShmConsumer::SendRtpPacket(RTC::RtpPacket* packet)
+	void ShmConsumer::SendRtpPacket(RTC::RtpPacket* packet, std::shared_ptr<RTC::RtpPacket>& sharedPacket)
 	{
 		MS_TRACE();
 
@@ -264,7 +264,7 @@ namespace RTC
 
 		// NOTE: This may happen if this Consumer supports just some codecs of those
 		// in the corresponding Producer.
-		if (this->supportedCodecPayloadTypes.find(payloadType) == this->supportedCodecPayloadTypes.end())
+		if (!this->supportedCodecPayloadTypes[payloadType])
 		{
 			MS_WARN_TAG_LIVELYAPP(rtp, this->appData, "payload type not supported [payloadType:%" PRIu8 "]", payloadType);
 
@@ -357,7 +357,7 @@ namespace RTC
 		}
 
 		// Process the packet. In case of shm writer this logic is still needed for NACKs
-		if (this->rtpStream->ReceivePacket(packet))
+		if (this->rtpStream->ReceivePacket(packet, sharedPacket))
 		{
 			// Send the packet.
 			this->listener->OnConsumerSendRtpPacket(this, packet);
@@ -694,20 +694,20 @@ namespace RTC
 	}
 
 
-	void ShmConsumer::GetRtcp(
-	  RTC::RTCP::CompoundPacket* packet, RTC::RtpStreamSend* rtpStream, uint64_t nowMs)
+	bool ShmConsumer::GetRtcp(
+	  RTC::RTCP::CompoundPacket* packet, uint64_t nowMs)
 	{
 		MS_TRACE();
 
 		MS_ASSERT(rtpStream == this->rtpStream, "RTP stream does not match");
 
 		if (static_cast<float>((nowMs - this->lastRtcpSentTime) * 1.15) < this->maxRtcpInterval)
-			return;
+			return true;
 
 		auto* report = this->rtpStream->GetRtcpSenderReport(nowMs);
 
 		if (!report)
-			return;
+			return true;
 
 		packet->AddSenderReport(report);
 
@@ -717,6 +717,8 @@ namespace RTC
 		packet->AddSdesChunk(sdesChunk);
 
 		this->lastRtcpSentTime = nowMs;
+
+		return true;
 	}
 
 	void ShmConsumer::NeedWorstRemoteFractionLost(
@@ -787,6 +789,12 @@ namespace RTC
 		this->rtpStream->ReceiveRtcpReceiverReport(report);
 	}
 
+    void ShmConsumer::ReceiveRtcpXrReceiverReferenceTime(RTC::RTCP::ReceiverReferenceTime* report)
+    {
+        MS_TRACE();
+
+        this->rtpStream->ReceiveRtcpXrReceiverReferenceTime(report);
+    }
 
 	uint32_t ShmConsumer::GetTransmissionRate(uint64_t nowMs)
 	{
@@ -897,7 +905,7 @@ namespace RTC
 		// Create a RtpStreamSend for sending a single media stream.
 		size_t bufferSize = params.useNack ? 600u : 0u;
 
-		this->rtpStream = new RTC::RtpStreamSend(this, params, bufferSize);
+		this->rtpStream = new RTC::RtpStreamSend(this, params, this->rtpParameters.mid);
 		this->rtpStreams.push_back(this->rtpStream);
 
 		// If the Consumer is paused, tell the RtpStreamSend.

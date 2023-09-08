@@ -66,13 +66,17 @@ namespace RTC
 		void ApplyLayers() override;
 		uint32_t GetDesiredBitrate() const override;
 
-		void SendRtpPacket(RTC::RtpPacket* packet) override;
-		void GetRtcp(RTC::RTCP::CompoundPacket* packet, RTC::RtpStreamSend* rtpStream, uint64_t now) override;
-		std::vector<RTC::RtpStreamSend*> GetRtpStreams() override;
+		void SendRtpPacket(RTC::RtpPacket* packet, std::shared_ptr<RTC::RtpPacket>& sharedPacket) override;
+		bool GetRtcp(RTC::RTCP::CompoundPacket* packet, uint64_t now) override;
+        const std::vector<RTC::RtpStreamSend*>& GetRtpStreams() const override
+        {
+            return this->rtpStreams;
+        }
 		void NeedWorstRemoteFractionLost(uint32_t mappedSsrc, uint8_t& worstRemoteFractionLost) override;
 		void ReceiveNack(RTC::RTCP::FeedbackRtpNackPacket* nackPacket) override;
 		void ReceiveKeyFrameRequest(RTC::RTCP::FeedbackPs::MessageType messageType, uint32_t ssrc) override;
 		void ReceiveRtcpReceiverReport(RTC::RTCP::ReceiverReport* report) override;
+		void ReceiveRtcpXrReceiverReferenceTime(RTC::RTCP::ReceiverReferenceTime* report) override;
 		uint32_t GetTransmissionRate(uint64_t now) override;
 		float GetRtt() const override;
 		uint32_t GetBitrate(uint64_t nowMs);
@@ -139,11 +143,6 @@ namespace RTC
 	inline bool ShmConsumer::IsActive() const
 	{
 		return (RTC::Consumer::IsActive() && this->producerRtpStream);
-	}
-
-	inline std::vector<RTC::RtpStreamSend*> ShmConsumer::GetRtpStreams()
-	{
-		return this->rtpStreams;
 	}
 
 	/* Copied from RtpStreamSend */
