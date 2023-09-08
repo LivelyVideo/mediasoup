@@ -775,12 +775,14 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 			throw new TypeError('wrong listenIp');
 		}
 
+		const transportId = uuidv4()
+		const internal = { ...this.#internal, transportId: transportId };
 		const reqData = {
-			transportId : uuidv4(),
+			transportId : transportId,
 			listenIp,
 			shm,
 			log,
-			appData,
+			appData
 		};
 
 		/*
