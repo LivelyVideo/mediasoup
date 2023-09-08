@@ -130,7 +130,7 @@ switch (task)
 			execute('node npm-scripts.js worker:build');
 			execute(`${MAKE} bingrep -C worker`);
 			// Clean build artifacts except `mediasoup-worker`.
-			execute(`${MAKE} clean-build -C worker`);
+			// execute(`${MAKE} clean-build -C worker`);
 			// Clean downloaded dependencies.
 			execute(`${MAKE} clean-subprojects -C worker`);
 			// Clean PIP/Meson/Ninja.

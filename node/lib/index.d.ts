@@ -9,7 +9,7 @@ export { types };
 /**
  * Expose mediasoup version.
  */
-export declare const version = "3.11.3-lv6-notranscode";
+export declare const version = "3.11.4-lv6";
 /**
  * Expose parseScalabilityMode() function.
  */
