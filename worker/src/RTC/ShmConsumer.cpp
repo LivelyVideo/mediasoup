@@ -2,6 +2,7 @@
 // #define MS_LOG_DEV
 
 #include "RTC/ShmConsumer.hpp"
+#include "ChannelMessageHandlers.hpp"
 #include "DepLibUV.hpp"
 #include "Logger.hpp"
 #include "MediaSoupErrors.hpp"
@@ -11,7 +12,6 @@
 #include "RTC/RtpStreamRecv.hpp"
 #include "Lively.hpp"
 #include "LivelyAppDataToJson.hpp"
-
 
 namespace RTC
 {
@@ -82,15 +82,45 @@ namespace RTC
 
 		CreateRtpStream();
 
+        // Create the encoding context for Opus.
+        if (
+          mediaCodec->mimeType.type == RTC::RtpCodecMimeType::Type::AUDIO &&
+          (mediaCodec->mimeType.subtype == RTC::RtpCodecMimeType::Subtype::OPUS ||
+           mediaCodec->mimeType.subtype == RTC::RtpCodecMimeType::Subtype::MULTIOPUS))
+        {
+            RTC::Codecs::EncodingContext::Params params;
+
+            this->encodingContext.reset(
+              RTC::Codecs::Tools::GetEncodingContext(mediaCodec->mimeType, params));
+
+            auto jsonIgnoreDtx = data.find("ignoreDtx");
+
+            if (jsonIgnoreDtx != data.end() && jsonIgnoreDtx->is_boolean())
+            {
+                auto ignoreDtx = jsonIgnoreDtx->get<bool>();
+
+                this->encodingContext->SetIgnoreDtx(ignoreDtx);
+            }
+        }
+
 		this->shmIdleCheckTimer = new Timer(this);
 		this->shmIdleCheckTimer->Start(ShmIdleCheckInterval);
 
 		this->shmCtx->ResetShmMediaStatsAndQueue((this->GetKind() == RTC::Media::Kind::AUDIO) ? DepLibSfuShm::Media::AUDIO : DepLibSfuShm::Media::VIDEO);
+
+        // NOTE: This may throw.
+        ChannelMessageHandlers::RegisterHandler(
+          this->id,
+          /*channelRequestHandler*/ this,
+          /*payloadChannelRequestHandler*/ nullptr,
+          /*payloadChannelNotificationHandler*/ nullptr);
 	}
 
 	ShmConsumer::~ShmConsumer()
 	{
 		MS_TRACE();
+
+		ChannelMessageHandlers::UnregisterHandler(this->id);
 
 		delete this->rtpStream;
 		delete this->shmIdleCheckTimer;
@@ -270,6 +300,22 @@ namespace RTC
 
 			return;
 		}
+
+		bool marker;
+
+        // Process the payload if needed. Drop packet if necessary.
+        if (this->encodingContext && !packet->ProcessPayload(this->encodingContext.get(), marker))
+        {
+            MS_DEBUG_DEV(
+              "discarding packet [ssrc:%" PRIu32 ", seq:%" PRIu16 ", ts:%" PRIu32 "]",
+              packet->GetSsrc(),
+              packet->GetSequenceNumber(),
+              packet->GetTimestamp());
+
+            this->rtpSeqManager.Drop(packet->GetSequenceNumber());
+
+            return;
+        }
 
 		// If we need to sync, support key frames but this pkt is not a key frame,
 		// do not write it into shm,
@@ -695,30 +741,40 @@ namespace RTC
 
 
 	bool ShmConsumer::GetRtcp(
-	  RTC::RTCP::CompoundPacket* packet, uint64_t nowMs)
+	        RTC::RTCP::CompoundPacket* packet, uint64_t nowMs)
 	{
-		MS_TRACE();
+	    MS_TRACE();
 
-		MS_ASSERT(rtpStream == this->rtpStream, "RTP stream does not match");
+	    MS_ASSERT(rtpStream == this->rtpStream, "RTP stream does not match");
 
-		if (static_cast<float>((nowMs - this->lastRtcpSentTime) * 1.15) < this->maxRtcpInterval)
-			return true;
+	    if (static_cast<float>((nowMs - this->lastRtcpSentTime) * 1.15) < this->maxRtcpInterval)
+	        return true;
 
-		auto* report = this->rtpStream->GetRtcpSenderReport(nowMs);
+	    auto* senderReport = this->rtpStream->GetRtcpSenderReport(nowMs);
 
-		if (!report)
-			return true;
+	    if (!senderReport)
+	        return true;
 
-		packet->AddSenderReport(report);
+	    // Build SDES chunk for this sender.
+	    auto* sdesChunk = this->rtpStream->GetRtcpSdesChunk();
 
-		// Build SDES chunk for this sender.
-		auto* sdesChunk = this->rtpStream->GetRtcpSdesChunk();
+	    RTC::RTCP::DelaySinceLastRr* delaySinceLastRrReport{ nullptr };
 
-		packet->AddSdesChunk(sdesChunk);
+	    auto* dlrr = this->rtpStream->GetRtcpXrDelaySinceLastRr(nowMs);
 
-		this->lastRtcpSentTime = nowMs;
+	    if (dlrr)
+	    {
+	        delaySinceLastRrReport = new RTC::RTCP::DelaySinceLastRr();
+	        delaySinceLastRrReport->AddSsrcInfo(dlrr);
+	    }
 
-		return true;
+	    // RTCP Compound packet buffer cannot hold the data.
+	    if (!packet->Add(senderReport, sdesChunk, delaySinceLastRrReport))
+	        return false;
+
+	    this->lastRtcpSentTime = nowMs;
+
+	    return true;
 	}
 
 	void ShmConsumer::NeedWorstRemoteFractionLost(

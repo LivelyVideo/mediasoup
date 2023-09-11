@@ -10,6 +10,8 @@ const logger = new Logger_1.Logger('ShmTransport');
 class ShmTransport extends Transport_1.Transport {
     _shm;
     _log;
+    // Next MID for Consumers. It's converted into string when used.
+    #nextMidForConsumers = 0;
     /**
     * @private
      *
@@ -87,12 +89,14 @@ class ShmTransport extends Transport_1.Transport {
      *
      * @virtual
      */
-    async consume({ producerId, rtpCapabilities, paused = false, preferredLayers, pipe = false, appData = {} }) {
+    async consume({ producerId, rtpCapabilities, paused = false, mid, preferredLayers, ignoreDtx = false, pipe = false, appData }) {
         logger.debug('consume()');
         if (!producerId || typeof producerId !== 'string')
             throw new TypeError('missing producerId');
         else if (appData && typeof appData !== 'object')
             throw new TypeError('if given, appData must be an object');
+        else if (mid && (typeof mid !== 'string' || mid.length === 0))
+            throw new TypeError('if given, mid must be non empty string');
         // This may throw.
         ortc.validateRtpCapabilities(rtpCapabilities);
         const producer = this.getProducerById(producerId);
@@ -100,8 +104,22 @@ class ShmTransport extends Transport_1.Transport {
             throw Error(`Producer with id "${producerId}" not found`);
         // This may throw.
         const rtpParameters = ortc.getConsumerRtpParameters(producer.consumableRtpParameters, rtpCapabilities, pipe);
-        // Skipped MID, see in Transport.ts: rtpParameters.mid = `${this._nextMidForConsumers++}`;
-        const internal = { ...this.internal, consumerId: (0, uuid_1.v4)(), producerId };
+        // Set MID.
+        if (!pipe) {
+            if (mid) {
+                rtpParameters.mid = mid;
+            }
+            else {
+                rtpParameters.mid = `${this.#nextMidForConsumers++}`;
+                // We use up to 8 bytes for MID (string).
+                if (this.#nextMidForConsumers === 100000000) {
+                    logger.error(`consume() | reaching max MID value "${this.#nextMidForConsumers}"`);
+                    this.#nextMidForConsumers = 0;
+                }
+            }
+        }
+        const consumerId = (0, uuid_1.v4)();
+        const internal = { ...this.internal, consumerId, producerId };
         const shmData = appData ?
             {
                 shm: (appData.shm !== undefined) ? appData.shm : {},
@@ -109,6 +127,8 @@ class ShmTransport extends Transport_1.Transport {
             }
             : {};
         const reqData = {
+            consumerId,
+            producerId,
             kind: producer.kind,
             rtpParameters,
             type: 'shm',
@@ -117,6 +137,7 @@ class ShmTransport extends Transport_1.Transport {
             paused,
             preferredLayers,
             appData,
+            ignoreDtx,
         };
         const status = await this.channel.request('transport.consume', this.internal.transportId, reqData);
         const data = {

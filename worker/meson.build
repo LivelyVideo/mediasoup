@@ -287,6 +287,7 @@ libmediasoup_worker = library(
 #transcode_sources = common_sources + [
 #  'src/main.cpp',
 #  'src/DepLibSfuShm.cpp',
+#  'src/LivelyBinLogs.cpp',
 #  'src/RTC/ShmConsumer.cpp',
 #  'src/RTC/ShmTransport.cpp',  
 #]

@@ -39,6 +39,7 @@ export interface ShmTransportStat {
     writer: number;
 }
 export declare class ShmTransport extends Transport {
+    #private;
     private _shm?;
     private _log?;
     /**
@@ -94,7 +95,7 @@ export declare class ShmTransport extends Transport {
      *
      * @virtual
      */
-    consume({ producerId, rtpCapabilities, paused, preferredLayers, pipe, appData }: ConsumerOptions): Promise<Consumer>;
+    consume({ producerId, rtpCapabilities, paused, mid, preferredLayers, ignoreDtx, pipe, appData }: ConsumerOptions): Promise<Consumer>;
     /**
      * Provide the ShmTransport remote parameters.
      *

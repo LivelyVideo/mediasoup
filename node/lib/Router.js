@@ -423,12 +423,14 @@ class Router extends EnhancedEventEmitter_1.EnhancedEventEmitter {
         else {
             throw new TypeError('wrong listenIp');
         }
-        const internal = { ...this.#internal, transportId: (0, uuid_1.v4)() };
+        const transportId = (0, uuid_1.v4)();
+        const internal = { ...this.#internal, transportId: transportId };
         const reqData = {
+            transportId: transportId,
             listenIp,
             shm,
             log,
-            appData,
+            appData
         };
         /*
         data = {

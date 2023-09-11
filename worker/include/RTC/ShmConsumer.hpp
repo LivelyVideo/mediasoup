@@ -120,7 +120,7 @@ namespace RTC
 		bool keyFrameSupported{ false };
 		bool syncRequired{ false };
 		RTC::SeqManager<uint16_t> rtpSeqManager;
-
+		std::unique_ptr<RTC::Codecs::EncodingContext> encodingContext;
 		DepLibSfuShm::ShmCtx       *shmCtx{ nullptr };         // Handle to shm context which will be received from ShmTransport during transport.consume()
 		uint16_t                   rotation{ 0 };             // Current rotation value for video read from RTP packet's videoOrientationExtensionId
 		bool                       rotationDetected{ false }; // Whether video rotation data was ever picked in this stream, then we only write it into shm if there was a change
