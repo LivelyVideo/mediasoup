@@ -51,7 +51,11 @@ namespace RTC
 
 	public:
 		WebRtcTransport(
-		  RTC::Shared* shared, const std::string& id, RTC::Transport::Listener* listener, json& data);
+		  RTC::Shared* shared,
+		  const std::string& id,
+		  const std::string& routerId,
+		  RTC::Transport::Listener* listener,
+		  json& data);
 		WebRtcTransport(
 		  RTC::Shared* shared,
 		  const std::string& id,
@@ -149,6 +153,9 @@ namespace RTC
 		  const RTC::DtlsTransport* dtlsTransport, const uint8_t* data, size_t len) override;
 		void OnDtlsTransportApplicationDataReceived(
 		  const RTC::DtlsTransport* dtlsTransport, const uint8_t* data, size_t len) override;
+
+	public:
+		std::string routerId;
 
 	private:
 		// Passed by argument.
