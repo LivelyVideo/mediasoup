@@ -52,6 +52,19 @@ namespace RTC
 		~IceServer();
 
 	public:
+		// 09/12/2023 - ICE CONTROLLING
+		void ConnectToRemotePeer(
+		  const std::string& username,
+		  const std::string& password,
+		  RTC::UdpSocket* udpSocket,
+		  const struct sockaddr_in* remote);
+
+		// 09/12/2023 - ICE CONTROLLING
+		bool IsIceClient() const
+		{
+			return (this->peerAddr.sin_port != 0);
+		}
+
 		void ProcessStunPacket(RTC::StunPacket* packet, RTC::TransportTuple* tuple);
 		const std::string& GetUsernameFragment() const
 		{
@@ -115,6 +128,12 @@ namespace RTC
 		void SetSelectedTuple(RTC::TransportTuple* storedTuple);
 
 	private:
+		// 09/12/2023 - ICE CONTROLLING
+		std::string peerPassword;
+		std::string peerUsername;
+		struct sockaddr_in peerAddr;
+		uint8_t connectTransactionId[12];
+
 		// Passed by argument.
 		Listener* listener{ nullptr };
 		// Others.

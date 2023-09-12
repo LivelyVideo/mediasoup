@@ -23,6 +23,49 @@ namespace RTC
 
 		// Notify the listener.
 		this->listener->OnIceServerLocalUsernameFragmentAdded(this, usernameFragment);
+
+		// 09/12/2023 - ICE CONTROLLING
+		memset(&this->peerAddr, 0, sizeof(this->peerAddr));
+		memset(this->connectTransactionId, 0, sizeof(this->connectTransactionId));
+	}
+
+	// 09/12/2023 - ICE CONTROLLING
+	// Sends a STUN request to the remote peer which is expected to have a public IP
+	void IceServer::ConnectToRemotePeer(
+	  const std::string& username,
+	  const std::string& password,
+	  RTC::UdpSocket* udpSocket,
+	  const struct sockaddr_in* remote)
+	{
+		this->peerUsername.assign(username + ":" + this->usernameFragment);
+		this->peerPassword.assign(password);
+		memcpy(&this->peerAddr, remote, sizeof(struct sockaddr_in));
+
+		if (this->peerAddr.sin_port)
+		{
+			// generate a random transactionId
+			memcpy(&this->connectTransactionId[0], Utils::Crypto::GetRandomString(12).c_str(), 12);
+
+			StunPacket stunReq{
+				StunPacket::Class::REQUEST, StunPacket::Method::BINDING, this->connectTransactionId, nullptr, 0
+			};
+
+			uint64_t controlling;
+			memcpy(&controlling, this->connectTransactionId, sizeof(controlling));
+
+			stunReq.SetIceControlling(controlling);
+			stunReq.SetPriority(0x0024); // TODO: properly set
+			stunReq.SetUsername(this->peerUsername.c_str(), this->peerUsername.length());
+			stunReq.SetUseCandidate();
+			stunReq.Authenticate(this->peerPassword);
+
+			uint8_t buffer[4096];
+
+			stunReq.Serialize(buffer);
+
+			TransportTuple tuple{ udpSocket, (const sockaddr*)&this->peerAddr };
+			tuple.Send(stunReq.GetData(), stunReq.GetSize(), nullptr);
+		}
 	}
 
 	IceServer::~IceServer()
@@ -250,14 +293,48 @@ namespace RTC
 
 			case RTC::StunPacket::Class::SUCCESS_RESPONSE:
 			{
-				MS_DEBUG_TAG(ice, "STUN Binding Success Response processed");
+				// 09/12/2023 - ICE CONTROLLING
+				if (packet->CheckTransactionId(this->connectTransactionId))
+				{
+					// TODO: check authentication
+
+					//	A check is considered to be a success if all of the following are true:
+					//  o  The STUN transaction generated a success response.
+					//
+					//  o  The source IP address and port of the response equals the
+					//     destination IP address and port to which the Binding request was
+					//     sent.
+					//
+					//  o  The destination IP address and port of the response match the
+					//     source IP address and port from which the Binding request was
+					//     sent.
+
+					MS_DEBUG_TAG(ice, "STUN Binding Success Response processed. Connected");
+
+					// TODO: support proper nomination value in case of multiple options
+					HandleTuple(tuple, true, true, 0xFFFFFFFF);
+				}
+				else
+				{
+					MS_DEBUG_TAG(ice, "STUN Binding Success Response processed");
+				}
 
 				break;
 			}
 
 			case RTC::StunPacket::Class::ERROR_RESPONSE:
 			{
-				MS_DEBUG_TAG(ice, "STUN Binding Error Response processed");
+				// 09/12/2023 - ICE CONTROLLING
+				if (packet->CheckTransactionId(this->connectTransactionId))
+				{
+					MS_WARN_TAG(
+					  ice, "STUN Binding Error Response processed (%" PRIu16 ")", packet->GetErrorCode());
+					this->listener->OnIceServerDisconnected(this);
+				}
+				else
+				{
+					MS_DEBUG_TAG(ice, "STUN Binding Error Response processed");
+				}
 
 				break;
 			}

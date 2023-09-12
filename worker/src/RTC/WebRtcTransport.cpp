@@ -197,12 +197,155 @@ namespace RTC
 				iceLocalPreferenceDecrement += 100;
 			}
 
+			// 09/12/2023 - ICE CONTROLLING
+			// This may throw.
+			// ----------------------------------------------------------------
+
+			struct sockaddr_in icePeerAddr;
+			memset(&icePeerAddr, 0, sizeof(icePeerAddr));
+			std::string icePeerPassword;
+			std::string icePeerUsername;
+
+			if (!this->udpSockets.empty())
+			{
+				auto jsonIcePeerParametersIt = data.find("icePeerParameters");
+
+				if (jsonIcePeerParametersIt != data.end() && jsonIcePeerParametersIt->is_object())
+				{
+					// "icePeerParameters":{
+					//   "iceParameters":{
+					//     "iceLite":true, "password":"z50zpywagvkhmph18e1ka79vlktu7eqi",
+					//     "usernameFragment":"eon6wh717qr41ook"
+					//   },
+					//   "iceCandidates":[
+					//      {
+					//        "foundation":"udpcandidate","ip":"207.66.252.118","port":44352,"priority":1076302079,"protocol":"udp","type":"host"
+					//      }
+					//   ]
+					// }
+					auto jsonIceParametersIt = jsonIcePeerParametersIt->find("iceParameters");
+					if (jsonIceParametersIt != jsonIcePeerParametersIt->end())
+					{
+						auto jsonIcePassword = jsonIceParametersIt->find("password");
+						auto jsonIceUsername = jsonIceParametersIt->find("usernameFragment");
+
+						if (jsonIcePassword != jsonIceParametersIt->end() && jsonIcePassword->is_string())
+						{
+							icePeerPassword.assign(jsonIcePassword->get<std::string>());
+						}
+						else
+						{
+							MS_THROW_TYPE_ERROR("missing password under icePeerParameters.iceParameters");
+						}
+
+						if (jsonIceUsername != jsonIceParametersIt->end() && jsonIceUsername->is_string())
+						{
+							icePeerUsername.assign(jsonIceUsername->get<std::string>());
+
+							if (icePeerUsername.length() > 128)
+							{
+								MS_THROW_TYPE_ERROR("ice peer username longer than 128 characters");
+							}
+						}
+						else
+						{
+							MS_THROW_TYPE_ERROR("missing usernameFragment under icePeerParameters.iceParameters");
+						}
+
+						auto jsonIceCandidatesIt = jsonIcePeerParametersIt->find("iceCandidates");
+						if (
+						  jsonIceCandidatesIt != jsonIcePeerParametersIt->end() &&
+						  jsonIceCandidatesIt->is_array() && jsonIceCandidatesIt->size() > 0)
+						{
+							auto& jsonIceCandidateIt = (*jsonIceCandidatesIt)[0];
+							if (jsonIceCandidateIt.is_object())
+							{
+								auto jsonIceCandidateProtocolIt = jsonIceCandidateIt.find("protocol");
+
+								if (
+								  jsonIceCandidateProtocolIt != jsonIceCandidateIt.end() &&
+								  jsonIceCandidateProtocolIt->get<std::string>().compare("udp") == 0)
+								{
+									auto jsonIceCandidateIpIt   = jsonIceCandidateIt.find("ip");
+									auto jsonIceCandidatePortIt = jsonIceCandidateIt.find("port");
+
+									if (jsonIceCandidateIpIt != jsonIceCandidateIt.end() && jsonIceCandidateIpIt->is_string())
+									{
+										if (jsonIceCandidatePortIt != jsonIceCandidateIt.end())
+										{
+											if (jsonIceCandidatePortIt->is_number() && Utils::Json::IsPositiveInteger(*jsonIceCandidatePortIt))
+											{
+												if (inet_aton(
+												      jsonIceCandidateIpIt->get<std::string>().c_str(), &icePeerAddr.sin_addr))
+												{
+													icePeerAddr.sin_port   = htons(jsonIceCandidatePortIt->get<uint16_t>());
+													icePeerAddr.sin_family = AF_INET;
+
+													MS_DEBUG_TAG(
+													  rtp,
+													  "got ICE peer candidate. [ip=%s port=%" PRIu16 " username=%s]",
+													  jsonIceCandidateIpIt->get<std::string>().c_str(),
+													  jsonIceCandidatePortIt->get<uint16_t>(),
+													  icePeerUsername.c_str());
+												}
+												else
+												{
+													MS_THROW_TYPE_ERROR(
+													  "failed to parse address of candidate under icePeerParameters.iceCandidates");
+												}
+											}
+											else
+											{
+												MS_THROW_TYPE_ERROR(
+												  "invalid port for candidate under icePeerParameters.iceCandidates");
+											}
+										}
+										else
+										{
+											MS_THROW_TYPE_ERROR(
+											  "missing port for candidate under icePeerParameters.iceCandidates");
+										}
+									}
+									else
+									{
+										MS_THROW_TYPE_ERROR(
+										  "missing ip for candidate under icePeerParameters.iceCandidates");
+									}
+								}
+								else
+								{
+									MS_THROW_TYPE_ERROR("not a UDP candidate under icePeerParameters.iceCandidates");
+								}
+							}
+						}
+						else
+						{
+							MS_THROW_TYPE_ERROR("missing or invalid iceCandidates under icePeerParameters");
+						}
+					}
+					else
+					{
+						MS_THROW_TYPE_ERROR("missing iceParameters under icePeerParameters");
+					}
+				}
+			}
+
 			// Create a ICE server.
 			this->iceServer = new RTC::IceServer(
 			  this, Utils::Crypto::GetRandomString(32), Utils::Crypto::GetRandomString(32));
 
 			// Create a DTLS transport.
 			this->dtlsTransport = new RTC::DtlsTransport(this);
+
+			// 09/12/2023 - ICE CONTROLLING
+			// ----------------------------------------------------------------
+			if (!this->udpSockets.empty() && icePeerAddr.sin_port)
+			{
+				RTC::UdpSocket* udpSocket = this->udpSockets.begin()->first;
+
+				this->iceServer->ConnectToRemotePeer(
+				  icePeerUsername, icePeerPassword, udpSocket, &icePeerAddr);
+			}
 
 			// NOTE: This may throw.
 			this->shared->channelMessageRegistrator->RegisterHandler(
@@ -781,6 +924,10 @@ namespace RTC
 					this->dtlsRole = RTC::DtlsTransport::Role::SERVER;
 					this->dtlsTransport->Run(RTC::DtlsTransport::Role::SERVER);
 				}
+				else
+				{
+					MS_DEBUG_TAG(dtls, "Ice is not ready. Ice state: %d", this->iceServer->GetState());
+				}
 
 				break;
 			}
@@ -805,6 +952,10 @@ namespace RTC
 
 					this->dtlsTransport->Run(RTC::DtlsTransport::Role::CLIENT);
 				}
+				else
+				{
+					MS_DEBUG_TAG(dtls, "Ice is not ready. Ice state: %d", this->iceServer->GetState());
+				}
 
 				break;
 			}
@@ -823,6 +974,10 @@ namespace RTC
 					MS_DEBUG_TAG(dtls, "running DTLS transport in local role 'server'");
 
 					this->dtlsTransport->Run(RTC::DtlsTransport::Role::SERVER);
+				}
+				else
+				{
+					MS_DEBUG_TAG(dtls, "Ice is not ready. Ice state: %d", this->iceServer->GetState());
 				}
 
 				break;
@@ -1325,6 +1480,14 @@ namespace RTC
 
 		this->shared->channelNotifier->Emit(this->id, "icestatechange", data);
 
+		this->iceServer->GetSelectedTuple()->Dump();
+
+		// 09/12/2023 - ICE CONTROLLING
+		if (iceServer->IsIceClient())
+		{
+			return;
+		}
+
 		// If ready, run the DTLS handler.
 		MayRunDtlsTransport();
 
@@ -1347,6 +1510,12 @@ namespace RTC
 		data["iceState"] = "completed";
 
 		this->shared->channelNotifier->Emit(this->id, "icestatechange", data);
+
+		// 09/12/2023 - ICE CONTROLLING
+		if (iceServer->IsIceClient())
+		{
+			return;
+		}
 
 		// If ready, run the DTLS handler.
 		MayRunDtlsTransport();

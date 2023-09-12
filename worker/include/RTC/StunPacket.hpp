@@ -2,6 +2,7 @@
 #define MS_RTC_STUN_PACKET_HPP
 
 #include "common.hpp"
+#include <cstring>
 #include <string>
 
 namespace RTC
@@ -178,6 +179,14 @@ namespace RTC
 		bool HasFingerprint() const
 		{
 			return this->hasFingerprint;
+		}
+		// 09/12/2023 - ICE CONTROLLING
+		bool CheckTransactionId(const uint8_t* transactionId)
+		{
+			if (!this->transactionId)
+				return false;
+
+			return (std::memcmp(transactionId, this->transactionId, 12) == 0);
 		}
 		Authentication CheckAuthentication(
 		  const std::string& localUsername, const std::string& localPassword);
