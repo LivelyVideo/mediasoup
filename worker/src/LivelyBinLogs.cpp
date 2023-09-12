@@ -507,6 +507,80 @@ bool StatsBinLog::CreateBinlogDirsIfMissing()
   return true;
 }
 
+//std::string GenerateLogFormatStringNew(
+//	LogType type,
+//	const std::string& logBinStatsPath,
+//	const std::string& version,
+//	const std::string& id1,
+//	const std::string& id2)
+//{
+//	std::string formatStr;
+//	switch (type)
+//	{
+//		case LogType::Consumer:
+//			formatStr = std::format("{}/bin/current/ms_c_{}_{{}}.{}.bin",
+//				                      logBinStatsPath, id1, version);
+//			break;
+//		case LogType::Producer:
+//			formatStr = std::format("{}/bin/current/ms_p_{}_{}_{{}}.{}.bin",
+//				                      logBinStatsPath, id1, id2, version);
+//			break;
+//	}
+//	return formatStr;
+//}
+
+std::string GenerateLogFormatString(char type, const std::string& id1, const std::string& id2, const std::string& version)
+{
+	//sizeof("/var/log/sfu/bin/current/ms_p_00000000-0000-0000-0000-000000000000_00000000-0000-0000-0000-000000000000_1652210519459.123abc.bin") * 2
+	char tmp[FILENAME_LEN_MAX];
+	std::memset(tmp, '\0', FILENAME_LEN_MAX);
+
+	switch (type)
+	{
+		case 'c':
+			sprintf(tmp,
+				      "%s/bin/current/ms_c_%s_%%llu.%s.bin",
+				      Settings::configuration.logBinStatsPath.c_str(), id1.c_str(), version);
+			break;
+		case 'p':
+			sprintf(tmp,
+				      "%s/bin/current/ms_p_%s_%s_%%llu.%s.bin",
+				      Settings::configuration.logBinStatsPath.c_str(), id1.c_str(), id2.c_str(), version);
+			break;
+	}
+	return tmp;
+}
+
+void StatsBinLog::InitLogNew(std::function<std::string(uint64_t)> templateFunction)
+{
+	this->initialized = false;
+
+	if (Settings::configuration.logBinStatsDisabled)
+		return;
+
+	this->file_name_template_function = file_name_template_function;
+
+	uint64_t now = Utils::Time::currentStdEpochMs();
+	UpdateLogTimestamps(now);
+
+
+
+	//sizeof("/var/log/sfu/bin/current/ms_p_00000000-0000-0000-0000-000000000000_00000000-0000-0000-0000-000000000000_1652210519459.123abc.bin") * 2
+	char tmp[FILENAME_LEN_MAX];
+	std::memset(tmp, '\0', FILENAME_LEN_MAX);
+
+	sprintf(tmp, "%s/bin/current/%%s", Settings::configuration.logBinStatsPath.c_str());
+	this->bin_log_name_template.assign(tmp);
+
+	MS_DEBUG_TAG(rtp, "consumers binlog %s", this->current_bin_log_name.c_str());
+
+	CreateBinlogDirsIfMissing();
+	if (Settings::configuration.logBinStatsDisabled)
+		return;
+
+	this->sampling_interval = CALL_STATS_BIN_LOG_SAMPLING;
+	this->initialized = true;
+}
 
 void StatsBinLog::InitLog(char type, std::string id1, std::string id2)
 {
@@ -554,14 +628,16 @@ void StatsBinLog::InitLog(char type, std::string id1, std::string id2)
 
 void StatsBinLog::UpdateLogTimestamps(uint64_t now)
 {
-  char buff[100];
-  memset(buff, '\0', 100);
+  char buff[FILENAME_LEN_MAX];
+  memset(buff, '\0', FILENAME_LEN_MAX);
 
   this->log_start_ts = now;
 
   this->next_day_start_ts = ((now / DAY_IN_MS) + 1) * DAY_IN_MS;
 
-  sprintf(buff, this->bin_log_name_template.c_str(), this->log_start_ts);
+	this->current_bin_log_name = this->file_name_template_function(log_start_ts);
+
+  sprintf(buff, this->bin_log_name_template.c_str(), this->current_bin_log_name);
   this->bin_log_file_path.assign(buff);
 }
 
@@ -577,6 +653,8 @@ void StatsBinLog::DeinitLog()
   this->log_last_ts       = UINT64_UNSET;
 
   this->bin_log_name_template.clear();
+  this->current_bin_log_name.clear();
+//  this->file_name_template_function.clear();
   this->bin_log_file_path.clear();
 }
 } //Lively

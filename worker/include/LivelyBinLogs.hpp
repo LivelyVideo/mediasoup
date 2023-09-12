@@ -4,6 +4,7 @@
 #include "common.hpp"
 #include <cstring>
 #include "RTC/RtpStream.hpp"
+#include <functional>
 
 #define BINLOG_MIN_TIMESPAN   20000
 #define BINLOG_FORMAT_VERSION "3b55f9"
@@ -79,6 +80,11 @@ struct ProducerRecord
   uint8_t         content;                                  // 'a' or 'v'
   CallStatsSample samples[CALL_STATS_BIN_LOG_PROD_REC_NUM]; // collection of data samples
 };
+
+//enum class LogType {
+//	Consumer,
+//	Producer,
+//};
 
 class CallStatsRecord
 {
@@ -182,6 +188,8 @@ class CallStatsRecord
   private:
     bool          initialized {false};
     std::string   bin_log_name_template;          // Log name template, use to rotate log, keep same name except for timestamp
+    std::string   current_bin_log_name;
+		std::function<std::string(uint64_t)> file_name_template_function;
     const char    version[7] = BINLOG_FORMAT_VERSION;
 
     uint64_t      log_start_ts {UINT64_UNSET};      // Timestamp included into log's name; used to discard short logs, may be used for log rotation based on time passed 
@@ -193,7 +201,9 @@ class CallStatsRecord
 
     bool IsInitialized() {return initialized;}
     void InitLog(char type, std::string id1, std::string id2); // if type is producer, then log name is a combo of callid, producerid and timestamp
-    int OnLogWrite(CallStatsRecordCtx* ctx);
+    void InitLogNew(std::function<std::string(uint64_t)> templateFunction);
+//    void InitLogNew2(std::string fileNameTemplate);
+		int OnLogWrite(CallStatsRecordCtx* ctx);
     void DeinitLog();   // Closes log file and deinitializes state variables
 
   private:
