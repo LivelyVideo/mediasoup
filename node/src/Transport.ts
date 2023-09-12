@@ -27,18 +27,18 @@ import { SctpStreamParameters } from './SctpParameters';
 import { AppData } from './types';
 
 export type TransportListenIp =
-{
-	/**
-	 * Listening IPv4 or IPv6.
-	 */
-	ip: string;
+	{
+		/**
+		 * Listening IPv4 or IPv6.
+		 */
+		ip: string;
 
-	/**
-	 * Announced IPv4 or IPv6 (useful when running mediasoup behind NAT with
-	 * private IP).
-	 */
-	announcedIp?: string;
-};
+		/**
+		 * Announced IPv4 or IPv6 (useful when running mediasoup behind NAT with
+		 * private IP).
+		 */
+		announcedIp?: string;
+	};
 
 /**
  * Transport protocol.
@@ -46,13 +46,13 @@ export type TransportListenIp =
 export type TransportProtocol = 'udp' | 'tcp';
 
 export type TransportTuple =
-{
-	localIp: string;
-	localPort: number;
-	remoteIp?: string;
-	remotePort?: number;
-	protocol: TransportProtocol;
-};
+	{
+		localIp: string;
+		localPort: number;
+		remoteIp?: string;
+		remotePort?: number;
+		protocol: TransportProtocol;
+	};
 
 /**
  * Valid types for 'trace' event.
@@ -63,65 +63,65 @@ export type TransportTraceEventType = 'probation' | 'bwe';
  * 'trace' event data.
  */
 export type TransportTraceEventData =
-{
-	/**
-	 * Trace type.
-	 */
-	type: TransportTraceEventType;
+	{
+		/**
+		 * Trace type.
+		 */
+		type: TransportTraceEventType;
 
-	/**
-	 * Event timestamp.
-	 */
-	timestamp: number;
+		/**
+		 * Event timestamp.
+		 */
+		timestamp: number;
 
-	/**
-	 * Event direction.
-	 */
-	direction: 'in' | 'out';
+		/**
+		 * Event direction.
+		 */
+		direction: 'in' | 'out';
 
-	/**
-	 * Per type information.
-	 */
-	info: any;
-};
+		/**
+		 * Per type information.
+		 */
+		info: any;
+	};
 
 export type SctpState = 'new' | 'connecting' | 'connected' | 'failed' | 'closed';
 
 export type TransportEvents =
-{
-	routerclose: [];
-	listenserverclose: [];
-	trace: [TransportTraceEventData];
-	// Private events.
-	'@close': [];
-	'@newproducer': [Producer];
-	'@producerclose': [Producer];
-	'@newdataproducer': [DataProducer];
-	'@dataproducerclose': [DataProducer];
-	'@listenserverclose': [];
-};
+	{
+		routerclose: [];
+		listenserverclose: [];
+		trace: [TransportTraceEventData];
+		// Private events.
+		'@close': [];
+		'@newproducer': [Producer];
+		'@producerclose': [Producer];
+		'@newdataproducer': [DataProducer];
+		'@dataproducerclose': [DataProducer];
+		'@listenserverclose': [];
+	};
 
 export type TransportObserverEvents =
-{
-	close: [];
-	newproducer: [Producer];
-	newconsumer: [Consumer];
-	newdataproducer: [DataProducer];
-	newdataconsumer: [DataConsumer];
-	trace: [TransportTraceEventData];
-};
+	{
+		close: [];
+		newproducer: [Producer];
+		newconsumer: [Consumer];
+		newdataproducer: [DataProducer];
+		newdataconsumer: [DataConsumer];
+		trace: [TransportTraceEventData];
+	};
 
 export type TransportConstructorOptions<TransportAppData> =
-{
-	internal: TransportInternal;
-	data: TransportData;
-	channel: Channel;
-	payloadChannel: PayloadChannel;
-	appData?: TransportAppData;
-	getRouterRtpCapabilities: () => RtpCapabilities;
-	getProducerById: (producerId: string) => Producer | undefined;
-	getDataProducerById: (dataProducerId: string) => DataProducer | undefined;
-};
+	{
+		internal: TransportInternal;
+		data: TransportData;
+		channel: Channel;
+		payloadChannel: PayloadChannel;
+		appData?: TransportAppData;
+		getRouterRtpCapabilities: () => RtpCapabilities;
+		getProducerById: (producerId: string) => Producer | undefined;
+		getDataProducerById: (dataProducerId: string) => DataProducer | undefined;
+	};
 
 export type TransportInternal = RouterInternal &
 {
@@ -129,17 +129,17 @@ export type TransportInternal = RouterInternal &
 };
 
 type TransportData =
-  | WebRtcTransportData
-  | PlainTransportData
-  | PipeTransportData
-  | DirectTransportData;
+	| WebRtcTransportData
+	| PlainTransportData
+	| PipeTransportData
+	| DirectTransportData;
 
 const logger = new Logger('Transport');
 
 export class Transport
 	<TransportAppData extends AppData = AppData,
-	Events extends TransportEvents = TransportEvents,
-	ObserverEvents extends TransportObserverEvents = TransportObserverEvents>
+		Events extends TransportEvents = TransportEvents,
+		ObserverEvents extends TransportObserverEvents = TransportObserverEvents>
 	extends EnhancedEventEmitter<Events>
 {
 	// Internal data.
@@ -212,8 +212,7 @@ export class Transport
 			getProducerById,
 			getDataProducerById
 		}: TransportConstructorOptions<TransportAppData>
-	)
-	{
+	) {
 		super();
 
 		logger.debug('constructor()');
@@ -231,40 +230,35 @@ export class Transport
 	/**
 	 * Transport id.
 	 */
-	get id(): string
-	{
+	get id(): string {
 		return this.internal.transportId;
 	}
 
 	/**
 	 * Whether the Transport is closed.
 	 */
-	get closed(): boolean
-	{
+	get closed(): boolean {
 		return this.#closed;
 	}
 
 	/**
 	 * App custom data.
 	 */
-	get appData(): TransportAppData
-	{
+	get appData(): TransportAppData {
 		return this.#appData;
 	}
 
 	/**
 	 * App custom data setter.
 	 */
-	set appData(appData: TransportAppData)
-	{
+	set appData(appData: TransportAppData) {
 		this.#appData = appData;
 	}
 
 	/**
 	 * Observer.
 	 */
-	get observer(): EnhancedEventEmitter<ObserverEvents>
-	{
+	get observer(): EnhancedEventEmitter<ObserverEvents> {
 		return this.#observer;
 	}
 
@@ -272,18 +266,15 @@ export class Transport
 	 * @private
 	 * Just for testing purposes.
 	 */
-	get channelForTesting(): Channel
-	{
+	get channelForTesting(): Channel {
 		return this.channel;
 	}
 
 	/**
 	 * Close the Transport.
 	 */
-	close(): void
-	{
-		if (this.#closed)
-		{
+	close(): void {
+		if (this.#closed) {
 			return;
 		}
 
@@ -298,11 +289,10 @@ export class Transport
 		const reqData = { transportId: this.internal.transportId };
 
 		this.channel.request('router.closeTransport', this.internal.routerId, reqData)
-			.catch(() => {});
+			.catch(() => { });
 
 		// Close every Producer.
-		for (const producer of this.#producers.values())
-		{
+		for (const producer of this.#producers.values()) {
 			producer.transportClosed();
 
 			// Must tell the Router.
@@ -311,15 +301,13 @@ export class Transport
 		this.#producers.clear();
 
 		// Close every Consumer.
-		for (const consumer of this.consumers.values())
-		{
+		for (const consumer of this.consumers.values()) {
 			consumer.transportClosed();
 		}
 		this.consumers.clear();
 
 		// Close every DataProducer.
-		for (const dataProducer of this.dataProducers.values())
-		{
+		for (const dataProducer of this.dataProducers.values()) {
 			dataProducer.transportClosed();
 
 			// Must tell the Router.
@@ -328,8 +316,7 @@ export class Transport
 		this.dataProducers.clear();
 
 		// Close every DataConsumer.
-		for (const dataConsumer of this.dataConsumers.values())
-		{
+		for (const dataConsumer of this.dataConsumers.values()) {
 			dataConsumer.transportClosed();
 		}
 		this.dataConsumers.clear();
@@ -346,10 +333,8 @@ export class Transport
 	 * @private
 	 * @virtual
 	 */
-	routerClosed(): void
-	{
-		if (this.#closed)
-		{
+	routerClosed(): void {
+		if (this.#closed) {
 			return;
 		}
 
@@ -362,8 +347,7 @@ export class Transport
 		this.payloadChannel.removeAllListeners(this.internal.transportId);
 
 		// Close every Producer.
-		for (const producer of this.#producers.values())
-		{
+		for (const producer of this.#producers.values()) {
 			producer.transportClosed();
 
 			// NOTE: No need to tell the Router since it already knows (it has
@@ -372,15 +356,13 @@ export class Transport
 		this.#producers.clear();
 
 		// Close every Consumer.
-		for (const consumer of this.consumers.values())
-		{
+		for (const consumer of this.consumers.values()) {
 			consumer.transportClosed();
 		}
 		this.consumers.clear();
 
 		// Close every DataProducer.
-		for (const dataProducer of this.dataProducers.values())
-		{
+		for (const dataProducer of this.dataProducers.values()) {
 			dataProducer.transportClosed();
 
 			// NOTE: No need to tell the Router since it already knows (it has
@@ -389,8 +371,7 @@ export class Transport
 		this.dataProducers.clear();
 
 		// Close every DataConsumer.
-		for (const dataConsumer of this.dataConsumers.values())
-		{
+		for (const dataConsumer of this.dataConsumers.values()) {
 			dataConsumer.transportClosed();
 		}
 		this.dataConsumers.clear();
@@ -407,10 +388,8 @@ export class Transport
 	 *
 	 * @private
 	 */
-	listenServerClosed(): void
-	{
-		if (this.#closed)
-		{
+	listenServerClosed(): void {
+		if (this.#closed) {
 			return;
 		}
 
@@ -423,8 +402,7 @@ export class Transport
 		this.payloadChannel.removeAllListeners(this.internal.transportId);
 
 		// Close every Producer.
-		for (const producer of this.#producers.values())
-		{
+		for (const producer of this.#producers.values()) {
 			producer.transportClosed();
 
 			// NOTE: No need to tell the Router since it already knows (it has
@@ -433,15 +411,13 @@ export class Transport
 		this.#producers.clear();
 
 		// Close every Consumer.
-		for (const consumer of this.consumers.values())
-		{
+		for (const consumer of this.consumers.values()) {
 			consumer.transportClosed();
 		}
 		this.consumers.clear();
 
 		// Close every DataProducer.
-		for (const dataProducer of this.dataProducers.values())
-		{
+		for (const dataProducer of this.dataProducers.values()) {
 			dataProducer.transportClosed();
 
 			// NOTE: No need to tell the Router since it already knows (it has
@@ -450,8 +426,7 @@ export class Transport
 		this.dataProducers.clear();
 
 		// Close every DataConsumer.
-		for (const dataConsumer of this.dataConsumers.values())
-		{
+		for (const dataConsumer of this.dataConsumers.values()) {
 			dataConsumer.transportClosed();
 		}
 		this.dataConsumers.clear();
@@ -470,8 +445,7 @@ export class Transport
 	/**
 	 * Dump Transport.
 	 */
-	async dump(): Promise<any>
-	{
+	async dump(): Promise<any> {
 		logger.debug('dump()');
 
 		return this.channel.request('transport.dump', this.internal.transportId);
@@ -482,8 +456,7 @@ export class Transport
 	 *
 	 * @abstract
 	 */
-	async getStats(): Promise<any[]>
-	{
+	async getStats(): Promise<any[]> {
 		// Should not happen.
 		throw new Error('method not implemented in the subclass');
 	}
@@ -494,8 +467,7 @@ export class Transport
 	 * @abstract
 	 */
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	async connect(params: any): Promise<void>
-	{
+	async connect(params: any): Promise<void> {
 		// Should not happen.
 		throw new Error('method not implemented in the subclass');
 	}
@@ -503,8 +475,7 @@ export class Transport
 	/**
 	 * Set maximum incoming bitrate for receiving media.
 	 */
-	async setMaxIncomingBitrate(bitrate: number): Promise<void>
-	{
+	async setMaxIncomingBitrate(bitrate: number): Promise<void> {
 		logger.debug('setMaxIncomingBitrate() [bitrate:%s]', bitrate);
 
 		const reqData = { bitrate };
@@ -516,8 +487,7 @@ export class Transport
 	/**
 	 * Set maximum outgoing bitrate for sending media.
 	 */
-	async setMaxOutgoingBitrate(bitrate: number): Promise<void>
-	{
+	async setMaxOutgoingBitrate(bitrate: number): Promise<void> {
 		logger.debug('setMaxOutgoingBitrate() [bitrate:%s]', bitrate);
 
 		const reqData = { bitrate };
@@ -529,8 +499,7 @@ export class Transport
 	/**
 	 * Set minimum outgoing bitrate for sending media.
 	 */
-	async setMinOutgoingBitrate(bitrate: number): Promise<void>
-	{
+	async setMinOutgoingBitrate(bitrate: number): Promise<void> {
 		logger.debug('setMinOutgoingBitrate() [bitrate:%s]', bitrate);
 
 		const reqData = { bitrate };
@@ -551,20 +520,16 @@ export class Transport
 			keyFrameRequestDelay,
 			appData
 		}: ProducerOptions<ProducerAppData>
-	): Promise<Producer<ProducerAppData>>
-	{
+	): Promise<Producer<ProducerAppData>> {
 		logger.debug('produce()');
 
-		if (id && this.#producers.has(id))
-		{
+		if (id && this.#producers.has(id)) {
 			throw new TypeError(`a Producer with same id "${id}" already exists`);
 		}
-		else if (![ 'audio', 'video' ].includes(kind))
-		{
+		else if (!['audio', 'video'].includes(kind)) {
 			throw new TypeError(`invalid kind "${kind}"`);
 		}
-		else if (appData && typeof appData !== 'object')
-		{
+		else if (appData && typeof appData !== 'object') {
 			throw new TypeError('if given, appData must be an object');
 		}
 
@@ -576,25 +541,21 @@ export class Transport
 			!rtpParameters.encodings ||
 			!Array.isArray(rtpParameters.encodings) ||
 			rtpParameters.encodings.length === 0
-		)
-		{
-			rtpParameters.encodings = [ {} ];
+		) {
+			rtpParameters.encodings = [{}];
 		}
 
 		// Don't do this in PipeTransports since there we must keep CNAME value in
 		// each Producer.
-		if (this.constructor.name !== 'PipeTransport')
-		{
+		if (this.constructor.name !== 'PipeTransport') {
 			// If CNAME is given and we don't have yet a CNAME for Producers in this
 			// Transport, take it.
-			if (!this.#cnameForProducers && rtpParameters.rtcp && rtpParameters.rtcp.cname)
-			{
+			if (!this.#cnameForProducers && rtpParameters.rtcp && rtpParameters.rtcp.cname) {
 				this.#cnameForProducers = rtpParameters.rtcp.cname;
 			}
 			// Otherwise if we don't have yet a CNAME for Producers and the RTP parameters
 			// do not include CNAME, create a random one.
-			else if (!this.#cnameForProducers)
-			{
+			else if (!this.#cnameForProducers) {
 				this.#cnameForProducers = uuidv4().substr(0, 8);
 			}
 
@@ -615,7 +576,7 @@ export class Transport
 
 		const reqData =
 		{
-			producerId : id || uuidv4(),
+			producerId: id || uuidv4(),
 			kind,
 			rtpParameters,
 			rtpMapping,
@@ -630,27 +591,26 @@ export class Transport
 		{
 			kind,
 			rtpParameters,
-			type : status.type,
+			type: status.type,
 			consumableRtpParameters
 		};
 
 		const producer = new Producer<ProducerAppData>(
 			{
-				internal :
+				internal:
 				{
 					...this.internal,
-					producerId : reqData.producerId
+					producerId: reqData.producerId
 				},
 				data,
-				channel        : this.channel,
-				payloadChannel : this.payloadChannel,
+				channel: this.channel,
+				payloadChannel: this.payloadChannel,
 				appData,
 				paused
 			});
 
 		this.#producers.set(producer.id, producer);
-		producer.on('@close', () =>
-		{
+		producer.on('@close', () => {
 			this.#producers.delete(producer.id);
 			this.emit('@producerclose', producer);
 		});
@@ -670,6 +630,7 @@ export class Transport
 	 */
 	async consume<ConsumerAppData extends AppData = AppData>(
 		{
+			producer,
 			producerId,
 			rtpCapabilities,
 			paused = false,
@@ -680,63 +641,54 @@ export class Transport
 			pipe = false,
 			appData
 		}: ConsumerOptions<ConsumerAppData>
-	): Promise<Consumer<ConsumerAppData>>
-	{
+	): Promise<Consumer<ConsumerAppData>> {
 		logger.debug('consume()');
 
-		if (!producerId || typeof producerId !== 'string')
-		{
+		if (!producerId || typeof producerId !== 'string') {
 			throw new TypeError('missing producerId');
 		}
-		else if (appData && typeof appData !== 'object')
-		{
+		else if (appData && typeof appData !== 'object') {
 			throw new TypeError('if given, appData must be an object');
 		}
-		else if (mid && (typeof mid !== 'string' || mid.length === 0))
-		{
+		else if (mid && (typeof mid !== 'string' || mid.length === 0)) {
 			throw new TypeError('if given, mid must be non empty string');
 		}
 
 		// This may throw.
 		ortc.validateRtpCapabilities(rtpCapabilities!);
 
-		const producer = this.getProducerById(producerId);
-
 		if (!producer)
-		{
+			producer = this.getProducerById(producerId);
+
+		if (!producer) {
 			throw Error(`Producer with id "${producerId}" not found`);
 		}
 
 		// If enableRtx is not given, set it to true if video and false if audio.
-		if (enableRtx === undefined)
-		{
+		if (enableRtx === undefined) {
 			enableRtx = producer.kind === 'video';
 		}
 
 		// This may throw.
 		const rtpParameters = ortc.getConsumerRtpParameters(
 			{
-				consumableRtpParameters : producer.consumableRtpParameters,
-				remoteRtpCapabilities   : rtpCapabilities!,
+				consumableRtpParameters: producer.consumableRtpParameters,
+				remoteRtpCapabilities: rtpCapabilities!,
 				pipe,
 				enableRtx
 			}
 		);
 
 		// Set MID.
-		if (!pipe)
-		{
-			if (mid)
-			{
+		if (!pipe) {
+			if (mid) {
 				rtpParameters.mid = mid;
 			}
-			else
-			{
+			else {
 				rtpParameters.mid = `${this.#nextMidForConsumers++}`;
 
 				// We use up to 8 bytes for MID (string).
-				if (this.#nextMidForConsumers === 100000000)
-				{
+				if (this.#nextMidForConsumers === 100000000) {
 					logger.error(
 						`consume() | reaching max MID value "${this.#nextMidForConsumers}"`);
 
@@ -747,12 +699,12 @@ export class Transport
 
 		const reqData =
 		{
-			consumerId             : uuidv4(),
+			consumerId: uuidv4(),
 			producerId,
-			kind                   : producer.kind,
+			kind: producer.kind,
 			rtpParameters,
-			type                   : pipe ? 'pipe' : producer.type,
-			consumableRtpEncodings : producer.consumableRtpParameters.encodings,
+			type: pipe ? 'pipe' : producer.type,
+			consumableRtpEncodings: producer.consumableRtpParameters.encodings,
 			paused,
 			preferredLayers,
 			ignoreDtx
@@ -764,26 +716,26 @@ export class Transport
 		const data =
 		{
 			producerId,
-			kind : producer.kind,
+			kind: producer.kind,
 			rtpParameters,
-			type : pipe ? 'pipe' : producer.type as ConsumerType
+			type: pipe ? 'pipe' : producer.type as ConsumerType
 		};
 
 		const consumer = new Consumer<ConsumerAppData>(
 			{
-				internal :
+				internal:
 				{
 					...this.internal,
-					consumerId : reqData.consumerId
+					consumerId: reqData.consumerId
 				},
 				data,
-				channel         : this.channel,
-				payloadChannel  : this.payloadChannel,
+				channel: this.channel,
+				payloadChannel: this.payloadChannel,
 				appData,
-				paused          : status.paused,
-				producerPaused  : status.producerPaused,
-				score           : status.score,
-				preferredLayers : status.preferredLayers
+				paused: status.paused,
+				producerPaused: status.producerPaused,
+				score: status.score,
+				preferredLayers: status.preferredLayers
 			});
 
 		this.consumers.set(consumer.id, consumer);
@@ -807,36 +759,30 @@ export class Transport
 			protocol = '',
 			appData
 		}: DataProducerOptions<DataProducerAppData> = {}
-	): Promise<DataProducer<DataProducerAppData>>
-	{
+	): Promise<DataProducer<DataProducerAppData>> {
 		logger.debug('produceData()');
 
-		if (id && this.dataProducers.has(id))
-		{
+		if (id && this.dataProducers.has(id)) {
 			throw new TypeError(`a DataProducer with same id "${id}" already exists`);
 		}
-		else if (appData && typeof appData !== 'object')
-		{
+		else if (appData && typeof appData !== 'object') {
 			throw new TypeError('if given, appData must be an object');
 		}
 
 		let type: DataProducerType;
 
 		// If this is not a DirectTransport, sctpStreamParameters are required.
-		if (this.constructor.name !== 'DirectTransport')
-		{
+		if (this.constructor.name !== 'DirectTransport') {
 			type = 'sctp';
 
 			// This may throw.
 			ortc.validateSctpStreamParameters(sctpStreamParameters!);
 		}
 		// If this is a DirectTransport, sctpStreamParameters must not be given.
-		else
-		{
+		else {
 			type = 'direct';
 
-			if (sctpStreamParameters)
-			{
+			if (sctpStreamParameters) {
 				logger.warn(
 					'produceData() | sctpStreamParameters are ignored when producing data on a DirectTransport');
 			}
@@ -844,7 +790,7 @@ export class Transport
 
 		const reqData =
 		{
-			dataProducerId : id || uuidv4(),
+			dataProducerId: id || uuidv4(),
 			type,
 			sctpStreamParameters,
 			label,
@@ -856,20 +802,19 @@ export class Transport
 
 		const dataProducer = new DataProducer<DataProducerAppData>(
 			{
-				internal :
+				internal:
 				{
 					...this.internal,
-					dataProducerId : reqData.dataProducerId
+					dataProducerId: reqData.dataProducerId
 				},
 				data,
-				channel        : this.channel,
-				payloadChannel : this.payloadChannel,
+				channel: this.channel,
+				payloadChannel: this.payloadChannel,
 				appData
 			});
 
 		this.dataProducers.set(dataProducer.id, dataProducer);
-		dataProducer.on('@close', () =>
-		{
+		dataProducer.on('@close', () => {
 			this.dataProducers.delete(dataProducer.id);
 			this.emit('@dataproducerclose', dataProducer);
 		});
@@ -893,23 +838,19 @@ export class Transport
 			maxRetransmits,
 			appData
 		}: DataConsumerOptions<ConsumerAppData>
-	): Promise<DataConsumer<ConsumerAppData>>
-	{
+	): Promise<DataConsumer<ConsumerAppData>> {
 		logger.debug('consumeData()');
 
-		if (!dataProducerId || typeof dataProducerId !== 'string')
-		{
+		if (!dataProducerId || typeof dataProducerId !== 'string') {
 			throw new TypeError('missing dataProducerId');
 		}
-		else if (appData && typeof appData !== 'object')
-		{
+		else if (appData && typeof appData !== 'object') {
 			throw new TypeError('if given, appData must be an object');
 		}
 
 		const dataProducer = this.getDataProducerById(dataProducerId);
 
-		if (!dataProducer)
-		{
+		if (!dataProducer) {
 			throw Error(`DataProducer with id "${dataProducerId}" not found`);
 		}
 
@@ -919,25 +860,21 @@ export class Transport
 
 		// If this is not a DirectTransport, use sctpStreamParameters from the
 		// DataProducer (if type 'sctp') unless they are given in method parameters.
-		if (this.constructor.name !== 'DirectTransport')
-		{
+		if (this.constructor.name !== 'DirectTransport') {
 			type = 'sctp';
 			sctpStreamParameters =
 				utils.clone(dataProducer.sctpStreamParameters) as SctpStreamParameters;
 
 			// Override if given.
-			if (ordered !== undefined)
-			{
+			if (ordered !== undefined) {
 				sctpStreamParameters.ordered = ordered;
 			}
 
-			if (maxPacketLifeTime !== undefined)
-			{
+			if (maxPacketLifeTime !== undefined) {
 				sctpStreamParameters.maxPacketLifeTime = maxPacketLifeTime;
 			}
 
-			if (maxRetransmits !== undefined)
-			{
+			if (maxRetransmits !== undefined) {
 				sctpStreamParameters.maxRetransmits = maxRetransmits;
 			}
 
@@ -948,16 +885,14 @@ export class Transport
 			sctpStreamParameters.streamId = sctpStreamId;
 		}
 		// If this is a DirectTransport, sctpStreamParameters must not be used.
-		else
-		{
+		else {
 			type = 'direct';
 
 			if (
 				ordered !== undefined ||
 				maxPacketLifeTime !== undefined ||
 				maxRetransmits !== undefined
-			)
-			{
+			) {
 				logger.warn(
 					'consumeData() | ordered, maxPacketLifeTime and maxRetransmits are ignored when consuming data on a DirectTransport');
 			}
@@ -967,7 +902,7 @@ export class Transport
 
 		const reqData =
 		{
-			dataConsumerId : uuidv4(),
+			dataConsumerId: uuidv4(),
 			dataProducerId,
 			type,
 			sctpStreamParameters,
@@ -980,33 +915,29 @@ export class Transport
 
 		const dataConsumer = new DataConsumer<ConsumerAppData>(
 			{
-				internal :
+				internal:
 				{
 					...this.internal,
-					dataConsumerId : reqData.dataConsumerId
+					dataConsumerId: reqData.dataConsumerId
 				},
 				data,
-				channel        : this.channel,
-				payloadChannel : this.payloadChannel,
+				channel: this.channel,
+				payloadChannel: this.payloadChannel,
 				appData
 			});
 
 		this.dataConsumers.set(dataConsumer.id, dataConsumer);
-		dataConsumer.on('@close', () =>
-		{
+		dataConsumer.on('@close', () => {
 			this.dataConsumers.delete(dataConsumer.id);
 
-			if (this.#sctpStreamIds)
-			{
+			if (this.#sctpStreamIds) {
 				this.#sctpStreamIds[sctpStreamId] = 0;
 			}
 		});
-		dataConsumer.on('@dataproducerclose', () =>
-		{
+		dataConsumer.on('@dataproducerclose', () => {
 			this.dataConsumers.delete(dataConsumer.id);
 
-			if (this.#sctpStreamIds)
-			{
+			if (this.#sctpStreamIds) {
 				this.#sctpStreamIds[sctpStreamId] = 0;
 			}
 		});
@@ -1020,8 +951,7 @@ export class Transport
 	/**
 	 * Enable 'trace' event.
 	 */
-	async enableTraceEvent(types: TransportTraceEventType[] = []): Promise<void>
-	{
+	async enableTraceEvent(types: TransportTraceEventType[] = []): Promise<void> {
 		logger.debug('pause()');
 
 		const reqData = { types };
@@ -1030,31 +960,26 @@ export class Transport
 			'transport.enableTraceEvent', this.internal.transportId, reqData);
 	}
 
-	private getNextSctpStreamId(): number
-	{
+	private getNextSctpStreamId(): number {
 		if (
 			!this.#data.sctpParameters ||
 			typeof this.#data.sctpParameters.MIS !== 'number'
-		)
-		{
+		) {
 			throw new TypeError('missing sctpParameters.MIS');
 		}
 
 		const numStreams = this.#data.sctpParameters.MIS;
 
-		if (!this.#sctpStreamIds)
-		{
+		if (!this.#sctpStreamIds) {
 			this.#sctpStreamIds = Buffer.alloc(numStreams, 0);
 		}
 
 		let sctpStreamId;
 
-		for (let idx = 0; idx < this.#sctpStreamIds.length; ++idx)
-		{
+		for (let idx = 0; idx < this.#sctpStreamIds.length; ++idx) {
 			sctpStreamId = (this.#nextSctpStreamId + idx) % this.#sctpStreamIds.length;
 
-			if (!this.#sctpStreamIds[sctpStreamId])
-			{
+			if (!this.#sctpStreamIds[sctpStreamId]) {
 				this.#nextSctpStreamId = sctpStreamId + 1;
 
 				return sctpStreamId;
