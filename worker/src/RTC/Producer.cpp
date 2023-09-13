@@ -73,7 +73,15 @@ namespace RTC
 	        {
 	            MS_DEBUG_TAG(rtp, "XXXXX creating producer bin log. lively=%s", lively.ToStr().c_str());
 
-	            this->binLog.InitLog('p', lively.callId, lively.id);
+//	            this->binLog.InitLog('p', lively.callId, lively.id);
+
+                std::string const callId = lively.callId;
+                std::string const producerId = lively.id;
+                std::string const userId = "placeholder";
+
+                this->binLog.InitLogNew([callId, producerId, userId](uint64_t timestamp) -> std::string {
+                    return Lively::ProducerFileName(callId, producerId, userId, timestamp, BINLOG_FORMAT_VERSION);
+                });
 	        }
 		} else {
             MS_DEBUG_TAG(rtp, "XXXXX producer bin log is disabled. lively=%s", lively.ToStr().c_str());

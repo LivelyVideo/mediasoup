@@ -551,16 +551,31 @@ std::string GenerateLogFormatString(char type, const std::string& id1, const std
 	return tmp;
 }
 
-void StatsBinLog::InitLogNew(std::function<std::string(uint64_t)> templateFunction)
+//todo check compatibility with current filename parser
+std::string ProducerFileName(
+    const std::string &callId,
+    const std::string &producerId,
+    const std::string &userId,
+    uint64_t timestamp,
+    const std::string &version
+) {
+    return "ms_p_" + callId + "_" + producerId + "_" + userId + "_" + std::to_string(timestamp) + "." + version + ".bin";
+}
+
+std::string ConsumerFileName(const std::string& callId, uint64_t timestamp, const std::string& version) {
+    return "ms_c_" + callId + "_" + std::to_string(timestamp) + "." + version + ".bin";
+}
+
+void StatsBinLog::InitLogNew(std::function<std::string(uint64_t)>&& templateFunction)
 {
 	this->initialized = false;
 
 	if (Settings::configuration.logBinStatsDisabled)
 		return;
 
-	this->file_name_template_function = file_name_template_function;
+	this->file_name_template_function = std::move(templateFunction);
 
-	uint64_t now = Utils::Time::currentStdEpochMs();
+	uint64_t const now = Utils::Time::currentStdEpochMs();
 	UpdateLogTimestamps(now);
 
 
@@ -635,9 +650,9 @@ void StatsBinLog::UpdateLogTimestamps(uint64_t now)
 
   this->next_day_start_ts = ((now / DAY_IN_MS) + 1) * DAY_IN_MS;
 
-	this->current_bin_log_name = this->file_name_template_function(log_start_ts);
+  this->current_bin_log_name = this->file_name_template_function(log_start_ts);
 
-  sprintf(buff, this->bin_log_name_template.c_str(), this->current_bin_log_name);
+  sprintf(buff, this->bin_log_name_template.c_str(), this->current_bin_log_name.c_str());
   this->bin_log_file_path.assign(buff);
 }
 
@@ -657,4 +672,7 @@ void StatsBinLog::DeinitLog()
 //  this->file_name_template_function.clear();
   this->bin_log_file_path.clear();
 }
+
+
+
 } //Lively

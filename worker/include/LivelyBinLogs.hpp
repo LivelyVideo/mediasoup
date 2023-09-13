@@ -189,7 +189,7 @@ class CallStatsRecord
     bool          initialized {false};
     std::string   bin_log_name_template;          // Log name template, use to rotate log, keep same name except for timestamp
     std::string   current_bin_log_name;
-		std::function<std::string(uint64_t)> file_name_template_function;
+    std::function<std::string(uint64_t)> file_name_template_function;
     const char    version[7] = BINLOG_FORMAT_VERSION;
 
     uint64_t      log_start_ts {UINT64_UNSET};      // Timestamp included into log's name; used to discard short logs, may be used for log rotation based on time passed 
@@ -201,9 +201,9 @@ class CallStatsRecord
 
     bool IsInitialized() {return initialized;}
     void InitLog(char type, std::string id1, std::string id2); // if type is producer, then log name is a combo of callid, producerid and timestamp
-    void InitLogNew(std::function<std::string(uint64_t)> templateFunction);
+    void InitLogNew(std::function<std::string(uint64_t)>&& templateFunction);
 //    void InitLogNew2(std::string fileNameTemplate);
-		int OnLogWrite(CallStatsRecordCtx* ctx);
+    int OnLogWrite(CallStatsRecordCtx* ctx);
     void DeinitLog();   // Closes log file and deinitializes state variables
 
   private:
@@ -212,6 +212,17 @@ class CallStatsRecord
     void UpdateLogTimestamps(uint64_t now);
     bool CreateBinlogDirsIfMissing();
   };
+
+    std::string ProducerFileName(
+            const std::string &callId,
+            const std::string &producerId,
+            const std::string &userId,
+            uint64_t timestamp,
+            const std::string &version
+    );
+
+    std::string ConsumerFileName(const std::string& callId, uint64_t timestamp, const std::string& version);
+
 } //Lively
 
 #endif // MS_LIVELY_BIN_LOGS_HPP

@@ -106,7 +106,14 @@ namespace RTC
 
 		if (hasCallId) {
 			MS_DEBUG_TAG(rtp, "XXXXX creating consumer bin log. lively=%s", lively.ToStr().c_str());
-			this->consumersBinLog.InitLog('c', lively.callId, lively.id); // initialize consumers bin log here, it is shared btw all consumers
+
+//			this->consumersBinLog.InitLog('c', lively.callId, lively.id); // initialize consumers bin log here, it is shared btw all consumers
+
+            std::string const callId = lively.callId;
+
+            this->consumersBinLog.InitLogNew([callId](uint64_t timestamp) -> std::string {
+                return Lively::ConsumerFileName(callId,timestamp, BINLOG_FORMAT_VERSION);
+            });
 		}
 		else
 			MS_WARN_TAG(rtp, "Missing callId, cannot init consumers binlog [transportId: %s] [data: %s]", lively.id.c_str(), data.dump().c_str());
