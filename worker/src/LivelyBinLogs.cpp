@@ -566,6 +566,7 @@ std::string ConsumerFileName(const std::string& callId, uint64_t timestamp, cons
     return "ms_c_" + callId + "_" + std::to_string(timestamp) + "." + version + ".bin";
 }
 
+//todo add back total filepath size check
 void StatsBinLog::InitLogNew(std::function<std::string(uint64_t)>&& templateFunction)
 {
 	this->initialized = false;

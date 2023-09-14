@@ -77,7 +77,7 @@ namespace RTC
 
                 std::string const callId = lively.callId;
                 std::string const producerId = lively.id;
-                std::string const userId = "placeholder";
+                std::string const userId = lively.userId;
 
                 this->binLog.InitLogNew([callId, producerId, userId](uint64_t timestamp) -> std::string {
                     return Lively::ProducerFileName(callId, producerId, userId, timestamp, BINLOG_FORMAT_VERSION);

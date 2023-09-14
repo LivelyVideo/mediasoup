@@ -361,6 +361,7 @@ mediasoup_worker_test = executable(
     'test/src/Utils/TestJson.cpp',
     'test/src/Utils/TestString.cpp',
     'test/src/Utils/TestTime.cpp',
+    'test/src/TestLivelyBinLogs.cpp',
   ],
   include_directories: include_directories(
     'include',
