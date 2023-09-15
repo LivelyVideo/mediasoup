@@ -740,6 +740,9 @@ namespace RTC
 				// This may throw.
 				SetNewProducerIdFromData(request->data, producerId);
 
+                MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData, "XXXX Transport Produce Data: %s", request->data.dump().c_str());
+                MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData, "XXXX Transport Produce Lively: %s", lively.ToStr().c_str());
+
 				// This may throw.
 				auto* producer = new RTC::Producer(producerId, this, request->data, this->producerBinLogEnabled, &lively);
 				
