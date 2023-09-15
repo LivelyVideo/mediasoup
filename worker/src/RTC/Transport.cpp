@@ -98,6 +98,11 @@ namespace RTC
 			{
 				lively.streamName.assign(jsonStreamNameIt->get<std::string>());
 			}
+            auto jsonUserIdIt = jsonAppDataIt->find("userId");
+            if (jsonUserIdIt != jsonAppDataIt->end() && jsonUserIdIt->is_string())
+            {
+                lively.userId.assign(jsonUserIdIt->get<std::string>());
+            }
 		}
 
 		lively.id = id;
