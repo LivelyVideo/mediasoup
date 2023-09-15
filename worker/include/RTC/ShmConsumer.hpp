@@ -1,18 +1,17 @@
 #ifndef MS_RTC_SHM_CONSUMER_HPP
 #define MS_RTC_SHM_CONSUMER_HPP
 
+#include "DepLibStreamShm.hpp"
 #include "RTC/Consumer.hpp"
-#include "RTC/ShmRtpStreamSend.hpp"
+#include "RTC/RtpStreamSend.hpp"
 #include "RTC/SeqManager.hpp"
 #include "RTC/Shared.hpp"
-#include "DepLibStreamShm.hpp"
-
 
 using json = nlohmann::json;
 
 namespace RTC
 {
-	class ShmConsumer : public RTC::Consumer, public RTC::ShmRtpStreamSend::Listener
+	class ShmConsumer : public RTC::Consumer, public RTC::RtpStreamSend::Listener
 	{
 	public:
 		ShmConsumer(
@@ -24,7 +23,7 @@ namespace RTC
 		~ShmConsumer() override;
 
 	public:
-		void SetSharedMemoryCtx( DepLibStreamShm::ShmCtx* ctx);
+		void SetSharedMemoryCtx(DepLibStreamShm::ShmCtx* ctx);
 
 	public:
 		void FillJson(json& jsonObject) const override;
@@ -33,15 +32,15 @@ namespace RTC
 		bool IsActive() const override
 		{
 			return (
-				this->transportConnected &&
-				!this->paused // TODO: how is this->paused set?
-				// TODO: add stream paused?
+			  this->transportConnected && !this->paused // TODO: how is this->paused set?
+			                                            // TODO: add stream paused?
 			);
 		}
-		void ProducerRtpStream(RTC::RtpStream* rtpStream, uint32_t mappedSsrc) override;
-		void ProducerNewRtpStream(RTC::RtpStream* rtpStream, uint32_t mappedSsrc) override;
-		void ProducerRtpStreamScore(RTC::RtpStream* rtpStream, uint8_t score, uint8_t previousScore) override;
-		void ProducerRtcpSenderReport(RTC::RtpStream* rtpStream, bool first) override;
+		void ProducerRtpStream(RTC::RtpStreamRecv* rtpStream, uint32_t mappedSsrc) override;
+		void ProducerNewRtpStream(RTC::RtpStreamRecv* rtpStream, uint32_t mappedSsrc) override;
+		void ProducerRtpStreamScore(
+		  RTC::RtpStreamRecv* rtpStream, uint8_t score, uint8_t previousScore) override;
+		void ProducerRtcpSenderReport(RTC::RtpStreamRecv* rtpStream, bool first) override;
 		uint8_t GetBitratePriority() const override;
 		uint32_t IncreaseLayer(uint32_t bitrate, bool considerLoss) override;
 		void ApplyLayers() override;
@@ -80,13 +79,14 @@ namespace RTC
 
 	private:
 		// Allocated by this.
-		RTC::ShmRtpStreamSend* rtpStream{ nullptr };
+		RTC::RtpStreamSend* rtpStream{ nullptr };
 		// Others.
 		std::vector<RTC::RtpStreamSend*> rtpStreams;
-		RTC::RtpStream* producerRtpStream{ nullptr };
+		RTC::RtpStreamRecv* producerRtpStream{ nullptr };
 		bool keyFrameSupported{ false };
 		bool syncRequired{ false };
 		RTC::SeqManager<uint16_t> rtpSeqManager;
+		std::unique_ptr<RTC::Codecs::EncodingContext> encodingContext;
 	};
 } // namespace RTC
 

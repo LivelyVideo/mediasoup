@@ -204,6 +204,7 @@ namespace RTC
 	  uint32_t keyframeDelayMs)
 	  : RTC::RtpStream::RtpStream(listener, params, 10), shmChannel(shmChannel),
 	    keyframeDelayMs(keyframeDelayMs), sendNackDelayMs(sendNackDelayMs),
+	    useRtpInactivityCheck(useRtpInactivityCheck),
 	    transmissionCounter(
 	      params.spatialLayers, params.temporalLayers, this->params.useDtx ? 6000 : 2500)
 	{

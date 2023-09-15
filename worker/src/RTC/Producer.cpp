@@ -316,6 +316,7 @@ namespace RTC
 		else
 			this->maxRtcpInterval = RTC::RTCP::MaxVideoIntervalMs;
 
+#if !MEDIASOUP_SHM_ENABLED
 		// Create a KeyFrameRequestManager.
 		if (this->kind == RTC::Media::Kind::VIDEO)
 		{
@@ -332,10 +333,9 @@ namespace RTC
 				keyFrameRequestDelay = jsonKeyFrameRequestDelayIt->get<uint32_t>();
 			}
 
-#if !MEDIASOUP_SHM_ENABLED
 			this->keyFrameRequestManager = new RTC::KeyFrameRequestManager(this, keyFrameRequestDelay);
-#endif
 		}
+#endif
 
 		// NOTE: This may throw.
 		this->shared->channelMessageRegistrator->RegisterHandler(
@@ -1373,7 +1373,7 @@ namespace RTC
 		// Create a RtpStreamRecv for receiving a media stream.
 #if MEDIASOUP_SHM_ENABLED
 		auto* rtpStream =
-		  new RTC::RtpStreamRecv(this, params, SendNackDelay, channel, this->keyFrameRequestDelay);
+		  new RTC::RtpStreamRecv(this, params, SendNackDelay, useRtpInactivityCheck, channel, this->keyFrameRequestDelay);
 #else
 		auto* rtpStream = new RTC::RtpStreamRecv(this, params, SendNackDelay, useRtpInactivityCheck);
 #endif

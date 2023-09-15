@@ -2,8 +2,8 @@
 #define MS_LOG_DEV_LEVEL 3
 
 #include "RTC/ShmConsumer.hpp"
-#include "DepLibUV.hpp"
 #include "DepLibStreamShm.hpp"
+#include "DepLibUV.hpp"
 #include "Logger.hpp"
 #include "MediaSoupErrors.hpp"
 #include "RTC/Codecs/Tools.hpp"
@@ -34,6 +34,26 @@ namespace RTC
 		// Create RtpStreamSend instance for sending a single stream to the remote.
 		CreateRtpStream();
 
+		// Create the encoding context for Opus.
+		if (
+		  mediaCodec->mimeType.type == RTC::RtpCodecMimeType::Type::AUDIO &&
+		  (mediaCodec->mimeType.subtype == RTC::RtpCodecMimeType::Subtype::OPUS ||
+		   mediaCodec->mimeType.subtype == RTC::RtpCodecMimeType::Subtype::MULTIOPUS))
+		{
+			RTC::Codecs::EncodingContext::Params params;
+
+			this->encodingContext.reset(
+			  RTC::Codecs::Tools::GetEncodingContext(mediaCodec->mimeType, params));
+
+			auto jsonIgnoreDtx = data.find("ignoreDtx");
+
+			if (jsonIgnoreDtx != data.end() && jsonIgnoreDtx->is_boolean())
+			{
+				auto ignoreDtx = jsonIgnoreDtx->get<bool>();
+
+				this->encodingContext->SetIgnoreDtx(ignoreDtx);
+			}
+		}
 
 		// NOTE: This may throw.
 		this->shared->channelMessageRegistrator->RegisterHandler(
@@ -42,7 +62,6 @@ namespace RTC
 		  /*payloadChannelRequestHandler*/ nullptr,
 		  /*payloadChannelNotificationHandler*/ nullptr);
 	}
-
 
 	ShmConsumer::~ShmConsumer()
 	{
@@ -53,12 +72,10 @@ namespace RTC
 		delete this->rtpStream;
 	}
 
-
-	void ShmConsumer::SetSharedMemoryCtx( DepLibStreamShm::ShmCtx* shmCtx)
+	void ShmConsumer::SetSharedMemoryCtx(DepLibStreamShm::ShmCtx* shmCtx)
 	{
 		this->rtpStream->SetSharedMemoryCtx(shmCtx);
 	}
-
 
 	void ShmConsumer::FillJson(json& jsonObject) const
 	{
@@ -70,7 +87,6 @@ namespace RTC
 		// Add rtpStream.
 		this->rtpStream->FillJson(jsonObject["rtpStream"]);
 	}
-
 
 	void ShmConsumer::FillJsonStats(json& jsonArray) const
 	{
@@ -92,7 +108,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		jsonObject["score"] = this->rtpStream->GetScore();
+		jsonObject["score"]         = this->rtpStream->GetScore();
 		jsonObject["producerScore"] = 0;
 	}
 
@@ -104,8 +120,8 @@ namespace RTC
 		{
 			case Channel::ChannelRequest::MethodId::CONSUMER_REQUEST_KEY_FRAME:
 			{
-				//if (IsActive())
-					RequestKeyFrame();
+				// if (IsActive())
+				RequestKeyFrame();
 
 				request->Accept();
 
@@ -129,14 +145,14 @@ namespace RTC
 		}
 	}
 
-	void ShmConsumer::ProducerRtpStream(RTC::RtpStream* rtpStream, uint32_t /*mappedSsrc*/)
+	void ShmConsumer::ProducerRtpStream(RTC::RtpStreamRecv* rtpStream, uint32_t /*mappedSsrc*/)
 	{
 		MS_TRACE();
 
 		this->producerRtpStream = rtpStream;
 	}
 
-	void ShmConsumer::ProducerNewRtpStream(RTC::RtpStream* rtpStream, uint32_t /*mappedSsrc*/)
+	void ShmConsumer::ProducerNewRtpStream(RTC::RtpStreamRecv* rtpStream, uint32_t /*mappedSsrc*/)
 	{
 		MS_TRACE();
 
@@ -147,7 +163,7 @@ namespace RTC
 	}
 
 	void ShmConsumer::ProducerRtpStreamScore(
-	  RTC::RtpStream* /*rtpStream*/, uint8_t /*score*/, uint8_t /*previousScore*/)
+	  RTC::RtpStreamRecv* /*rtpStream*/, uint8_t /*score*/, uint8_t /*previousScore*/)
 	{
 		MS_TRACE();
 
@@ -155,18 +171,18 @@ namespace RTC
 		EmitScore();
 	}
 
-	void ShmConsumer::ProducerRtcpSenderReport(RTC::RtpStream* /*rtpStream*/, bool /*first*/)
+	void ShmConsumer::ProducerRtcpSenderReport(RTC::RtpStreamRecv* /*rtpStream*/, bool /*first*/)
 	{
 		MS_TRACE();
 
 		// Do nothing.
 	}
 
-    // FYI
-    // BWE = bandwidth estimation
-    // https://stackoverflow.com/questions/44517546/webrtc-goog-remb-and-transport-cc-sdp-lines
-    // To summarize: goog-remb and transport-cc are both congestion control mechanisms,
-    // goog-remb being an older method and transport-cc being a newer method.
+	// FYI
+	// BWE = bandwidth estimation
+	// https://stackoverflow.com/questions/44517546/webrtc-goog-remb-and-transport-cc-sdp-lines
+	// To summarize: goog-remb and transport-cc are both congestion control mechanisms,
+	// goog-remb being an older method and transport-cc being a newer method.
 
 	// Shm simple consumer doesn't play the bandwidth estimate game
 	// ------------------------------------------------------------------------
@@ -179,7 +195,7 @@ namespace RTC
 	uint32_t ShmConsumer::IncreaseLayer(uint32_t bitrate, bool /*considerLoss*/)
 	{
 		MS_TRACE();
-        return 0u;
+		return 0u;
 	}
 	void ShmConsumer::ApplyLayers()
 	{
@@ -188,16 +204,15 @@ namespace RTC
 	uint32_t ShmConsumer::GetDesiredBitrate() const
 	{
 		MS_TRACE();
-        return 0u;
+		return 0u;
 	}
-    // ------------------------------------------------------------------------
-
+	// ------------------------------------------------------------------------
 
 	void ShmConsumer::SendRtpPacket(RTC::RtpPacket* packet, std::shared_ptr<RTC::RtpPacket>& sharedPacket)
 	{
 		MS_TRACE();
 
-		//if (!IsActive())
+		// if (!IsActive())
 		//	return;
 
 		auto payloadType = packet->GetPayloadType();
@@ -208,6 +223,26 @@ namespace RTC
 		{
 			MS_DEBUG_DEV("payload type not supported [payloadType:%" PRIu8 "]", payloadType);
 
+			packet->logger.Dropped(RtcLogger::RtpPacket::DropReason::UNSUPPORTED_PAYLOAD_TYPE);
+
+			return;
+		}
+
+		bool marker;
+
+		// Process the payload if needed. Drop packet if necessary.
+		if (this->encodingContext && !packet->ProcessPayload(this->encodingContext.get(), marker))
+		{
+			MS_DEBUG_DEV(
+			  "discarding packet [ssrc:%" PRIu32 ", seq:%" PRIu16 ", ts:%" PRIu32 "]",
+			  packet->GetSsrc(),
+			  packet->GetSequenceNumber(),
+			  packet->GetTimestamp());
+
+			this->rtpSeqManager.Drop(packet->GetSequenceNumber());
+
+			packet->logger.Dropped(RtcLogger::RtpPacket::DropReason::DROPPED_BY_CODEC);
+
 			return;
 		}
 
@@ -215,14 +250,13 @@ namespace RTC
 		// the packet.
 		if (this->syncRequired && this->keyFrameSupported && !packet->IsKeyFrame())
 		{
-			MS_DEBUG_TAG(rtp, "waiting for key frame [syncRequired:%" PRIu8 " keyFrameSupported:%" PRIu8 " IsKeyFrame:%" PRIu8 " payload:%" PRIu8 "]",
-					this->syncRequired, this->keyFrameSupported, packet->IsKeyFrame(), payloadType);
+			packet->logger.Dropped(RtcLogger::RtpPacket::DropReason::NOT_A_KEYFRAME);
 
 			return;
 		}
 
 		// Whether this is the first packet after re-sync.
-		bool isSyncPacket = this->syncRequired;
+		const bool isSyncPacket = this->syncRequired;
 
 		// Sync sequence number and timestamp if required.
 		if (isSyncPacket)
@@ -243,25 +277,23 @@ namespace RTC
 		{
 			MS_DEBUG_TAG(
 			  rtp,
-			  "sending sync packet [ssrc:%" PRIu32 ", seq:%" PRIu16 ", ts:%" PRIu32
-			  "]",
+			  "sending sync packet [ssrc:%" PRIu32 ", seq:%" PRIu16 ", ts:%" PRIu32 "]",
 			  packet->GetSsrc(),
 			  packet->GetSequenceNumber(),
 			  packet->GetTimestamp());
 		}
 
 		// Process the packet.
-		if (this->rtpStream->ReceivePacket(packet, packet->GetSequenceNumber()))
+		if (this->rtpStream->ReceivePacket(packet, sharedPacket))
 		{
 			// Send the packet.
-		    this->listener->OnConsumerSendRtpPacket(this, packet);
+			this->listener->OnConsumerSendRtpPacket(this, packet);
 		}
 		else
 		{
 			MS_WARN_TAG(
 			  rtp,
-			  "failed to send packet [ssrc:%" PRIu32 ", seq:%" PRIu16 ", ts:%" PRIu32
-			  "]",
+			  "failed to send packet [ssrc:%" PRIu32 ", seq:%" PRIu16 ", ts:%" PRIu32 "]",
 			  packet->GetSsrc(),
 			  packet->GetSequenceNumber(),
 			  packet->GetTimestamp());
@@ -305,8 +337,7 @@ namespace RTC
 		return true;
 	}
 
-	void ShmConsumer::NeedWorstRemoteFractionLost(
-	  uint32_t /*mappedSsrc*/, uint8_t& worstRemoteFractionLost)
+	void ShmConsumer::NeedWorstRemoteFractionLost(uint32_t /*mappedSsrc*/, uint8_t& worstRemoteFractionLost)
 	{
 		MS_TRACE();
 
@@ -328,18 +359,17 @@ namespace RTC
 			return;
 
 		// May emit 'trace' event.
-		//EmitTraceEventNackType();
+		// EmitTraceEventNackType();
 
 		this->rtpStream->ReceiveNack(nackPacket);
 	}
 
-	void ShmConsumer::ReceiveKeyFrameRequest(
-	  RTC::RTCP::FeedbackPs::MessageType messageType, uint32_t ssrc)
+	void ShmConsumer::ReceiveKeyFrameRequest(RTC::RTCP::FeedbackPs::MessageType messageType, uint32_t ssrc)
 	{
 		MS_TRACE();
 
 		this->rtpStream->ReceiveKeyFrameRequest(messageType);
-		//if (IsActive())
+		// if (IsActive())
 		RequestKeyFrame();
 	}
 
@@ -380,7 +410,7 @@ namespace RTC
 
 		this->syncRequired = true;
 
-		//if (IsActive())
+		// if (IsActive())
 		RequestKeyFrame();
 	}
 
@@ -408,7 +438,7 @@ namespace RTC
 		this->syncRequired = true;
 
 		// TODO: check IsActive
-		//if (IsActive())
+		// if (IsActive())
 		RequestKeyFrame();
 	}
 
@@ -477,8 +507,8 @@ namespace RTC
 			}
 		}
 
-		this->rtpStream = new RTC::ShmRtpStreamSend(this, params, this->rtpParameters.mid);
-		this->rtpStreams.push_back(dynamic_cast<RTC::RtpStreamSend*>(this->rtpStream));
+		this->rtpStream = new RTC::RtpStreamSend(this, params, this->rtpParameters.mid);
+		this->rtpStreams.push_back(this->rtpStream);
 
 		// If the Consumer is paused, tell the RtpStreamSend.
 		if (IsPaused() || IsProducerPaused())
@@ -490,27 +520,27 @@ namespace RTC
 			this->rtpStream->SetRtx(rtxCodec->payloadType, encoding.rtx.ssrc);
 	}
 
-    void ShmConsumer::RequestKeyFrame()
-    {
-        MS_TRACE();
+	void ShmConsumer::RequestKeyFrame()
+	{
+		MS_TRACE();
 
-        if (this->kind != RTC::Media::Kind::VIDEO)
-            return;
+		if (this->kind != RTC::Media::Kind::VIDEO)
+			return;
 
-        auto mappedSsrc = this->consumableRtpEncodings[0].ssrc;
+		auto mappedSsrc = this->consumableRtpEncodings[0].ssrc;
 
-        this->listener->OnConsumerKeyFrameRequested(this, mappedSsrc);
-    }
+		this->listener->OnConsumerKeyFrameRequested(this, mappedSsrc);
+	}
 
 	inline void ShmConsumer::EmitScore() const
 	{
-        MS_TRACE();
+		MS_TRACE();
 
-        json data = json::object();
+		json data = json::object();
 
-        FillJsonScore(data);
+		FillJsonScore(data);
 
-        this->shared->channelNotifier->Emit(this->id, "score", data);
+		this->shared->channelNotifier->Emit(this->id, "score", data);
 	}
 
 	inline void ShmConsumer::OnRtpStreamScore(
@@ -521,7 +551,7 @@ namespace RTC
 		// Emit the score event.
 		EmitScore();
 	}
-	
+
 	inline void ShmConsumer::OnRtpStreamRetransmitRtpPacket(
 	  RTC::RtpStreamSend* rtpStream, RTC::RtpPacket* packet)
 	{
@@ -530,6 +560,6 @@ namespace RTC
 		this->listener->OnConsumerRetransmitRtpPacket(this, packet);
 
 		// May emit 'trace' event.
-		//EmitTraceEventRtpAndKeyFrameTypes(packet, this->rtpStream->HasRtx());
+		// EmitTraceEventRtpAndKeyFrameTypes(packet, this->rtpStream->HasRtx());
 	}
 } // namespace RTC

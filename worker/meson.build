@@ -110,7 +110,6 @@ common_sources = [
   'src/RTC/Shared.cpp',
   'src/RTC/ShmConsumer.cpp',
   'src/RTC/ShmRouter.cpp',
-  'src/RTC/ShmRtpStreamSend.cpp',
   'src/RTC/SimpleConsumer.cpp',
   'src/RTC/SimulcastConsumer.cpp',
   'src/RTC/SrtpSession.cpp',

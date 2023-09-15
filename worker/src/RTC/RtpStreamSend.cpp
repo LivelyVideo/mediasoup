@@ -108,11 +108,13 @@ namespace RTC
 			return false;
 		}
 
+#if !MEDIASOUP_SHM_ENABLED
 		// If NACK is enabled, store the packet into the buffer.
 		if (this->retransmissionBuffer)
 		{
 			StorePacket(packet, sharedPacket);
 		}
+#endif
 
 		// Increase transmission counter.
 		this->transmissionCounter.Update(packet);
@@ -126,6 +128,14 @@ namespace RTC
 
 		this->nackCount++;
 
+#if MEDIASOUP_SHM_ENABLED
+		for (auto it = nackPacket->Begin(); it != nackPacket->End(); ++it)
+		{
+			RTC::RTCP::FeedbackRtpNackItem* item = *it;
+
+			ProcessNackBLP(item->GetPacketId(), item->GetLostPacketBitmask());
+		}
+#else
 		for (auto it = nackPacket->Begin(); it != nackPacket->End(); ++it)
 		{
 			RTC::RTCP::FeedbackRtpNackItem* item = *it;
@@ -165,6 +175,7 @@ namespace RTC
 				}
 			}
 		}
+#endif
 	}
 
 	void RtpStreamSend::ReceiveKeyFrameRequest(RTC::RTCP::FeedbackPs::MessageType messageType)
@@ -318,11 +329,13 @@ namespace RTC
 	{
 		MS_TRACE();
 
+#if !MEDIASOUP_SHM_ENABLED
 		// Clear retransmission buffer.
 		if (this->retransmissionBuffer)
 		{
 			this->retransmissionBuffer->Clear();
 		}
+#endif
 	}
 
 	void RtpStreamSend::Resume()
@@ -357,6 +370,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
+#if !MEDIASOUP_SHM_ENABLED
 		if (packet->GetSize() > RTC::MtuSize)
 		{
 			MS_WARN_TAG(
@@ -370,6 +384,7 @@ namespace RTC
 		}
 
 		this->retransmissionBuffer->Insert(packet, sharedPacket);
+#endif
 	}
 
 	// This method looks for the requested RTP packets and inserts them into the
@@ -387,6 +402,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
+#if !MEDIASOUP_SHM_ENABLED
 		// Ensure the container's first element is 0.
 		RetransmissionContainer[0] = nullptr;
 
@@ -525,6 +541,7 @@ namespace RTC
 
 		// Set the next container element to null.
 		RetransmissionContainer[containerIdx] = nullptr;
+#endif
 	}
 
 	void RtpStreamSend::UpdateScore(RTC::RTCP::ReceiverReport* report)
@@ -639,4 +656,67 @@ namespace RTC
 			this->retransmissionBuffer->Clear();
 		}
 	}
+
+#if MEDIASOUP_SHM_ENABLED
+	// Go over the list of lost packets specified by
+	// the sequence and the bitmask (BLP) and deliver
+	// the loss packets to the client
+	void RtpStreamSend::ProcessNackBLP(uint16_t seq, uint16_t bitmask)
+	{
+		MS_TRACE();
+
+		uint8_t buf[2048], *p;
+		int rc;
+
+		if (!this->shmCtx || !this->shmCtx->IsOpen())
+			return;
+
+		uint32_t blp = ((uint32_t)bitmask << 1) + 1;
+
+		for (int i = 0; i < 17; i++)
+		{
+			for (; blp & 1;)
+			{
+				p  = buf;
+				rc = this->shmCtx->ReadBySeqId(seq, &p, sizeof(buf)); // this->shmCtx cannot be nullptr here
+				if (rc < 0)
+				{
+					MS_WARN_TAG(rtp, "Failed to read RTP pkt seq=%" PRIu16, seq);
+					break;
+				}
+
+				RTC::RtpPacket* packet{ nullptr };
+				packet = RtpPacket::Parse(buf, (p - buf));
+				if (packet == nullptr)
+				{
+					MS_WARN_TAG(rtp, "failed to parse RTP packet for NACK. seq=%" PRIu16, seq);
+					break;
+				}
+
+				// If we use RTX and the packet has not yet been resent, encode it now.
+				if (HasRtx())
+				{
+					packet->RtxEncode(this->params.rtxPayloadType, this->params.rtxSsrc, ++this->rtxSeq);
+				}
+
+				// Retransmit the packet.
+				static_cast<RTC::RtpStreamSend::Listener*>(this->listener)
+				  ->OnRtpStreamRetransmitRtpPacket(this, packet);
+
+				// Mark the packet as retransmitted.
+				RTC::RtpStream::PacketRetransmitted(packet);
+
+				this->nackPacketCount++;
+
+				delete packet;
+
+				break;
+			}
+
+			seq++;
+			blp >>= 1;
+		}
+	}
+#endif
+
 } // namespace RTC

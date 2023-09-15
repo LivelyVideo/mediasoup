@@ -5,6 +5,10 @@
 #include "RTC/RtpRetransmissionBuffer.hpp"
 #include "RTC/RtpStream.hpp"
 
+#if MEDIASOUP_SHM_ENABLED
+#include "DepLibStreamShm.hpp"
+#endif
+
 namespace RTC
 {
 	class RtpStreamSend : public RTC::RtpStream
@@ -48,10 +52,22 @@ namespace RTC
 		uint32_t GetSpatialLayerBitrate(uint64_t nowMs, uint8_t spatialLayer) override;
 		uint32_t GetLayerBitrate(uint64_t nowMs, uint8_t spatialLayer, uint8_t temporalLayer) override;
 
+#if MEDIASOUP_SHM_ENABLED
+		void SetSharedMemoryCtx(DepLibStreamShm::ShmCtx* ctx)
+		{
+			this->shmCtx = ctx;
+		}
+#endif
 	private:
 		void StorePacket(RTC::RtpPacket* packet, std::shared_ptr<RTC::RtpPacket>& sharedPacket);
 		void FillRetransmissionContainer(uint16_t seq, uint16_t bitmask);
 
+#if MEDIASOUP_SHM_ENABLED
+		void ProcessNackBLP(uint16_t seq, uint16_t bitmask);
+		DepLibStreamShm::ShmCtx* shmCtx{ nullptr };
+#endif
+
+		/* Pure virtual methods inherited from RTC::RtpStream. */
 	protected:
 		void UpdateScore(RTC::RTCP::ReceiverReport* report);
 

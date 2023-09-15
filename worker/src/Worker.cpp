@@ -492,7 +492,7 @@ inline void Worker::HandleRequest(Channel::ChannelRequest* request)
 			if (!transportFound)
 			{
 				MS_THROW_ERROR(
-				  "Attempt to close the transport failed %s", jsonTransportIdIt->get<std::string>());
+				  "Attempt to close the transport failed %s", jsonTransportIdIt->get<std::string>().c_str());
 			}
 
 			break;
