@@ -356,6 +356,8 @@ void Settings::SetLogTags(const std::vector<std::string>& tags)
 			newLogTags.sctp = true;
 		else if (tag == "message")
 			newLogTags.message = true;
+		else if (tag == "shm")
+			newLogTags.shm = true;
 	}
 
 	Settings::configuration.logTags = newLogTags;

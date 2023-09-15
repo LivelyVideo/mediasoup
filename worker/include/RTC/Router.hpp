@@ -50,7 +50,7 @@ namespace RTC
 	public:
 		void HandleRequest(Channel::ChannelRequest* request) override;
 
-	private:
+	protected:
 		void SetNewTransportIdFromData(json& data, std::string& transportId) const;
 		RTC::Transport* GetTransportFromData(json& data) const;
 		void SetNewRtpObserverIdFromData(json& data, std::string& rtpObserverId) const;
@@ -116,7 +116,7 @@ namespace RTC
 		// Passed by argument.
 		const std::string id;
 
-	private:
+	protected:
 		// Passed by argument.
 		RTC::Shared* shared{ nullptr };
 		Listener* listener{ nullptr };

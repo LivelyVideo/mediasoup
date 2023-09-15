@@ -9,6 +9,8 @@
 #include "PayloadChannel/PayloadChannelSocket.hpp"
 #include "RTC/Router.hpp"
 #include "RTC/Shared.hpp"
+#include "RTC/ShmRouter.hpp"
+#include "RTC/Transport.hpp"
 #include "RTC/WebRtcServer.hpp"
 #include "handles/SignalsHandler.hpp"
 #include <absl/container/flat_hash_map.h>
@@ -70,6 +72,13 @@ private:
 	// Allocated by this.
 	SignalsHandler* signalsHandler{ nullptr };
 	RTC::Shared* shared{ nullptr };
+
+	// Added by Mythili Kottalanka 08/16/2023
+	// Need to watch for any changes in the mediasoup unix socket
+	// file. If it is deleted the worker needs to reset the socket.
+	// Set the libuv watcher here.
+	uv_fs_event_t watcher;
+
 	absl::flat_hash_map<std::string, RTC::WebRtcServer*> mapWebRtcServers;
 	absl::flat_hash_map<std::string, RTC::Router*> mapRouters;
 	// Others.

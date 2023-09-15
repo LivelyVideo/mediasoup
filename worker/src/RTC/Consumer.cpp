@@ -479,7 +479,8 @@ namespace RTC
 			if (isRtx)
 				data["info"]["isRtx"] = true;
 
-			this->shared->channelNotifier->Emit(this->id, "trace", data);
+			this->shared->channelNotifier->Emit(
+			  this->id, "trace", data, "consumer", &this->producerId, NULL, NULL);
 		}
 		else if (this->traceEventTypes.rtp)
 		{
@@ -494,7 +495,8 @@ namespace RTC
 			if (isRtx)
 				data["info"]["isRtx"] = true;
 
-			this->shared->channelNotifier->Emit(this->id, "trace", data);
+			this->shared->channelNotifier->Emit(
+			  this->id, "trace", data, "consumer", &this->producerId, NULL, NULL);
 		}
 	}
 
@@ -512,7 +514,8 @@ namespace RTC
 		data["direction"]    = "in";
 		data["info"]["ssrc"] = ssrc;
 
-		this->shared->channelNotifier->Emit(this->id, "trace", data);
+		this->shared->channelNotifier->Emit(
+		  this->id, "trace", data, "consumer", &this->producerId, NULL, NULL);
 	}
 
 	void Consumer::EmitTraceEventFirType(uint32_t ssrc) const
@@ -529,7 +532,8 @@ namespace RTC
 		data["direction"]    = "in";
 		data["info"]["ssrc"] = ssrc;
 
-		this->shared->channelNotifier->Emit(this->id, "trace", data);
+		this->shared->channelNotifier->Emit(
+		  this->id, "trace", data, "consumer", &this->producerId, NULL, NULL);
 	}
 
 	void Consumer::EmitTraceEventNackType() const
@@ -546,6 +550,7 @@ namespace RTC
 		data["direction"] = "in";
 		data["info"]      = json::object();
 
-		this->shared->channelNotifier->Emit(this->id, "trace", data);
+		this->shared->channelNotifier->Emit(
+		  this->id, "trace", data, "consumer", &this->producerId, NULL, NULL);
 	}
 } // namespace RTC

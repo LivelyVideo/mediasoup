@@ -26,6 +26,7 @@ public:
 		bool svc{ false };
 		bool sctp{ false };
 		bool message{ false };
+		bool shm{ false };
 	};
 
 public:

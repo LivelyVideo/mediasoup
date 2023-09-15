@@ -20,7 +20,7 @@ namespace Channel
 		void Emit(const std::string& targetId, const char* event);
 		void Emit(const std::string& targetId, const char* event, json& data);
 		void Emit(const std::string& targetId, const char* event, const std::string& data);
-
+		void Emit(const std::string& targetId, const char* event, json& data, const char* targetType, const std::string* parentId, const std::string* appData, const std::string* payloadType);
 	private:
 		// Passed by argument.
 		Channel::ChannelSocket* channel{ nullptr };

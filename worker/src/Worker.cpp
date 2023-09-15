@@ -4,12 +4,14 @@
 #include "Worker.hpp"
 #include "ChannelMessageRegistrator.hpp"
 #include "DepLibUV.hpp"
+#include "DepNamedUnixSocket.hpp"
 #include "DepUsrSCTP.hpp"
 #include "Logger.hpp"
 #include "MediaSoupErrors.hpp"
 #include "Settings.hpp"
 #include "Channel/ChannelNotifier.hpp"
 #include "PayloadChannel/PayloadChannelNotifier.hpp"
+#include <uv.h>
 
 /* Instance methods. */
 
@@ -47,6 +49,36 @@ Worker::Worker(::Channel::ChannelSocket* channel, PayloadChannel::PayloadChannel
 	// Tell the Node process that we are running.
 	this->shared->channelNotifier->Emit(Logger::pid, "running");
 
+#if 0
+	// experimental !!! DELETEME !!!
+    if(!std::getenv("MEDIASOUP_DEFAULT_ROUTER_ID"))
+    {
+        MS_ABORT("environment variable MEDIASOUP_DEFAULT_ROUTER_ID is not set");
+    }
+
+	// when shared memory is enabled all transports
+	// are connected to a single router
+    std::string routerId = std::getenv("MEDIASOUP_DEFAULT_ROUTER_ID");
+    RTC::Router* router;
+
+    router = new RTC::Router(this->shared, routerId, this);
+
+    this->mapRouters[routerId] = router;
+
+    MS_DEBUG_DEV("Router created [routerId:%s]", routerId.c_str());
+#endif
+
+	// Added by Mythili Kottalanka 08/16/2023
+	// Need to watch for any changes in the mediasoup unix socket file. If it is deleted
+	// the worker needs to reset the socket. Set the libuv watcher here.
+	uv_fs_event_init(DepLibUV::GetLoop(), &watcher);
+	watcher.data = this->channel;
+	uv_fs_event_start(
+	  &watcher,
+	  DepNamedUnixSocket::ClassReinitializeSocket,
+	  DepNamedUnixSocket::GetSocketDir().c_str(),
+	  0);
+
 	MS_DEBUG_DEV("starting libuv loop");
 	DepLibUV::RunLoop();
 	MS_DEBUG_DEV("libuv loop ended");
@@ -58,6 +90,10 @@ Worker::~Worker()
 
 	if (!this->closed)
 		Close();
+
+	// Stop the watcher
+	uv_fs_event_stop(&watcher);
+	uv_close(reinterpret_cast<uv_handle_t*>(&watcher), nullptr);
 }
 
 void Worker::Close()
@@ -376,6 +412,7 @@ inline void Worker::HandleRequest(Channel::ChannelRequest* request)
 		case Channel::ChannelRequest::MethodId::WORKER_CREATE_ROUTER:
 		{
 			std::string routerId;
+			RTC::Router* router;
 
 			try
 			{
@@ -386,7 +423,7 @@ inline void Worker::HandleRequest(Channel::ChannelRequest* request)
 				MS_THROW_ERROR("%s [method:%s]", error.what(), request->method.c_str());
 			}
 
-			auto* router = new RTC::Router(this->shared, routerId, this);
+			router = new RTC::ShmRouter(this->shared, routerId, this);
 
 			this->mapRouters[routerId] = router;
 
@@ -421,7 +458,46 @@ inline void Worker::HandleRequest(Channel::ChannelRequest* request)
 
 			break;
 		}
+#if MEDIASOUP_SHM_ENABLED
 
+		case Channel::ChannelRequest::MethodId::WORKER_CLOSE_TRANSPORT:
+		{
+			auto jsonTransportIdIt = (request->data).find("transportId");
+
+			if (jsonTransportIdIt == (request->data).end() || !jsonTransportIdIt->is_string())
+				MS_THROW_ERROR("missing transportId");
+
+			request->methodId = Channel::ChannelRequest::MethodId::ROUTER_CLOSE_TRANSPORT;
+			// Call the router close method
+			bool transportFound = false;
+			for (auto& kv : this->mapRouters)
+			{
+				auto& router = kv.second;
+				try
+				{
+					router->HandleRequest(request);
+
+					if (request->replied == true)
+					{
+						// This transport id is found
+						transportFound = true;
+						break;
+					}
+				}
+				catch (const MediaSoupError& error)
+				{
+					continue;
+				}
+			}
+			if (!transportFound)
+			{
+				MS_THROW_ERROR(
+				  "Attempt to close the transport failed %s", jsonTransportIdIt->get<std::string>());
+			}
+
+			break;
+		}
+#endif
 		// Any other request must be delivered to the corresponding Router.
 		default:
 		{
@@ -569,6 +645,15 @@ inline void Worker::OnSignal(SignalsHandler* /*signalsHandler*/, int signum)
 			MS_DEBUG_DEV("TERM signal received, closing myself");
 
 			Close();
+
+			// TODO: XXX !!! Check with Mythilli the reason for adding this !!!
+			// // Now cleanup the sockets that are created for this process.
+			// std::string socketName = DepNamedUnixSocket::GetSocketFullName().c_str();
+
+			// if (unlink(socketName.c_str()) != 0)
+			// 	MS_ERROR_STD("Error removing the unix socket");
+
+			// exit(signum);
 
 			break;
 		}

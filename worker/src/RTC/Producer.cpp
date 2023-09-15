@@ -33,6 +33,27 @@ namespace RTC
 	{
 		MS_TRACE();
 
+#if MEDIASOUP_SHM_ENABLED
+		// we expect the producer id string to be in the format
+		// <stream key>$$<rid>
+		DepLibStreamShm::ShmCtx::ParseStreamKey(id, this->streamKey, this->channelId);
+
+		if (this->shmCtx.OpenWriter(this->streamKey) < 0)
+		{
+			MS_THROW_TYPE_ERROR(
+			  "failed to open shm. streamKey=%s channelId=%s",
+			  this->streamKey.c_str(),
+			  this->channelId.c_str());
+		}
+
+		auto jsonAppDataIt = data.find("appData");
+
+		if (jsonAppDataIt != data.end() && jsonAppDataIt->is_string())
+		{
+			this->appData = jsonAppDataIt->get<std::string>();
+		}
+#endif
+
 		auto jsonKindIt = data.find("kind");
 
 		if (jsonKindIt == data.end() || !jsonKindIt->is_string())
@@ -311,7 +332,9 @@ namespace RTC
 				keyFrameRequestDelay = jsonKeyFrameRequestDelayIt->get<uint32_t>();
 			}
 
+#if !MEDIASOUP_SHM_ENABLED
 			this->keyFrameRequestManager = new RTC::KeyFrameRequestManager(this, keyFrameRequestDelay);
+#endif
 		}
 
 		// NOTE: This may throw.
@@ -333,6 +356,10 @@ namespace RTC
 		{
 			auto* rtpStream = kv.second;
 
+#if MEDIASOUP_SHM_ENABLED
+			shmCtx.ResetChannel(rtpStream->GetShmChannel());
+#endif
+
 			delete rtpStream;
 		}
 
@@ -345,14 +372,34 @@ namespace RTC
 
 		// Delete the KeyFrameRequestManager.
 		delete this->keyFrameRequestManager;
+
+#if MEDIASOUP_SHM_ENABLED
+		shmCtx.Close();
+#endif
 	}
 
 	void Producer::FillJson(json& jsonObject) const
 	{
 		MS_TRACE();
 
+#if MEDIASOUP_SHM_ENABLED
+		std::string streamKey, producerId;
+		// we expect the producer id string to be in the format
+		// <stream key>$$<rid>
+		DepLibStreamShm::ShmCtx::ParseStreamKey(this->id, streamKey, producerId);
+
+		if (producerId.empty())
+		{
+			jsonObject["id"] = this->id;
+		}
+		else
+		{
+			jsonObject["id"] = producerId;
+		}
+#else
 		// Add id.
 		jsonObject["id"] = this->id;
+#endif
 
 		// Add kind.
 		jsonObject["kind"] = RTC::Media::GetString(this->kind);
@@ -525,8 +572,9 @@ namespace RTC
 				this->paused = true;
 
 				MS_DEBUG_DEV("Producer paused [producerId:%s]", this->id.c_str());
-
+#if !MEDIASOUP_SHM_ENABLED
 				this->listener->OnProducerPaused(this);
+#endif
 
 				request->Accept();
 
@@ -553,7 +601,7 @@ namespace RTC
 				this->paused = false;
 
 				MS_DEBUG_DEV("Producer resumed [producerId:%s]", this->id.c_str());
-
+#if !MEDIASOUP_SHM_ENABLED
 				this->listener->OnProducerResumed(this);
 
 				if (this->keyFrameRequestManager)
@@ -568,7 +616,7 @@ namespace RTC
 						this->keyFrameRequestManager->ForceKeyFrameNeeded(ssrc);
 					}
 				}
-
+#endif
 				request->Accept();
 
 				break;
@@ -673,12 +721,13 @@ namespace RTC
 		MS_TRACE();
 
 		packet->logger.producerId = this->id;
-
+#if !MEDIASOUP_SHM_ENABLED
 		// Reset current packet.
 		this->currentRtpPacket = nullptr;
 
 		// Count number of RTP streams.
 		auto numRtpStreamsBefore = this->mapSsrcRtpStream.size();
+#endif
 
 		auto* rtpStream = GetRtpStream(packet);
 
@@ -705,10 +754,11 @@ namespace RTC
 			// Process the packet.
 			if (!rtpStream->ReceivePacket(packet))
 			{
+#if !MEDIASOUP_SHM_ENABLED
 				// May have to announce a new RTP stream to the listener.
 				if (this->mapSsrcRtpStream.size() > numRtpStreamsBefore)
 					NotifyNewRtpStream(rtpStream);
-
+#endif
 				packet->logger.Dropped(RtcLogger::RtpPacket::DropReason::RECV_RTP_STREAM_DISCARDED);
 
 				return result;
@@ -734,6 +784,7 @@ namespace RTC
 			MS_ABORT("found stream does not match received packet");
 		}
 
+#if !MEDIASOUP_SHM_ENABLED
 		if (packet->IsKeyFrame())
 		{
 			MS_DEBUG_TAG(
@@ -763,6 +814,7 @@ namespace RTC
 			// Reset current packet.
 			this->currentRtpPacket = nullptr;
 		}
+#endif
 
 		// If paused stop here.
 		if (this->paused)
@@ -778,7 +830,18 @@ namespace RTC
 		// Post-process the packet.
 		PostProcessRtpPacket(packet);
 
+#if !MEDIASOUP_SHM_ENABLED
+		// Shm producer writes to shared memory instead of passing
+		// the packets to consumers via the transport and the router
 		this->listener->OnProducerRtpPacketReceived(this, packet);
+#else
+		int rc           = rtpStream->Write(this->shmCtx, packet, isRtx);
+
+		if (rc < 0)
+		{
+			result = Producer::ReceiveRtpPacketResult::DISCARDED;
+		}
+#endif
 
 		return result;
 	}
@@ -791,12 +854,16 @@ namespace RTC
 
 		if (it != this->mapSsrcRtpStream.end())
 		{
-			auto* rtpStream  = it->second;
+			auto* rtpStream = it->second;
+#if MEDIASOUP_SHM_ENABLED
+			rtpStream->ReceiveRtcpSenderReport(this->shmCtx, report);
+#else
 			const bool first = rtpStream->GetSenderReportNtpMs() == 0;
 
 			rtpStream->ReceiveRtcpSenderReport(report);
 
 			this->listener->OnProducerRtcpSenderReport(this, rtpStream, first);
+#endif
 
 			return;
 		}
@@ -880,6 +947,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
+#if !MEDIASOUP_SHM_ENABLED
 		if (!this->keyFrameRequestManager || this->paused)
 			return;
 
@@ -913,6 +981,9 @@ namespace RTC
 		}
 
 		this->keyFrameRequestManager->KeyFrameNeeded(ssrc);
+#else
+		MS_ABORT("Producer::RequestKeyFrame should not be called when SHM is enabled");
+#endif
 	}
 
 	RTC::RtpStreamRecv* Producer::GetRtpStream(RTC::RtpPacket* packet)
@@ -1156,6 +1227,76 @@ namespace RTC
 		auto& encoding        = this->rtpParameters.encodings[encodingIdx];
 		auto& encodingMapping = this->rtpMapping.encodings[encodingIdx];
 
+#if MEDIASOUP_SHM_ENABLED
+		int channel = this->shmCtx.FindChannelBySsrc(ssrc);
+
+		if (channel >= 0)
+		{
+			MS_ABORT(
+			  "SHM channel with the specified ssrc already exists. "
+			  "streamKey=%s chn=%d ssrc=%" PRIu32,
+			  streamKey.c_str(),
+			  channel,
+			  ssrc);
+		}
+
+		// make sure there is an available shm channel
+		uint32_t kbps = encoding.maxBitrate / 1024;
+
+		if (!kbps)
+		{
+			kbps = mediaCodec.mimeType.type == RTC::RtpCodecMimeType::Type::VIDEO ? 3000 : 64;
+		}
+
+		uint8_t mappedPayloadType = 0;
+
+		// Mangle the payload type.
+		{
+			auto it = this->rtpMapping.codecs.find(mediaCodec.payloadType);
+
+			if (it == this->rtpMapping.codecs.end())
+			{
+				MS_WARN_TAG(rtp, "unknown payload type [payloadType:%" PRIu8 "]", mediaCodec.payloadType);
+			}
+			else
+			{
+				mappedPayloadType = it->second;
+			}
+		}
+
+		channel = this->shmCtx.AddNewChannel(ssrc, mediaCodec, mappedPayloadType, kbps, this->channelId);
+
+		if (channel < 0)
+		{
+			MS_WARN_TAG(
+			  rtp,
+			  "failed to add shm channel. ssrc=%" PRIu32 " kbps=%" PRIu32 " streamKey=%s, channelId=%s",
+			  ssrc,
+			  kbps,
+			  this->streamKey.c_str(),
+			  this->channelId.c_str());
+
+			return nullptr;
+		}
+
+		if (this->appData.length())
+		{
+			this->shmCtx.SetChannelOpaqueData(
+			  channel, reinterpret_cast<const uint8_t*>(this->appData.c_str()), this->appData.length());
+			// this->appData.clear();
+		}
+
+		MS_DEBUG_TAG(
+		  rtp,
+		  "[encodingIdx:%zu, ssrc:%" PRIu32 ", streamKey=%s, channelId=%s, payloadType=%" PRIu8
+		  ", channel=%d]",
+		  encodingIdx,
+		  ssrc,
+		  this->streamKey.c_str(),
+		  this->channelId.c_str(),
+		  mediaCodec.payloadType,
+		  channel);
+#else
 		MS_DEBUG_TAG(
 		  rtp,
 		  "[encodingIdx:%zu, ssrc:%" PRIu32 ", rid:%s, payloadType:%" PRIu8 "]",
@@ -1163,6 +1304,7 @@ namespace RTC
 		  ssrc,
 		  encoding.rid.c_str(),
 		  mediaCodec.payloadType);
+#endif
 
 		// Set stream params.
 		RTC::RtpStream::Params params;
@@ -1229,7 +1371,12 @@ namespace RTC
 		  this->type == RtpParameters::Type::SIMULCAST && this->rtpMapping.encodings.size() > 1;
 
 		// Create a RtpStreamRecv for receiving a media stream.
+#if MEDIASOUP_SHM_ENABLED
+		auto* rtpStream =
+		  new RTC::RtpStreamRecv(this, params, SendNackDelay, channel, this->keyFrameRequestDelay);
+#else
 		auto* rtpStream = new RTC::RtpStreamRecv(this, params, SendNackDelay, useRtpInactivityCheck);
+#endif
 
 		// Insert into the maps.
 		this->mapSsrcRtpStream[ssrc]              = rtpStream;
@@ -1510,8 +1657,8 @@ namespace RTC
 					data["camera"]   = this->videoOrientation.camera;
 					data["flip"]     = this->videoOrientation.flip;
 					data["rotation"] = this->videoOrientation.rotation;
-
-					this->shared->channelNotifier->Emit(this->id, "videoorientationchange", data);
+					this->shared->channelNotifier->Emit(
+					  this->id, "videoorientationchange", data, "producer", NULL, &this->appData, NULL);
 				}
 			}
 		}
@@ -1541,7 +1688,8 @@ namespace RTC
 			jsonEntry["score"] = rtpStream->GetScore();
 		}
 
-		this->shared->channelNotifier->Emit(this->id, "score", data);
+		this->shared->channelNotifier->Emit(
+		  this->id, "score", data, "producer", NULL, &this->appData, NULL);
 	}
 
 	inline void Producer::EmitTraceEventRtpAndKeyFrameTypes(RTC::RtpPacket* packet, bool isRtx) const
@@ -1561,7 +1709,8 @@ namespace RTC
 			if (isRtx)
 				data["info"]["isRtx"] = true;
 
-			this->shared->channelNotifier->Emit(this->id, "trace", data);
+			this->shared->channelNotifier->Emit(
+			  this->id, "trace", data, "producer", NULL, &this->appData, NULL);
 		}
 		else if (this->traceEventTypes.rtp)
 		{
@@ -1576,7 +1725,8 @@ namespace RTC
 			if (isRtx)
 				data["info"]["isRtx"] = true;
 
-			this->shared->channelNotifier->Emit(this->id, "trace", data);
+			this->shared->channelNotifier->Emit(
+			  this->id, "trace", data, "producer", NULL, &this->appData, NULL);
 		}
 	}
 
@@ -1594,7 +1744,8 @@ namespace RTC
 		data["direction"]    = "out";
 		data["info"]["ssrc"] = ssrc;
 
-		this->shared->channelNotifier->Emit(this->id, "trace", data);
+		this->shared->channelNotifier->Emit(
+		  this->id, "trace", data, "producer", NULL, &this->appData, NULL);
 	}
 
 	inline void Producer::EmitTraceEventFirType(uint32_t ssrc) const
@@ -1611,7 +1762,8 @@ namespace RTC
 		data["direction"]    = "out";
 		data["info"]["ssrc"] = ssrc;
 
-		this->shared->channelNotifier->Emit(this->id, "trace", data);
+		this->shared->channelNotifier->Emit(
+		  this->id, "trace", data, "producerId", NULL, &this->appData, NULL);
 	}
 
 	inline void Producer::EmitTraceEventNackType() const
@@ -1628,7 +1780,8 @@ namespace RTC
 		data["direction"] = "out";
 		data["info"]      = json::object();
 
-		this->shared->channelNotifier->Emit(this->id, "trace", data);
+		this->shared->channelNotifier->Emit(
+		  this->id, "trace", data, "producer", NULL, &this->appData, NULL);
 	}
 
 	inline void Producer::OnRtpStreamScore(RTC::RtpStream* rtpStream, uint8_t score, uint8_t previousScore)
@@ -1638,12 +1791,14 @@ namespace RTC
 		// Update the vector of scores.
 		this->rtpStreamScores[rtpStream->GetEncodingIdx()] = score;
 
+#if !MEDIASOUP_SHM_ENABLED
 		// Notify the listener.
 		this->listener->OnProducerRtpStreamScore(
 		  this, static_cast<RTC::RtpStreamRecv*>(rtpStream), score, previousScore);
 
 		// Emit the score event.
 		EmitScore();
+#endif
 	}
 
 	inline void Producer::OnRtpStreamSendRtcpPacket(

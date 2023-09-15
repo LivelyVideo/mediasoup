@@ -15,6 +15,7 @@
 #include "RTC/RTCP/FeedbackRtpTransport.hpp"
 #include "RTC/RTCP/XrDelaySinceLastRr.hpp"
 #include "RTC/RtpDictionaries.hpp"
+#include "RTC/ShmConsumer.hpp"
 #include "RTC/SimpleConsumer.hpp"
 #include "RTC/SimulcastConsumer.hpp"
 #include "RTC/SvcConsumer.hpp"
@@ -176,6 +177,9 @@ namespace RTC
 
 		// Create the RTCP timer.
 		this->rtcpTimer = new Timer(this);
+
+		// Added by Amir Pauker 08/29/2023 in order to track idle timeout
+		lastRtcpTime = DepLibUV::GetTimeMs();
 	}
 
 	Transport::~Transport()
@@ -318,7 +322,23 @@ namespace RTC
 		{
 			const auto& producerId = kv.first;
 
+#if MEDIASOUP_SHM_ENABLED
+			std::string streamKey, parsedProducerId;
+			// we expect the producer id string to be in the format
+			// <stream key>$$<rid>
+			DepLibStreamShm::ShmCtx::ParseStreamKey(producerId, streamKey, parsedProducerId);
+
+			if (parsedProducerId.empty())
+			{
+				jsonProducerIdsIt->emplace_back(producerId);
+			}
+			else
+			{
+				jsonProducerIdsIt->emplace_back(parsedProducerId);
+			}
+#else
 			jsonProducerIdsIt->emplace_back(producerId);
+#endif
 		}
 
 		// Add consumerIds.
@@ -937,10 +957,15 @@ namespace RTC
 
 					case RTC::RtpParameters::Type::SIMPLE:
 					{
+#if MEDIASOUP_SHM_ENABLED
+						// This may throw.
+						consumer =
+						  new RTC::ShmConsumer(this->shared, consumerId, producerId, this, request->data);
+#else
 						// This may throw.
 						consumer =
 						  new RTC::SimpleConsumer(this->shared, consumerId, producerId, this, request->data);
-
+#endif
 						break;
 					}
 
@@ -1668,8 +1693,14 @@ namespace RTC
 			dataConsumer->TransportDisconnected();
 		}
 
+		////////////////////////////////////////////////////////
+		// Modified by Amir Pauker 08/29/2023 in order to allow
+		// the OnTimer handler to disconnect the transport
+		lastRtcpTime = 0; // force timeout
+
 		// Stop the RTCP timer.
-		this->rtcpTimer->Stop();
+		// this->rtcpTimer->Stop(); // commented out 08/29/2023
+		////////////////////////////////////////////////////////
 
 		// Tell the TransportCongestionControlClient.
 		if (this->tccClient)
@@ -1718,6 +1749,7 @@ namespace RTC
 
 		if (!producer)
 		{
+			// TODO: XXXXX send BYE to the sender
 			packet->logger.Dropped(RtcLogger::RtpPacket::DropReason::PRODUCER_NOT_FOUND);
 
 			MS_WARN_TAG(
@@ -2440,6 +2472,9 @@ namespace RTC
 		if (packet->GetReceiverReportCount() > 0u || packet->GetSenderReportCount() > 0u)
 		{
 			SendRtcpCompoundPacket(packet.get());
+
+			// Added by Amir Pauker 08/29/2023 in order to track idle timeout
+			lastRtcpTime = nowMs;
 		}
 	}
 
@@ -2567,7 +2602,7 @@ namespace RTC
 
 		packet->FillJson(data["info"]);
 
-		this->shared->channelNotifier->Emit(this->id, "trace", data);
+		this->shared->channelNotifier->Emit(this->id, "trace", data, "transport", NULL, NULL, NULL);
 	}
 
 	inline void Transport::EmitTraceEventBweType(
@@ -2603,7 +2638,7 @@ namespace RTC
 				break;
 		}
 
-		this->shared->channelNotifier->Emit(this->id, "trace", data);
+		this->shared->channelNotifier->Emit(this->id, "trace", data, "transportId", NULL, NULL, NULL);
 	}
 
 	inline void Transport::OnProducerPaused(RTC::Producer* producer)
@@ -2970,7 +3005,8 @@ namespace RTC
 
 		data["sctpState"] = "connecting";
 
-		this->shared->channelNotifier->Emit(this->id, "sctpstatechange", data);
+		this->shared->channelNotifier->Emit(
+		  this->id, "sctpstatechange", data, "transport", NULL, NULL, NULL);
 	}
 
 	inline void Transport::OnSctpAssociationConnected(RTC::SctpAssociation* /*sctpAssociation*/)
@@ -2993,7 +3029,8 @@ namespace RTC
 
 		data["sctpState"] = "connected";
 
-		this->shared->channelNotifier->Emit(this->id, "sctpstatechange", data);
+		this->shared->channelNotifier->Emit(
+		  this->id, "sctpstatechange", data, "transport", NULL, NULL, NULL);
 	}
 
 	inline void Transport::OnSctpAssociationFailed(RTC::SctpAssociation* /*sctpAssociation*/)
@@ -3016,7 +3053,8 @@ namespace RTC
 
 		data["sctpState"] = "failed";
 
-		this->shared->channelNotifier->Emit(this->id, "sctpstatechange", data);
+		this->shared->channelNotifier->Emit(
+		  this->id, "sctpstatechange", data, "transport", NULL, NULL, NULL);
 	}
 
 	inline void Transport::OnSctpAssociationClosed(RTC::SctpAssociation* /*sctpAssociation*/)
@@ -3039,7 +3077,8 @@ namespace RTC
 
 		data["sctpState"] = "closed";
 
-		this->shared->channelNotifier->Emit(this->id, "sctpstatechange", data);
+		this->shared->channelNotifier->Emit(
+		  this->id, "sctpstatechange", data, "transport", NULL, NULL, NULL);
 	}
 
 	inline void Transport::OnSctpAssociationSendData(
@@ -3269,14 +3308,25 @@ namespace RTC
 
 			SendRtcp(nowMs);
 
-			/*
-			 * The interval between RTCP packets is varied randomly over the range
-			 * [1.0,1.5] times the calculated interval to avoid unintended synchronization
-			 * of all participants.
-			 */
-			interval *= static_cast<float>(Utils::Crypto::GetRandomUInt(10, 15)) / 10;
+			// Added by Amir Pauker 08/29/2023 in order to track idle timeout
+			if (lastRtcpTime + 30000 < nowMs)
+			{
+				MS_DEBUG_TAG(shm, "transport idle timeout. id: %s", this->id.c_str());
+				this->listener->OnTransportListenServerClosed(this);
 
-			this->rtcpTimer->Start(interval);
+				// IMPORTANT NOTE: !!! this transport is invalid after this call !!!
+			}
+			else
+			{
+				/*
+				 * The interval between RTCP packets is varied randomly over the range
+				 * [1.0,1.5] times the calculated interval to avoid unintended synchronization
+				 * of all participants.
+				 */
+				interval *= static_cast<float>(Utils::Crypto::GetRandomUInt(10, 15)) / 10;
+
+				this->rtcpTimer->Start(interval);
+			}
 		}
 	}
 } // namespace RTC

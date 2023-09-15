@@ -303,6 +303,9 @@ namespace RTC
 		// Allocated by this.
 		RTC::SctpAssociation* sctpAssociation{ nullptr };
 
+		// Added by Amir Pauker 08/29/2023 in order to track idle timeout
+		uint64_t lastRtcpTime;
+
 	private:
 		// Passed by argument.
 		Listener* listener{ nullptr };

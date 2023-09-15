@@ -22,6 +22,7 @@ namespace Channel
 		{ "worker.closeWebRtcServer",                    ChannelRequest::MethodId::WORKER_WEBRTC_SERVER_CLOSE                       },
 		{ "webRtcServer.dump",                           ChannelRequest::MethodId::WEBRTC_SERVER_DUMP                               },
 		{ "worker.closeRouter",                          ChannelRequest::MethodId::WORKER_CLOSE_ROUTER                              },
+		{ "worker.closeTransport",                       ChannelRequest::MethodId::WORKER_CLOSE_TRANSPORT                           },		
 		{ "router.dump",                                 ChannelRequest::MethodId::ROUTER_DUMP                                      },
 		{ "router.createWebRtcTransport",                ChannelRequest::MethodId::ROUTER_CREATE_WEBRTC_TRANSPORT                   },
 		{ "router.createWebRtcTransportWithServer",      ChannelRequest::MethodId::ROUTER_CREATE_WEBRTC_TRANSPORT_WITH_SERVER       },
@@ -129,7 +130,8 @@ namespace Channel
 				}
 				catch (const json::parse_error& error)
 				{
-					MS_THROW_TYPE_ERROR("JSON parsing error: %s", error.what());
+					MS_THROW_TYPE_ERROR(
+					  "JSON parsing error: %s msg: %s", error.what(), std::string(msg, msgLen).c_str());
 				}
 			}
 		}

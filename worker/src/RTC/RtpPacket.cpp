@@ -533,11 +533,8 @@ namespace RTC
 			}
 		}
 
-		for (size_t i = 0; i < padding; ++i)
-		{
-			*ptr = 0u;
-			++ptr;
-		}
+		memset(ptr, 0, padding);
+		ptr += padding;
 
 		MS_ASSERT(ptr == this->payload, "wrong ptr calculation");
 	}

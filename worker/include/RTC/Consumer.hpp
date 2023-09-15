@@ -203,6 +203,8 @@ namespace RTC
 		// Others.
 		std::vector<uint32_t> mediaSsrcs;
 		std::vector<uint32_t> rtxSsrcs;
+
+	protected:
 		bool transportConnected{ false };
 		bool paused{ false };
 		bool producerPaused{ false };

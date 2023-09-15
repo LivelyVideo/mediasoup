@@ -51,13 +51,15 @@ namespace RTC
 	private:
 		void StorePacket(RTC::RtpPacket* packet, std::shared_ptr<RTC::RtpPacket>& sharedPacket);
 		void FillRetransmissionContainer(uint16_t seq, uint16_t bitmask);
+
+	protected:
 		void UpdateScore(RTC::RTCP::ReceiverReport* report);
 
 		/* Pure virtual methods inherited from RTC::RtpStream. */
 	public:
 		void UserOnSequenceNumberReset() override;
 
-	private:
+	protected:
 		// Packets lost at last interval for score calculation.
 		uint32_t lostPriorScore{ 0u };
 		// Packets sent at last interval for score calculation.

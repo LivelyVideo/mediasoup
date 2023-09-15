@@ -23,6 +23,13 @@ typedef SSIZE_T ssize_t;
 #include <sys/socket.h> // struct sockaddr, struct sockaddr_storage, AF_INET, AF_INET6
 #endif
 
+// Added by Amir Pauker 01/15/2023
+// when set to true, MediaSoup will read
+// and write from/to shared memory
+#ifndef MEDIASOUP_SHM_ENABLED
+#define MEDIASOUP_SHM_ENABLED 1
+#endif
+
 using ChannelReadCtx    = void*;
 using ChannelReadFreeFn = void (*)(uint8_t*, uint32_t, size_t);
 // Returns `ChannelReadFree` on successful read that must be used to free

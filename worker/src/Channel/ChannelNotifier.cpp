@@ -48,6 +48,42 @@ namespace Channel
 		this->channel->Send(jsonNotification);
 	}
 
+	void ChannelNotifier::Emit(
+	  const std::string& targetId,
+	  const char* event,
+	  json& data,
+	  const char* targetType,
+	  const std::string* parentId,
+	  const std::string* appData,
+	  const std::string* payloadType)
+	{
+		MS_TRACE();
+
+		json jsonNotification = json::object();
+
+		jsonNotification["targetId"]   = targetId;
+		jsonNotification["targetType"] = targetType;
+		jsonNotification["event"]      = event;
+		jsonNotification["data"]       = data;
+
+		if (parentId)
+		{
+			jsonNotification["parentId"] = *parentId;
+		}
+
+		if (appData)
+		{
+			jsonNotification["appData"] = *appData;
+		}
+
+		if (payloadType)
+		{
+			jsonNotification["streamType"] = *payloadType;
+		}
+
+		this->channel->Send(jsonNotification);
+	}
+
 	void ChannelNotifier::Emit(const std::string& targetId, const char* event, const std::string& data)
 	{
 		MS_TRACE();

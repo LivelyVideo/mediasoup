@@ -12,6 +12,12 @@
 #include "RTC/PlainTransport.hpp"
 #include "RTC/WebRtcTransport.hpp"
 
+#if MEDIASOUP_SHM_ENABLED
+#define MEDIASOUP_SHM_ABORT_EVENT MS_ABORT("router event: %s", __FUNCTION__);
+#else
+#define MEDIASOUP_SHM_ABORT_EVENT
+#endif
+
 namespace RTC
 {
 	/* Instance methods. */
@@ -197,7 +203,7 @@ namespace RTC
 
 				// This may throw.
 				auto* webRtcTransport =
-				  new RTC::WebRtcTransport(this->shared, transportId, this, request->data);
+				  new RTC::WebRtcTransport(this->shared, transportId, this->id, this, request->data);
 
 				// Insert into the map.
 				this->mapTransports[transportId] = webRtcTransport;
@@ -613,6 +619,7 @@ namespace RTC
 	inline void Router::OnTransportProducerPaused(RTC::Transport* /*transport*/, RTC::Producer* producer)
 	{
 		MS_TRACE();
+		MEDIASOUP_SHM_ABORT_EVENT
 
 		auto& consumers = this->mapProducerConsumers.at(producer);
 
@@ -637,6 +644,7 @@ namespace RTC
 	inline void Router::OnTransportProducerResumed(RTC::Transport* /*transport*/, RTC::Producer* producer)
 	{
 		MS_TRACE();
+		MEDIASOUP_SHM_ABORT_EVENT
 
 		auto& consumers = this->mapProducerConsumers.at(producer);
 
@@ -665,6 +673,7 @@ namespace RTC
 	  uint32_t mappedSsrc)
 	{
 		MS_TRACE();
+		MEDIASOUP_SHM_ABORT_EVENT
 
 		auto& consumers = this->mapProducerConsumers.at(producer);
 
@@ -682,6 +691,7 @@ namespace RTC
 	  uint8_t previousScore)
 	{
 		MS_TRACE();
+		MEDIASOUP_SHM_ABORT_EVENT
 
 		auto& consumers = this->mapProducerConsumers.at(producer);
 
@@ -695,6 +705,7 @@ namespace RTC
 	  RTC::Transport* /*transport*/, RTC::Producer* producer, RTC::RtpStreamRecv* rtpStream, bool first)
 	{
 		MS_TRACE();
+		MEDIASOUP_SHM_ABORT_EVENT
 
 		auto& consumers = this->mapProducerConsumers.at(producer);
 
@@ -708,7 +719,7 @@ namespace RTC
 	  RTC::Transport* /*transport*/, RTC::Producer* producer, RTC::RtpPacket* packet)
 	{
 		MS_TRACE();
-
+		MEDIASOUP_SHM_ABORT_EVENT
 		packet->logger.routerId = this->id;
 
 		auto& consumers = this->mapProducerConsumers.at(producer);
@@ -752,6 +763,7 @@ namespace RTC
 	  uint8_t& worstRemoteFractionLost)
 	{
 		MS_TRACE();
+		MEDIASOUP_SHM_ABORT_EVENT
 
 		auto& consumers = this->mapProducerConsumers.at(producer);
 
@@ -765,6 +777,7 @@ namespace RTC
 	  RTC::Transport* /*transport*/, RTC::Consumer* consumer, std::string& producerId)
 	{
 		MS_TRACE();
+		MEDIASOUP_SHM_ABORT_EVENT
 
 		auto mapProducersIt = this->mapProducers.find(producerId);
 
@@ -807,6 +820,10 @@ namespace RTC
 	inline void Router::OnTransportConsumerClosed(RTC::Transport* /*transport*/, RTC::Consumer* consumer)
 	{
 		MS_TRACE();
+		// MEDIASOUP_SHM_ABORT_EVENT
+#if MEDIASOUP_SHM_ENABLED
+		return;
+#endif
 
 		// NOTE:
 		// This callback is called when the Consumer has been closed but its Producer
@@ -839,6 +856,7 @@ namespace RTC
 	  RTC::Transport* /*transport*/, RTC::Consumer* consumer)
 	{
 		MS_TRACE();
+		MEDIASOUP_SHM_ABORT_EVENT
 
 		// NOTE:
 		// This callback is called when the Consumer has been closed because its
@@ -859,6 +877,7 @@ namespace RTC
 	  RTC::Transport* /*transport*/, RTC::Consumer* consumer, uint32_t mappedSsrc)
 	{
 		MS_TRACE();
+		MEDIASOUP_SHM_ABORT_EVENT
 
 		auto* producer = this->mapConsumerProducer.at(consumer);
 
@@ -869,6 +888,7 @@ namespace RTC
 	  RTC::Transport* /*transport*/, RTC::DataProducer* dataProducer)
 	{
 		MS_TRACE();
+		MEDIASOUP_SHM_ABORT_EVENT
 
 		MS_ASSERT(
 		  this->mapDataProducerDataConsumers.find(dataProducer) ==
@@ -891,6 +911,7 @@ namespace RTC
 	  RTC::Transport* /*transport*/, RTC::DataProducer* dataProducer)
 	{
 		MS_TRACE();
+		MEDIASOUP_SHM_ABORT_EVENT
 
 		auto mapDataProducerDataConsumersIt = this->mapDataProducerDataConsumers.find(dataProducer);
 		auto mapDataProducersIt             = this->mapDataProducers.find(dataProducer->id);
@@ -931,6 +952,7 @@ namespace RTC
 	  size_t len)
 	{
 		MS_TRACE();
+		MEDIASOUP_SHM_ABORT_EVENT
 
 		auto& dataConsumers = this->mapDataProducerDataConsumers.at(dataProducer);
 
@@ -944,6 +966,7 @@ namespace RTC
 	  RTC::Transport* /*transport*/, RTC::DataConsumer* dataConsumer, std::string& dataProducerId)
 	{
 		MS_TRACE();
+		MEDIASOUP_SHM_ABORT_EVENT
 
 		auto mapDataProducersIt = this->mapDataProducers.find(dataProducerId);
 
@@ -971,6 +994,7 @@ namespace RTC
 	  RTC::Transport* /*transport*/, RTC::DataConsumer* dataConsumer)
 	{
 		MS_TRACE();
+		MEDIASOUP_SHM_ABORT_EVENT
 
 		// NOTE:
 		// This callback is called when the DataConsumer has been closed but its DataProducer
@@ -1004,6 +1028,7 @@ namespace RTC
 	  RTC::Transport* /*transport*/, RTC::DataConsumer* dataConsumer)
 	{
 		MS_TRACE();
+		MEDIASOUP_SHM_ABORT_EVENT
 
 		// NOTE:
 		// This callback is called when the DataConsumer has been closed because its

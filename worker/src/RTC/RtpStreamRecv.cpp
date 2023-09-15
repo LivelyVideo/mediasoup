@@ -13,6 +13,13 @@ namespace RTC
 	static constexpr uint64_t InactivityCheckInterval{ 1500u };        // In ms.
 	static constexpr uint64_t InactivityCheckIntervalWithDtx{ 5000u }; // In ms.
 
+#if MEDIASOUP_SHM_ENABLED
+	static constexpr uint64_t NackDelay{ 80u };    // delay before sending follow up NACK (in ms).
+	static constexpr uint64_t MaxNackPkt{ 500u };  // if the number of packets to NACK is greater than
+	                                               // this, request KF
+	static constexpr uint64_t PidBlpMaxLen{ 60u }; // number of slots
+#endif
+
 	/* TransmissionCounter methods. */
 
 	RtpStreamRecv::TransmissionCounter::TransmissionCounter(
@@ -187,23 +194,60 @@ namespace RTC
 	}
 
 	/* Instance methods. */
-
+#if MEDIASOUP_SHM_ENABLED
 	RtpStreamRecv::RtpStreamRecv(
 	  RTC::RtpStreamRecv::Listener* listener,
 	  RTC::RtpStream::Params& params,
 	  unsigned int sendNackDelayMs,
-	  bool useRtpInactivityCheck)
-	  : RTC::RtpStream::RtpStream(listener, params, 10), sendNackDelayMs(sendNackDelayMs),
-	    useRtpInactivityCheck(useRtpInactivityCheck),
+	  bool useRtpInactivityCheck,
+	  int shmChannel,
+	  uint32_t keyframeDelayMs)
+	  : RTC::RtpStream::RtpStream(listener, params, 10), shmChannel(shmChannel),
+	    keyframeDelayMs(keyframeDelayMs), sendNackDelayMs(sendNackDelayMs),
 	    transmissionCounter(
 	      params.spatialLayers, params.temporalLayers, this->params.useDtx ? 6000 : 2500)
 	{
 		MS_TRACE();
 
+		// Run the RTP inactivity periodic timer (use a different timeout if DTX is
+		// enabled).
+		this->inactivityCheckPeriodicTimer = new Timer(this);
+		this->inactive                     = false;
+
+		if (!this->params.useDtx)
+			this->inactivityCheckPeriodicTimer->Start(InactivityCheckInterval);
+		else
+			this->inactivityCheckPeriodicTimer->Start(InactivityCheckIntervalWithDtx);
+
+		this->lastNackTm       = 0;
+		this->keyframeRecvTime = 0;
+		this->keyframeRtpTime  = 0;
+		this->reqKeyFrameTime  = 0;
+	}
+#else
+	RtpStreamRecv::RtpStreamRecv(
+	  RTC::RtpStreamRecv::Listener* listener,
+	  RTC::RtpStream::Params& params,
+	  unsigned int sendNackDelayMs,
+	  bool useRtpInactivityCheck,
+	  int shmChannel,
+	  uint32_t keyframeDelayMs)
+	  : RTC::RtpStream::RtpStream(listener, params, 10), sendNackDelayMs(sendNackDelayMs),
+	    useRtpInactivityCheck(useRtpInactivityCheck), shmChannel(shmChannel),
+	    keyframeDelayMs(keyframeDelayMs),
+	    transmissionCounter(
+	      params.spatialLayers, params.temporalLayers, this->params.useDtx ? 6000 : 2500)
+	{
+		MS_TRACE();
+
+#if !MEDIASOUP_SHM_ENABLED
+		// when using shared memory nack lists are generated
+		// based on shared memory and this isn't needed
 		if (this->params.useNack)
 		{
 			this->nackGenerator.reset(new RTC::NackGenerator(this, this->sendNackDelayMs));
 		}
+#endif
 
 		this->inactive = false;
 
@@ -216,7 +260,14 @@ namespace RTC
 			this->inactivityCheckPeriodicTimer->Start(
 			  this->params.useDtx ? InactivityCheckIntervalWithDtx : InactivityCheckInterval);
 		}
+#if MEDIASOUP_SHM_ENABLED
+		this->lastNackTm       = 0;
+		this->keyframeRecvTime = 0;
+		this->keyframeRtpTime  = 0;
+		this->reqKeyFrameTime  = 0;
+#endif
 	}
+#endif
 
 	RtpStreamRecv::~RtpStreamRecv()
 	{
@@ -261,6 +312,9 @@ namespace RTC
 	{
 		MS_TRACE();
 
+#if !MEDIASOUP_SHM_ENABLED
+		// when using shared memory the last sequence number
+		// and timestamps are tracked by the shared memory
 		// Call the parent method.
 		if (!RTC::RtpStream::ReceiveStreamPacket(packet))
 		{
@@ -268,6 +322,7 @@ namespace RTC
 
 			return false;
 		}
+#endif
 
 		// Process the packet at codec level.
 		if (packet->GetPayloadType() == GetPayloadType())
@@ -275,6 +330,9 @@ namespace RTC
 			RTC::Codecs::Tools::ProcessRtpPacket(packet, GetMimeType());
 		}
 
+#if !MEDIASOUP_SHM_ENABLED
+		// when using shared memory nack lists are generated
+		// based on shared memory and this isn't needed
 		// Pass the packet to the NackGenerator.
 		if (this->params.useNack)
 		{
@@ -315,6 +373,7 @@ namespace RTC
 		{
 			this->inactivityCheckPeriodicTimer->Restart();
 		}
+#endif
 
 		return true;
 	}
@@ -381,6 +440,7 @@ namespace RTC
 		  packet->GetSsrc(),
 		  packet->GetSequenceNumber());
 
+#if !MEDIASOUP_SHM_ENABLED
 		// If not a valid packet ignore it.
 		if (!RTC::RtpStream::UpdateSeq(packet))
 		{
@@ -392,6 +452,7 @@ namespace RTC
 
 			return false;
 		}
+#endif
 
 		// Process the packet at codec level.
 		if (packet->GetPayloadType() == GetPayloadType())
@@ -399,6 +460,7 @@ namespace RTC
 			RTC::Codecs::Tools::ProcessRtpPacket(packet, GetMimeType());
 		}
 
+#if !MEDIASOUP_SHM_ENABLED
 		// Mark the packet as retransmitted.
 		RTC::RtpStream::PacketRetransmitted(packet);
 
@@ -430,7 +492,364 @@ namespace RTC
 		}
 
 		return false;
+#else
+		return true;
+#endif
 	}
+
+#if MEDIASOUP_SHM_ENABLED
+	int RtpStreamRecv::Write(DepLibStreamShm::ShmCtx& shmCtx, RTC::RtpPacket* packet, bool isRtx)
+	{
+		MS_TRACE();
+
+		// must be called in order to refresh the cached time
+		shmCtx.UpdateTime();
+		uint64_t curTime = shmCtx.GetCurrentTime();
+
+		bool nack = this->params.useNack;
+
+		DepLibStreamShm::WriteInfo writeInfo;
+		DepLibStreamShm::HeaderExt headerExt;
+
+		// Coordination of Video Orientation
+		// (3GPP TS 26.114 version 13.2.0 Release 13 7.4.5)
+		// --------------------------------------------------------------------
+		uint8_t extenLen;
+		uint8_t* extenValue = packet->GetExtension(
+		  static_cast<uint8_t>(RTC::RtpHeaderExtensionUri::Type::VIDEO_ORIENTATION), extenLen);
+
+		headerExt.cvo = (extenValue && extenLen == 1u) ? Utils::Byte::Get1Byte(extenValue, 0) : 0;
+
+		headerExt.key_frame = packet->IsKeyFrame();
+
+		int rc =
+		  shmCtx.Write(this->shmChannel, packet->GetData(), packet->GetSize(), &headerExt, &writeInfo);
+
+		if (rc >= 0)
+		{
+			// replace original UpdateSeq and ReceivePacket logic
+			this->baseSeq = writeInfo.base_rtp_seq;
+			this->maxSeq  = writeInfo.max_rtp_seq;
+			this->cycles  = writeInfo.max_rtp_seq & 0xFFFFFFFF0000;
+
+			// the below code comes from here
+			// https://github.com/versatica/mediasoup/blob/44dd76f4db6989adfc044197daa823d8125262be/worker/src/RTC/RtpStreamRecv.cpp#L280
+			//-----------------------------------------------------------------
+			if (!isRtx)
+			{
+				// Calculate Jitter.
+				// https://www.rfc-editor.org/rfc/rfc3550#page-94
+				CalculateJitter(packet->GetTimestamp());
+
+				// Increase transmission counter.
+				this->transmissionCounter.Update(packet);
+
+				// Increase media transmission counter.
+				this->mediaTransmissionCounter.Update(packet);
+			}
+
+			// Not inactive anymore.
+			if (this->inactive)
+			{
+				this->inactive = false;
+
+				ResetScore(10, /*notify*/ true);
+			}
+
+			// Restart the inactivityCheckPeriodicTimer.
+			if (this->inactivityCheckPeriodicTimer)
+				this->inactivityCheckPeriodicTimer->Restart();
+			//-----------------------------------------------------------------
+
+			switch (rc)
+			{
+				case DepLibStreamShm::ShmCtx::RESET:
+
+					// clear the nack list
+					this->gaps.clear();
+					this->lastNackTm = curTime;
+
+					if (isRtx)
+					{
+						// Mark the packet as retransmitted.
+						RTC::RtpStream::PacketRetransmitted(packet);
+					}
+
+					break;
+
+				case DepLibStreamShm::ShmCtx::NEW:
+
+					// the new packet's sequence > max sequence + 1. send NACK
+					if (nack && writeInfo.gap_size > 0 && (packet->GetSsrc() != this->GetRtxSsrc()))
+					{
+						RTC::RTCP::FeedbackRtpNackPacket packet(0, GetSsrc());
+
+						// first we create an NACK packet with the more
+						// recent gap (forcing it to be part of the NACK)
+						this->GenerateNack(packet, writeInfo.gap_start, writeInfo.gap_size);
+
+						// potentially add to the NACK packet old packets
+						this->GenerateNack(shmCtx, packet);
+
+						// indicate that there is no need to check NACK
+						nack = false;
+
+						// range is formatted as 16 bits start RTP seq, 16 bits count
+						uint32_t range = ((uint32_t)writeInfo.gap_start << 16) + writeInfo.gap_size;
+						this->gaps.push_back(range);
+					}
+
+					if (isRtx)
+					{
+						// Mark the packet as retransmitted.
+						RTC::RtpStream::PacketRetransmitted(packet);
+					}
+
+					break;
+				case DepLibStreamShm::ShmCtx::OLD:
+					if (isRtx)
+					{
+						// Mark the packet as repaired.
+						RTC::RtpStream::PacketRepaired(packet);
+
+						// Increase transmission counter.
+						this->transmissionCounter.Update(packet);
+					}
+					else
+					{
+						if (!HasRtx())
+						{
+							// Mark the packet as retransmitted and repaired.
+							RTC::RtpStream::PacketRetransmitted(packet);
+							RTC::RtpStream::PacketRepaired(packet);
+						}
+					}
+					break;
+
+				case DepLibStreamShm::ShmCtx::RETRANSMIT:
+					break;
+			}
+		}
+		else
+		{
+			this->packetsDiscarded++;
+		}
+
+		if (packet->IsKeyFrame())
+		{
+			// record the receive time of the first RTP packet
+			// the belongs to the most recent key frame
+			if (this->keyframeRtpTime != packet->GetTimestamp())
+			{
+				this->keyframeRecvTime = curTime;
+				this->keyframeRtpTime  = packet->GetTimestamp();
+
+				// in case there is a pending PLI request then cancel it
+				this->reqKeyFrameTime = 0;
+			}
+		}
+
+		// this step must be before key frame check
+		// since it may force key frame request
+		if (nack)
+		{
+			// check for old missing packets that hasn't been
+			// received yet and re-send NACK for those packets
+			RTC::RTCP::FeedbackRtpNackPacket packet(0, GetSsrc());
+			this->GenerateNack(shmCtx, packet);
+		}
+
+		if (this->params.usePli || this->params.useFir)
+		{
+			this->CheckKeyFrameRequests(shmCtx);
+		}
+
+		return rc;
+	}
+
+	void RtpStreamRecv::CheckKeyFrameRequests(DepLibStreamShm::ShmCtx& shmCtx)
+	{
+		MS_TRACE();
+
+		uint64_t curTime = shmCtx.GetCurrentTime();
+		uint64_t pliTime = shmCtx.CheckKeyframeRequest(this->shmChannel);
+
+		// in case there is an expired pending PLI request then send a request
+		if (this->reqKeyFrameTime && this->reqKeyFrameTime <= curTime)
+		{
+			this->reqKeyFrameTime = 0;
+
+			MS_DEBUG_DEV("requesting kf (1). cur_tm=%" PRIu64, curTime);
+
+			this->RequestKeyFrame();
+			return;
+		}
+
+		// we received a request from a consumer for a key frame
+		if (pliTime)
+		{
+			// just in case pliTime is corrupted in some way
+			if ((pliTime > curTime) || (pliTime + 5000 < curTime))
+			{
+				MS_WARN_TAG(rtp, "invalid pil time. pli=%" PRIu64 " cur_tm=%" PRIu64, pliTime, curTime);
+				pliTime = curTime;
+			}
+
+			// we just received a key frame, ignore request
+			if (pliTime < this->keyframeRecvTime)
+			{
+				MS_DEBUG_DEV(
+				  "received KF after PLI. kf_tm=%" PRIu64 " pli_tm=%" PRIu64, this->keyframeRecvTime, pliTime);
+				return;
+			}
+
+			// there is already a scheduled key frame request, ignoring
+			if (pliTime < this->reqKeyFrameTime)
+			{
+				MS_DEBUG_DEV(
+				  "received PLI in delay period. scheduled_tm=%" PRIu64 " pli_tm=%" PRIu64,
+				  this->reqKeyFrameTime,
+				  pliTime);
+				return;
+			}
+
+			// PLI delay is configured
+			if (this->keyframeDelayMs)
+			{
+				MS_DEBUG_DEV(
+				  "scheduling PLI. scheduled_tm=%" PRIu64 " pli_tm=%" PRIu64 " cur_tm=%" PRIu64,
+				  curTime + this->keyframeDelayMs,
+				  pliTime,
+				  curTime);
+
+				this->reqKeyFrameTime = pliTime + this->keyframeDelayMs;
+				return;
+			}
+
+			MS_DEBUG_DEV("requesting kf (2). cur_tm=%" PRIu64, curTime);
+
+			this->RequestKeyFrame();
+		}
+	}
+
+	void RtpStreamRecv::GenerateNack(
+	  DepLibStreamShm::ShmCtx& shmCtx, RTC::RTCP::FeedbackRtpNackPacket& packet)
+	{
+		MS_TRACE();
+
+		if (this->gaps.empty())
+		{
+			MS_DEBUG_DEV("no missing packets. chn=%d", this->shmChannel);
+			return;
+		}
+
+		auto it = this->gaps.begin();
+		uint32_t pidBlp[PidBlpMaxLen]; // 17 * 60 ~1000 max consecutive lost packets
+		size_t pidBlpLen         = PidBlpMaxLen;
+		size_t totalPacketsCount = 0;
+		size_t packetsCount;
+		int rc;
+		float rtt;
+		uint64_t delay;
+
+		rtt   = this->GetRtt();
+		delay = (rtt > 0.0) ? (uint64_t)rtt : NackDelay;
+
+		while (it != this->gaps.end())
+		{
+			rc = shmCtx.ReportGaps(this->shmChannel, delay, *it, pidBlp, &pidBlpLen, &packetsCount);
+
+			// ranges are put in order, if the head of the list
+			// is too young then the remaining items are as well
+			if (rc == DepLibStreamShm::ShmCtx::RC_AGAIN)
+			{
+				return;
+			}
+
+			// nack a range at most twice (once when is first
+			// detected and second time after some delay)
+			it = this->gaps.erase(it);
+
+			// too old, simply discard
+			if (!pidBlpLen)
+			{
+				continue;
+			}
+
+			totalPacketsCount += packetsCount;
+
+			// too many lost packets, requesting a key frame
+			if (totalPacketsCount > MaxNackPkt && (this->params.usePli || this->params.useFir))
+			{
+				this->reqKeyFrameTime = shmCtx.GetCurrentTime();
+				this->gaps.empty();
+
+				MS_WARN_TAG(
+				  rtx,
+				  "too many lost packets. requesting key frame. "
+				  "totalPacketsCount=%zu",
+				  totalPacketsCount);
+				return;
+			}
+
+			for (size_t i = 0; i < pidBlpLen; i++)
+			{
+				uint16_t pid = (pidBlp[i] & 0xFFFF0000) >> 16;
+				uint16_t blp = (pidBlp[i] & 0xFFFF);
+
+				auto* nackItem = new RTC::RTCP::FeedbackRtpNackItem(pid, blp);
+				packet.AddItem(nackItem);
+			}
+
+			pidBlpLen = PidBlpMaxLen;
+		}
+
+		if (!totalPacketsCount)
+		{
+			MS_DEBUG_DEV("empty nack list");
+			return;
+		}
+
+		// Ensure that the RTCP packet fits into the RTCP buffer.
+		if (packet.GetSize() > RTC::RTCP::BufferSize)
+		{
+			MS_WARN_TAG(rtx, "cannot send RTCP NACK packet, size too big (%zu bytes)", packet.GetSize());
+
+			return;
+		}
+
+		this->nackCount++;
+		this->nackPacketCount += totalPacketsCount;
+
+		packet.Serialize(RTC::RTCP::Buffer);
+
+		// Notify the listener.
+		static_cast<RTC::RtpStreamRecv::Listener*>(this->listener)->OnRtpStreamSendRtcpPacket(this, &packet);
+	}
+
+	void RtpStreamRecv::GenerateNack(
+	  RTC::RTCP::FeedbackRtpNackPacket& packet, uint16_t startSeq, uint16_t count)
+	{
+		MS_TRACE();
+
+		MS_DEBUG_TAG(rtp, "nack %" PRIu16 " %" PRIu16, startSeq, (startSeq + count));
+
+		unsigned numItems = (count - 1) / 16;
+		unsigned lastItem = (count - 1) % 16;
+
+		for (; numItems > 0; numItems--)
+		{
+			auto* nackItem = new RTC::RTCP::FeedbackRtpNackItem(startSeq, 0xFFFF);
+			packet.AddItem(nackItem);
+			startSeq += 17;
+		}
+
+		uint16_t lastBitmask = (1 << lastItem) - 1;
+
+		auto* nackItem = new RTC::RTCP::FeedbackRtpNackItem(startSeq, lastBitmask);
+		packet.AddItem(nackItem);
+	}
+#endif
 
 	RTC::RTCP::ReceiverReport* RtpStreamRecv::GetRtcpReceiverReport()
 	{
@@ -438,6 +857,9 @@ namespace RTC
 
 		uint8_t worstRemoteFractionLost{ 0 };
 
+#if !MEDIASOUP_SHM_ENABLED
+		// when using shm producer runs in a different process space
+		// than consumers therefore it cannot get this information
 		if (this->params.useInBandFec)
 		{
 			// Notify the listener so we'll get the worst remote fraction lost.
@@ -449,6 +871,7 @@ namespace RTC
 				MS_DEBUG_TAG(rtcp, "using worst remote fraction lost:%" PRIu8, worstRemoteFractionLost);
 			}
 		}
+#endif
 
 		auto* report = new RTC::RTCP::ReceiverReport();
 
@@ -545,6 +968,7 @@ namespace RTC
 		return nullptr;
 	}
 
+#if !MEDIASOUP_SHM_ENABLED
 	void RtpStreamRecv::ReceiveRtcpSenderReport(RTC::RTCP::SenderReport* report)
 	{
 		MS_TRACE();
@@ -565,6 +989,31 @@ namespace RTC
 		// Update the score with the current RR.
 		UpdateScore();
 	}
+#else
+	void RtpStreamRecv::ReceiveRtcpSenderReport(
+	  DepLibStreamShm::ShmCtx& shmCtx, RTC::RTCP::SenderReport* report)
+	{
+		MS_TRACE();
+
+		this->lastSrReceived  = DepLibUV::GetTimeMs();
+		this->lastSrTimestamp = report->GetNtpSec() << 16;
+		this->lastSrTimestamp += report->GetNtpFrac() >> 16;
+
+		// Update info about last Sender Report.
+		Utils::Time::Ntp ntp; // NOLINT(cppcoreguidelines-pro-type-member-init)
+
+		ntp.seconds   = report->GetNtpSec();
+		ntp.fractions = report->GetNtpFrac();
+
+		this->lastSenderReportNtpMs = Utils::Time::Ntp2TimeMs(ntp);
+		this->lastSenderReportTs    = report->GetRtpTs();
+
+		shmCtx.SenderReport(this->shmChannel, ntp.seconds, ntp.fractions, this->lastSenderReportTs);
+
+		// Update the score with the current RR.
+		UpdateScore();
+	}
+#endif
 
 	void RtpStreamRecv::ReceiveRtxRtcpSenderReport(RTC::RTCP::SenderReport* report)
 	{
@@ -613,12 +1062,14 @@ namespace RTC
 		{
 			this->rtt = 0.0f;
 		}
+#if !MEDIASOUP_SHM_ENABLED
 
 		// Tell it to the NackGenerator.
 		if (this->params.useNack)
 		{
 			this->nackGenerator->UpdateRtt(static_cast<uint32_t>(this->rtt));
 		}
+#endif
 	}
 
 	void RtpStreamRecv::RequestKeyFrame()
@@ -668,10 +1119,12 @@ namespace RTC
 			this->inactivityCheckPeriodicTimer->Stop();
 		}
 
+#if !MEDIASOUP_SHM_ENABLED
 		if (this->params.useNack)
 		{
 			this->nackGenerator->Reset();
 		}
+#endif
 
 		// Reset jitter.
 		this->transit = 0;
@@ -722,6 +1175,11 @@ namespace RTC
 	void RtpStreamRecv::UpdateScore()
 	{
 		MS_TRACE();
+
+#if MEDIASOUP_SHM_ENABLED
+		RTC::RtpStream::UpdateScore(10);
+		return;
+#else
 
 		// Calculate number of packets expected in this interval.
 		const auto totalExpected = GetExpectedPackets();
@@ -837,6 +1295,7 @@ namespace RTC
 #endif
 
 		RtpStream::UpdateScore(score);
+#endif
 	}
 
 	void RtpStreamRecv::UserOnSequenceNumberReset()

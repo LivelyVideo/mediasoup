@@ -5,6 +5,7 @@
 #include "DepLibSRTP.hpp"
 #include "DepLibUV.hpp"
 #include "DepLibWebRTC.hpp"
+#include "DepNamedUnixSocket.hpp"
 #include "DepOpenSSL.hpp"
 #include "DepUsrSCTP.hpp"
 #include "Logger.hpp"
@@ -19,7 +20,9 @@
 #include <uv.h>
 #include <absl/container/flat_hash_map.h>
 #include <cerrno>
-#include <csignal> // sigaction()
+#include <csignal>  // sigaction()
+#include <cstdlib>  // std::_Exit(), std::genenv()
+#include <iostream> // std::cerr, std::endl
 #include <string>
 
 void IgnoreSignals();
@@ -43,6 +46,22 @@ extern "C" int mediasoup_worker_run(
 {
 	// Initialize libuv stuff (we need it for the Channel).
 	DepLibUV::ClassInit();
+
+	// Added by Amir Pauker 01/13/2023
+	// in case named Unix sockets are enable then
+	// setup read/write functions as an alternative
+	// to pipe FD
+	if (DepNamedUnixSocket::IsEnabled())
+	{
+		channelReadFn          = DepNamedUnixSocket::channelReadFn;
+		channelReadCtx         = nullptr;
+		channelWriteFn         = DepNamedUnixSocket::channelWriteFn;
+		channelWriteCtx        = nullptr;
+		payloadChannelReadFn   = DepNamedUnixSocket::payloadChannelReadFn;
+		payloadChannelReadCtx  = nullptr;
+		payloadChannelWriteFn  = DepNamedUnixSocket::payloadChannelWriteFn;
+		payloadChannelWriteCtx = nullptr;
+	}
 
 	// Channel socket. If Worker instance runs properly, this socket is closed by
 	// it in its destructor. Otherwise it's closed here by also letting libuv
@@ -165,6 +184,8 @@ extern "C" int mediasoup_worker_run(
 		Utils::Crypto::ClassInit();
 		RTC::DtlsTransport::ClassInit();
 		RTC::SrtpSession::ClassInit();
+		// Added by Amir Pauker 01/13/2023
+		DepNamedUnixSocket::ClassInit(channel.get(), DepLibUV::GetLoop());
 
 #ifdef MS_EXECUTABLE
 		// Ignore some signals.
@@ -180,6 +201,8 @@ extern "C" int mediasoup_worker_run(
 		DepLibWebRTC::ClassDestroy();
 		RTC::DtlsTransport::ClassDestroy();
 		DepUsrSCTP::ClassDestroy();
+		// Added by Amir Pauker 01/13/2023
+		DepNamedUnixSocket::ClassDestroy();
 		DepLibUV::ClassDestroy();
 
 #ifdef MS_EXECUTABLE

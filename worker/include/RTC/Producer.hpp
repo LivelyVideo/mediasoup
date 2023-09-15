@@ -203,6 +203,15 @@ namespace RTC
 		struct TraceEventTypes traceEventTypes;
 		// Static buffer.
 		thread_local static uint8_t* buffer;
+		uint32_t keyFrameRequestDelay{ 0u };
+
+#if MEDIASOUP_SHM_ENABLED
+	protected:
+		DepLibStreamShm::ShmCtx shmCtx;
+		std::string streamKey;
+		std::string channelId;
+		std::string appData;
+#endif
 	};
 } // namespace RTC
 

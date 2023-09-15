@@ -47,8 +47,10 @@ endif
 common_sources = [
   'src/lib.cpp',
   'src/DepLibSRTP.cpp',
+  'src/DepLibStreamShm.cpp',
   'src/DepLibUV.cpp',
   'src/DepLibWebRTC.cpp',
+  'src/DepNamedUnixSocket.cpp',
   'src/DepOpenSSL.cpp',
   'src/DepUsrSCTP.cpp',
   'src/Logger.cpp',
@@ -106,6 +108,9 @@ common_sources = [
   'src/RTC/SenderBandwidthEstimator.cpp',
   'src/RTC/SeqManager.cpp',
   'src/RTC/Shared.cpp',
+  'src/RTC/ShmConsumer.cpp',
+  'src/RTC/ShmRouter.cpp',
+  'src/RTC/ShmRtpStreamSend.cpp',
   'src/RTC/SimpleConsumer.cpp',
   'src/RTC/SimulcastConsumer.cpp',
   'src/RTC/SrtpSession.cpp',
@@ -219,6 +224,8 @@ catch2_proj = subproject(
 )
 libwebrtc_include_directories = include_directories('include')
 subdir('deps/libwebrtc')
+subdir('deps/libstreamshm')
+
 
 dependencies = [
   abseil_cpp_proj.get_variable('absl_container_dep'),
@@ -228,6 +235,7 @@ dependencies = [
   libsrtp2_proj.get_variable('libsrtp2_dep'),
   usrsctp_proj.get_variable('usrsctp_dep'),
   libwebrtc_dep,
+  streamshm_dep,
 ]
 
 link_whole = [

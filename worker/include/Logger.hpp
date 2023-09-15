@@ -136,22 +136,32 @@ public:
 	thread_local static Channel::ChannelSocket* channel;
 	static const size_t bufferSize {50000};
 	thread_local static char buffer[];
+
+	// Add by Amir Pauker 03/13/2023 to support timestamp in log entries
+	static const char* GetCurrentTimeStr();
 };
 
 /* Logging macros. */
 
 #define _MS_LOG_SEPARATOR_CHAR_STD "\n"
 
-#ifdef MS_LOG_FILE_LINE
-	#define _MS_LOG_STR "%s:%d | %s::%s()"
-	#define _MS_LOG_STR_DESC _MS_LOG_STR " | "
-	#define _MS_FILE (std::strchr(__FILE__, '/') ? std::strchr(__FILE__, '/') + 1 : __FILE__)
-	#define _MS_LOG_ARG _MS_FILE, __LINE__, MS_CLASS, __FUNCTION__
-#else
-	#define _MS_LOG_STR "%s::%s()"
-	#define _MS_LOG_STR_DESC _MS_LOG_STR " | "
-	#define _MS_LOG_ARG MS_CLASS, __FUNCTION__
-#endif
+///////////////////////////////////////////////////////////////////////////////
+// Modified by Amir Pauker 03/13/2023 to support timestamp in log entries
+//#ifdef MS_LOG_FILE_LINE
+//	#define _MS_LOG_STR "%s:%d | %s::%s()"
+//	#define _MS_LOG_STR_DESC _MS_LOG_STR " | "
+//	#define _MS_FILE (std::strchr(__FILE__, '/') ? std::strchr(__FILE__, '/') + 1 : __FILE__)
+//	#define _MS_LOG_ARG _MS_FILE, __LINE__, MS_CLASS, __FUNCTION__
+//#else
+//	#define _MS_LOG_STR "%s::%s()"
+//	#define _MS_LOG_STR_DESC _MS_LOG_STR " | "
+//	#define _MS_LOG_ARG MS_CLASS, __FUNCTION__
+//#endif
+#define _MS_LOG_STR " - %s - %s::%s:%d - "
+#define _MS_LOG_STR_DESC _MS_LOG_STR
+#define _MS_LOG_ARG Logger::GetCurrentTimeStr(), MS_CLASS, __FUNCTION__, __LINE__
+
+///////////////////////////////////////////////////////////////////////////////
 
 #ifdef MS_LOG_TRACE
 	#define MS_TRACE() \
