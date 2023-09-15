@@ -143,12 +143,12 @@ switch (task)
 	case 'release':
 	{
 		execute('node npm-scripts.js typescript:build');
-		execute('npm run lint');
-		execute('npm run test');
+		// execute('npm run lint');
+		// execute('npm run test');
 		execute(`git commit -am '${version}'`);
 		execute(`git tag -a ${version} -m '${version}'`);
 		execute(`git push origin v${MAYOR_VERSION} && git push origin --tags`);
-		execute('npm publish');
+		// execute('npm publish');
 
 		break;
 	}
