@@ -575,6 +575,7 @@ void StatsBinLog::InitLogNew(std::function<std::string(uint64_t)>&& templateFunc
 		return;
 
 	this->file_name_template_function = std::move(templateFunction);
+    this->bin_log_name_template = Settings::configuration.logBinStatsPath + "/bin/current/%s";
 
 	uint64_t const now = Utils::Time::currentStdEpochMs();
 	UpdateLogTimestamps(now);
@@ -582,11 +583,8 @@ void StatsBinLog::InitLogNew(std::function<std::string(uint64_t)>&& templateFunc
 
 
 	//sizeof("/var/log/sfu/bin/current/ms_p_00000000-0000-0000-0000-000000000000_00000000-0000-0000-0000-000000000000_1652210519459.123abc.bin") * 2
-	char tmp[FILENAME_LEN_MAX];
-	std::memset(tmp, '\0', FILENAME_LEN_MAX);
-
-	sprintf(tmp, "%s/bin/current/%%s", Settings::configuration.logBinStatsPath.c_str());
-	this->bin_log_name_template.assign(tmp);
+//	char tmp[FILENAME_LEN_MAX];
+//	std::memset(tmp, '\0', FILENAME_LEN_MAX);
 
 	MS_DEBUG_TAG(rtp, "consumers binlog %s", this->current_bin_log_name.c_str());
 
