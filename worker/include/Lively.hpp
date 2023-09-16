@@ -12,7 +12,7 @@ namespace Lively
     std::string peerId;
     std::string mirrorId;
     std::string streamName;
-    std::string userId;
+//    std::string userId;
     std::string id; // passed separately
 
   public:

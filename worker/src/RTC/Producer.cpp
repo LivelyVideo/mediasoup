@@ -52,7 +52,7 @@ namespace RTC
 		}
 		else
 		{
-			auto jsonAppDataIt = data.find("appData");			
+			auto jsonAppDataIt = data.find("appData");
 			if (jsonAppDataIt != data.end() && jsonAppDataIt->is_object())
 			{
 				try {
@@ -72,12 +72,29 @@ namespace RTC
 	        else
 	        {
 	            MS_DEBUG_TAG(rtp, "XXXXX creating producer bin log. lively=%s", lively.ToStr().c_str());
+	            MS_DEBUG_TAG(rtp, "XXXXX creating producer bin log. data=%s", data.dump().c_str());
 
 //	            this->binLog.InitLog('p', lively.callId, lively.id);
 
                 std::string const callId = lively.callId;
                 std::string const producerId = lively.id;
-                std::string const userId = lively.userId;
+
+                std::string userId;
+                if (data.contains("appData")) {
+                    auto& rAppData = data["appData"];
+
+                    if (rAppData.contains("userId") && rAppData["userId"].is_string()) {
+                        userId = rAppData["userId"];
+                    } else if (rAppData.contains("displayName") && rAppData["displayName"].is_string()) {
+                        userId = rAppData["displayName"];
+                    } else if (rAppData.contains("peerId") && rAppData["peerId"].is_string()) {
+                        userId = rAppData["peerId"];
+                    } else {
+                        userId = callId;
+                    }
+                } else {
+                    userId = callId;
+                }
 
                 this->binLog.InitLogNew([callId, producerId, userId](uint64_t timestamp) -> std::string {
                     return Lively::ProducerFileName(callId, producerId, userId, timestamp, BINLOG_FORMAT_VERSION);

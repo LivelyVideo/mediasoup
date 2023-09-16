@@ -11,7 +11,7 @@ namespace Lively {
              + " peerId=\"" + peerId + "\""
              + " mirrorId=\"" + mirrorId + "\""
              + " streamName=\"" + streamName + "\""
-             + " objectId=\"" + id + "\""
-             + " userId=\"" + userId + "\"";
+             + " objectId=\"" + id + "\"";
+//             + " userId=\"" + userId + "\"";
   }
 }
