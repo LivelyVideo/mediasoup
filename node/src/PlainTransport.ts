@@ -11,8 +11,9 @@ import {
 } from './Transport';
 import { SctpParameters, NumSctpStreams } from './SctpParameters';
 import { SrtpParameters, SrtpCryptoSuite } from './SrtpParameters';
+import { AppData } from './types';
 
-export type PlainTransportOptions =
+export type PlainTransportOptions<PlainTransportAppData extends AppData = AppData> =
 {
 	/**
 	 * Listening IP address.
@@ -81,7 +82,7 @@ export type PlainTransportOptions =
 	/**
 	 * Custom application data.
 	 */
-	appData?: Record<string, unknown>;
+	appData?: PlainTransportAppData;
 };
 
 export type PlainTransportStat =
@@ -130,10 +131,11 @@ export type PlainTransportObserverEvents = TransportObserverEvents &
 	sctpstatechange: [SctpState];	
 };
 
-type PlainTransportConstructorOptions = TransportConstructorOptions &
-{
-	data: PlainTransportData;
-};
+type PlainTransportConstructorOptions<PlainTransportAppData> =
+	TransportConstructorOptions<PlainTransportAppData> &
+	{
+		data: PlainTransportData;
+	};
 
 export type PlainTransportData =
 {
@@ -149,8 +151,8 @@ export type PlainTransportData =
 
 const logger = new Logger('PlainTransport');
 
-export class PlainTransport extends
-	Transport<PlainTransportEvents, PlainTransportObserverEvents>
+export class PlainTransport<PlainTransportAppData extends AppData = AppData>
+	extends Transport<PlainTransportAppData, PlainTransportEvents, PlainTransportObserverEvents>
 {
 	// PlainTransport data.
 	readonly #data: PlainTransportData;
@@ -158,7 +160,7 @@ export class PlainTransport extends
 	/**
 	 * @private
 	 */
-	constructor(options: PlainTransportConstructorOptions)
+	constructor(options: PlainTransportConstructorOptions<PlainTransportAppData>)
 	{
 		super(options);
 
@@ -229,10 +231,14 @@ export class PlainTransport extends
 	close(): void
 	{
 		if (this.closed)
+		{
 			return;
+		}
 
 		if (this.#data.sctpState)
+		{
 			this.#data.sctpState = 'closed';
+		}
 
 		super.close();
 	}
@@ -246,10 +252,14 @@ export class PlainTransport extends
 	routerClosed(): void
 	{
 		if (this.closed)
+		{
 			return;
+		}
 
 		if (this.#data.sctpState)
+		{
 			this.#data.sctpState = 'closed';
+		}
 
 		super.routerClosed();
 	}
@@ -295,10 +305,14 @@ export class PlainTransport extends
 
 		// Update data.
 		if (data.tuple)
+		{
 			this.#data.tuple = data.tuple;
+		}
 
 		if (data.rtcpTuple)
+		{
 			this.#data.rtcpTuple = data.rtcpTuple;
+		}
 
 		this.#data.srtpParameters = data.srtpParameters;
 	}

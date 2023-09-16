@@ -2,7 +2,6 @@
 // #define MS_LOG_DEV_LEVEL 3
 
 #include "RTC/Router.hpp"
-#include "ChannelMessageHandlers.hpp"
 #include "Logger.hpp"
 #include "MediaSoupErrors.hpp"
 #include "Utils.hpp"
@@ -20,12 +19,13 @@ namespace RTC
 {
 	/* Instance methods. */
 
-	Router::Router(const std::string& id, Listener* listener) : id(id), listener(listener)
+	Router::Router(RTC::Shared* shared, const std::string& id, Listener* listener)
+	  : id(id), shared(shared), listener(listener)
 	{
 		MS_TRACE();
 
 		// NOTE: This may throw.
-		ChannelMessageHandlers::RegisterHandler(
+		this->shared->channelMessageRegistrator->RegisterHandler(
 		  this->id,
 		  /*channelRequestHandler*/ this,
 		  /*payloadChannelRequestHandler*/ nullptr,
@@ -36,7 +36,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		ChannelMessageHandlers::UnregisterHandler(this->id);
+		this->shared->channelMessageRegistrator->UnregisterHandler(this->id);
 
 		// Close all Transports.
 		for (auto& kv : this->mapTransports)
@@ -199,7 +199,8 @@ namespace RTC
 				SetNewTransportIdFromData(request->data, transportId);
 
 				// This may throw.
-				auto* webRtcTransport = new RTC::WebRtcTransport(transportId, this, request->data);
+				auto* webRtcTransport =
+				  new RTC::WebRtcTransport(this->shared, transportId, this, request->data);
 
 				// Insert into the map.
 				this->mapTransports[transportId] = webRtcTransport;
@@ -285,8 +286,8 @@ namespace RTC
 				  webRtcServer->GetIceCandidates(enableUdp, enableTcp, preferUdp, preferTcp);
 
 				// This may throw.
-				auto* webRtcTransport =
-				  new RTC::WebRtcTransport(transportId, this, webRtcServer, iceCandidates, request->data);
+				auto* webRtcTransport = new RTC::WebRtcTransport(
+				  this->shared, transportId, this, webRtcServer, iceCandidates, request->data);
 
 				// Insert into the map.
 				this->mapTransports[transportId] = webRtcTransport;
@@ -310,7 +311,8 @@ namespace RTC
 				// This may throw
 				SetNewTransportIdFromData(request->data, transportId);
 
-				auto* plainTransport = new RTC::PlainTransport(transportId, this, request->data);
+				auto* plainTransport =
+				  new RTC::PlainTransport(this->shared, transportId, this, request->data);
 
 				// Insert into the map.
 				this->mapTransports[transportId] = plainTransport;
@@ -334,7 +336,7 @@ namespace RTC
 				// This may throw
 				SetNewTransportIdFromData(request->data, transportId);
 
-				auto* pipeTransport = new RTC::PipeTransport(transportId, this, request->data);
+				auto* pipeTransport = new RTC::PipeTransport(this->shared, transportId, this, request->data);
 
 				// Insert into the map.
 				this->mapTransports[transportId] = pipeTransport;
@@ -381,7 +383,8 @@ namespace RTC
 				// This may throw
 				SetNewTransportIdFromData(request->data, transportId);
 
-				auto* directTransport = new RTC::DirectTransport(transportId, this, request->data);
+				auto* directTransport =
+				  new RTC::DirectTransport(this->shared, transportId, this, request->data);
 
 				// Insert into the map.
 				this->mapTransports[transportId] = directTransport;
@@ -406,7 +409,7 @@ namespace RTC
 				SetNewRtpObserverIdFromData(request->data, rtpObserverId);
 
 				auto* activeSpeakerObserver =
-				  new RTC::ActiveSpeakerObserver(rtpObserverId, this, request->data);
+				  new RTC::ActiveSpeakerObserver(this->shared, rtpObserverId, this, request->data);
 
 				// Insert into the map.
 				this->mapRtpObservers[rtpObserverId] = activeSpeakerObserver;
@@ -425,7 +428,8 @@ namespace RTC
 				// This may throw
 				SetNewRtpObserverIdFromData(request->data, rtpObserverId);
 
-				auto* audioLevelObserver = new RTC::AudioLevelObserver(rtpObserverId, this, request->data);
+				auto* audioLevelObserver =
+				  new RTC::AudioLevelObserver(this->shared, rtpObserverId, this, request->data);
 
 				// Insert into the map.
 				this->mapRtpObservers[rtpObserverId] = audioLevelObserver;
@@ -685,7 +689,10 @@ namespace RTC
 	}
 
 	inline void Router::OnTransportProducerNewRtpStream(
-	  RTC::Transport* /*transport*/, RTC::Producer* producer, RTC::RtpStream* rtpStream, uint32_t mappedSsrc)
+	  RTC::Transport* /*transport*/,
+	  RTC::Producer* producer,
+	  RTC::RtpStreamRecv* rtpStream,
+	  uint32_t mappedSsrc)
 	{
 		MS_TRACE();
 
@@ -700,7 +707,7 @@ namespace RTC
 	inline void Router::OnTransportProducerRtpStreamScore(
 	  RTC::Transport* /*transport*/,
 	  RTC::Producer* producer,
-	  RTC::RtpStream* rtpStream,
+	  RTC::RtpStreamRecv* rtpStream,
 	  uint8_t score,
 	  uint8_t previousScore)
 	{
@@ -715,7 +722,7 @@ namespace RTC
 	}
 
 	inline void Router::OnTransportProducerRtcpSenderReport(
-	  RTC::Transport* /*transport*/, RTC::Producer* producer, RTC::RtpStream* rtpStream, bool first)
+	  RTC::Transport* /*transport*/, RTC::Producer* producer, RTC::RtpStreamRecv* rtpStream, bool first)
 	{
 		MS_TRACE();
 
@@ -731,6 +738,8 @@ namespace RTC
 	  RTC::Transport* /*transport*/, RTC::Producer* producer, RTC::RtpPacket* packet)
 	{
 		MS_TRACE();
+
+		packet->logger.routerId = this->id;
 
 		auto& consumers = this->mapProducerConsumers.at(producer);
 
@@ -815,8 +824,8 @@ namespace RTC
 		// Get all streams in the Producer and provide the Consumer with them.
 		for (const auto& kv : producer->GetRtpStreams())
 		{
-			auto* rtpStream     = kv.first;
-			uint32_t mappedSsrc = kv.second;
+			auto* rtpStream           = kv.first;
+			const uint32_t mappedSsrc = kv.second;
 
 			consumer->ProducerRtpStream(rtpStream, mappedSsrc);
 		}

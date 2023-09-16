@@ -61,7 +61,7 @@ DelayBasedBwe::DelayBasedBwe(const WebRtcKeyValueConfig* key_value_config,
       network_state_predictor_(network_state_predictor),
       inter_arrival_(),
       delay_detector_(
-          new TrendlineEstimator(key_value_config_, network_state_predictor_)),
+          new TrendlineEstimator(network_state_predictor_)),
       last_seen_packet_(Timestamp::MinusInfinity()),
       uma_recorded_(false),
       rate_control_(key_value_config, /*send_side=*/true),
@@ -127,7 +127,7 @@ void DelayBasedBwe::IncomingPacketFeedback(const PacketResult& packet_feedback,
         new InterArrival((kTimestampGroupLengthMs << kInterArrivalShift) / 1000,
                          kTimestampToMs, true));
     delay_detector_.reset(
-        new TrendlineEstimator(key_value_config_, network_state_predictor_));
+        new TrendlineEstimator(network_state_predictor_));
   }
   last_seen_packet_ = at_time;
 
@@ -252,8 +252,14 @@ bool DelayBasedBwe::LatestEstimate(std::vector<uint32_t>* ssrcs,
   // thread.
   //RTC_DCHECK(ssrcs);
   //RTC_DCHECK(bitrate);
-  MS_ASSERT(ssrcs, "ssrcs must be != null");
-  MS_ASSERT(bitrate, "bitrate must be != null");
+  if (!ssrcs) {
+    MS_ERROR("ssrcs must be != null");
+    return false;
+  }
+  if (!bitrate) {
+    MS_ERROR("bitrate must be != null");
+    return false;
+  }
 
   if (!rate_control_.ValidEstimate())
     return false;

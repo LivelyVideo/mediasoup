@@ -40,9 +40,16 @@ inline static void onWrite(uv_write_t* req, int status)
 	delete writeData;
 }
 
-inline static void onClose(uv_handle_t* handle)
+// NOTE: We have different onCloseXxx() callbacks to avoid an ASAN warning by
+// ensuring that we call `delete xxx` with same type as `new xxx` before.
+inline static void onCloseTcp(uv_handle_t* handle)
 {
-	delete handle;
+	delete reinterpret_cast<uv_tcp_t*>(handle);
+}
+
+inline static void onCloseShutdown(uv_handle_t* handle)
+{
+	delete reinterpret_cast<uv_shutdown_t*>(handle);
 }
 
 inline static void onShutdown(uv_shutdown_t* req, int /*status*/)
@@ -52,7 +59,7 @@ inline static void onShutdown(uv_shutdown_t* req, int /*status*/)
 	delete req;
 
 	// Now do close the handle.
-	uv_close(reinterpret_cast<uv_handle_t*>(handle), static_cast<uv_close_cb>(onClose));
+	uv_close(reinterpret_cast<uv_handle_t*>(handle), static_cast<uv_close_cb>(onCloseShutdown));
 }
 
 /* Instance methods. */
@@ -103,7 +110,7 @@ void TcpConnectionHandler::Close()
 	{
 		// Use uv_shutdown() so pending data to be written will be sent to the peer
 		// before closing.
-		auto req  = new uv_shutdown_t;
+		auto* req = new uv_shutdown_t;
 		req->data = static_cast<void*>(this);
 		err       = uv_shutdown(
       req, reinterpret_cast<uv_stream_t*>(this->uvHandle), static_cast<uv_shutdown_cb>(onShutdown));
@@ -114,7 +121,7 @@ void TcpConnectionHandler::Close()
 	// Otherwise directly close the socket.
 	else
 	{
-		uv_close(reinterpret_cast<uv_handle_t*>(this->uvHandle), static_cast<uv_close_cb>(onClose));
+		uv_close(reinterpret_cast<uv_handle_t*>(this->uvHandle), static_cast<uv_close_cb>(onCloseTcp));
 	}
 }
 
@@ -135,7 +142,7 @@ void TcpConnectionHandler::Setup(
 	MS_TRACE();
 
 	// Set the UV handle.
-	int err = uv_tcp_init(DepLibUV::GetLoop(), this->uvHandle);
+	const int err = uv_tcp_init(DepLibUV::GetLoop(), this->uvHandle);
 
 	if (err != 0)
 	{
@@ -205,7 +212,7 @@ void TcpConnectionHandler::Write(
 		return;
 	}
 
-	size_t totalLen = len1 + len2;
+	const size_t totalLen = len1 + len2;
 	uv_buf_t buffers[2];
 	int written{ 0 };
 	int err;
@@ -246,8 +253,8 @@ void TcpConnectionHandler::Write(
 		written = 0;
 	}
 
-	size_t pendingLen = totalLen - written;
-	auto* writeData   = new UvWriteData(pendingLen);
+	const size_t pendingLen = totalLen - written;
+	auto* writeData         = new UvWriteData(pendingLen);
 
 	writeData->req.data = static_cast<void*>(writeData);
 
@@ -269,7 +276,7 @@ void TcpConnectionHandler::Write(
 
 	writeData->cb = cb;
 
-	uv_buf_t buffer = uv_buf_init(reinterpret_cast<char*>(writeData->store), pendingLen);
+	const uv_buf_t buffer = uv_buf_init(reinterpret_cast<char*>(writeData->store), pendingLen);
 
 	err = uv_write(
 	  &writeData->req,

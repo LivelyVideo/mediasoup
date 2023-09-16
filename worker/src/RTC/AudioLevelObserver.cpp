@@ -2,11 +2,9 @@
 // #define MS_LOG_DEV_LEVEL 3
 
 #include "RTC/AudioLevelObserver.hpp"
-#include "ChannelMessageHandlers.hpp"
 #include "Logger.hpp"
 #include "MediaSoupErrors.hpp"
 #include "Utils.hpp"
-#include "Channel/ChannelNotifier.hpp"
 #include "RTC/RtpDictionaries.hpp"
 #include <cmath> // std::lround()
 #include <map>
@@ -16,8 +14,8 @@ namespace RTC
 	/* Instance methods. */
 
 	AudioLevelObserver::AudioLevelObserver(
-	  const std::string& id, RTC::RtpObserver::Listener* listener, json& data)
-	  : RTC::RtpObserver(id, listener)
+	  RTC::Shared* shared, const std::string& id, RTC::RtpObserver::Listener* listener, json& data)
+	  : RTC::RtpObserver(shared, id, listener)
 	{
 		MS_TRACE();
 
@@ -65,7 +63,7 @@ namespace RTC
 		this->periodicTimer->Start(this->interval, this->interval);
 
 		// NOTE: This may throw.
-		ChannelMessageHandlers::RegisterHandler(
+		this->shared->channelMessageRegistrator->RegisterHandler(
 		  this->id,
 		  /*channelRequestHandler*/ this,
 		  /*payloadChannelRequestHandler*/ nullptr,
@@ -76,7 +74,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		ChannelMessageHandlers::UnregisterHandler(this->id);
+		this->shared->channelMessageRegistrator->UnregisterHandler(this->id);
 
 		delete this->periodicTimer;
 	}
@@ -143,7 +141,7 @@ namespace RTC
 		{
 			this->silence = true;
 
-			Channel::ChannelNotifier::Emit(this->id, "silence");
+			this->shared->channelNotifier->Emit(this->id, "silence");
 		}
 	}
 
@@ -158,7 +156,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		absl::btree_map<int8_t, RTC::Producer*> mapDBovsProducer;
+		absl::btree_multimap<int8_t, RTC::Producer*> mapDBovsProducer;
 
 		for (auto& kv : this->mapProducerDBovs)
 		{
@@ -166,12 +164,16 @@ namespace RTC
 			auto& dBovs    = kv.second;
 
 			if (dBovs.count < 10)
+			{
 				continue;
+			}
 
 			auto avgDBov = -1 * static_cast<int8_t>(std::lround(dBovs.totalSum / dBovs.count));
 
 			if (avgDBov >= this->threshold)
-				mapDBovsProducer[avgDBov] = producer;
+			{
+				mapDBovsProducer.insert({ avgDBov, producer });
+			}
 		}
 
 		// Clear the map.
@@ -195,13 +197,12 @@ namespace RTC
 				jsonEntry["volume"]     = rit->first;
 			}
 
-			Channel::ChannelNotifier::Emit(this->id, "volumes", data);
+			this->shared->channelNotifier->Emit(this->id, "volumes", data);
 		}
 		else if (!this->silence)
 		{
 			this->silence = true;
-
-			Channel::ChannelNotifier::Emit(this->id, "silence");
+			this->shared->channelNotifier->Emit(this->id, "silence");
 		}
 	}
 

@@ -3,10 +3,10 @@ project(
   ['c', 'cpp'],
   default_options : [
     'warning_level=1',
-    'cpp_std=c++11',
+    'cpp_std=c++17',
     'default_library=static',
   ],
-  meson_version: '>= 0.58',
+  meson_version: '>= 1.1.0',
 )
 
 cpp_args = [
@@ -42,6 +42,12 @@ if get_option('ms_log_file_line')
   ]
 endif
 
+if get_option('ms_rtc_logger_rtp')
+  cpp_args += [
+    '-DMS_RTC_LOGGER_RTP',
+  ]
+endif
+
 common_sources = [
   'src/lib.cpp',
   'src/DepLibSRTP.cpp',
@@ -55,7 +61,7 @@ common_sources = [
   'src/MediaSoupErrors.cpp',
   'src/Settings.cpp',
   'src/Worker.cpp',
-  'src/ChannelMessageHandlers.cpp',
+  'src/ChannelMessageRegistrator.cpp',
   'src/Utils/Crypto.cpp',
   'src/Utils/File.cpp',
   'src/Utils/IP.cpp',
@@ -91,10 +97,12 @@ common_sources = [
   'src/RTC/Producer.cpp',
   'src/RTC/RateCalculator.cpp',
   'src/RTC/Router.cpp',
+  'src/RTC/RtcLogger.cpp',
   'src/RTC/RtpListener.cpp',
   'src/RTC/RtpObserver.cpp',
   'src/RTC/RtpPacket.cpp',
   'src/RTC/RtpProbationGenerator.cpp',
+  'src/RTC/RtpRetransmissionBuffer.cpp',
   'src/RTC/RtpStream.cpp',
   'src/RTC/RtpStreamRecv.cpp',
   'src/RTC/RtpStreamSend.cpp',
@@ -103,6 +111,7 @@ common_sources = [
   'src/RTC/SctpListener.cpp',
   'src/RTC/SenderBandwidthEstimator.cpp',
   'src/RTC/SeqManager.cpp',
+  'src/RTC/Shared.cpp',
   'src/RTC/SimpleConsumer.cpp',
   'src/RTC/SimulcastConsumer.cpp',
   'src/RTC/SrtpSession.cpp',
@@ -310,15 +319,7 @@ libmediasoup_worker = library(
 #  cpp_args: transcode_args,
 #)
 
-mediasoup_worker_test = executable(
-  'mediasoup-worker-test',
-  build_by_default: false,
-  install: true,
-  install_tag: 'mediasoup-worker-test',
-  dependencies: dependencies + [
-    catch2_proj.get_variable('catch2_dep'),
-  ],
-  sources: common_sources + [
+test_sources = [
     'test/src/tests.cpp',
     'test/src/PayloadChannel/TestPayloadChannelNotification.cpp',
     'test/src/PayloadChannel/TestPayloadChannelRequest.cpp',
@@ -327,12 +328,14 @@ mediasoup_worker_test = executable(
     'test/src/RTC/TestRateCalculator.cpp',
     'test/src/RTC/TestRtpPacket.cpp',
     'test/src/RTC/TestRtpPacketH264Svc.cpp',
+    'test/src/RTC/TestRtpRetransmissionBuffer.cpp',
     'test/src/RTC/TestRtpStreamSend.cpp',
     'test/src/RTC/TestRtpStreamRecv.cpp',
     'test/src/RTC/TestSeqManager.cpp',
     'test/src/RTC/TestTrendCalculator.cpp',
     'test/src/RTC/TestRtpEncodingParameters.cpp',
     'test/src/RTC/Codecs/TestVP8.cpp',
+    'test/src/RTC/Codecs/TestVP9.cpp',
     'test/src/RTC/Codecs/TestH264.cpp',
     'test/src/RTC/Codecs/TestH264_SVC.cpp',
     'test/src/RTC/RTCP/TestFeedbackPsAfb.cpp',
@@ -357,11 +360,22 @@ mediasoup_worker_test = executable(
     'test/src/RTC/RTCP/TestPacket.cpp',
     'test/src/RTC/RTCP/TestXr.cpp',
     'test/src/Utils/TestBits.cpp',
+    'test/src/Utils/TestByte.cpp',
     'test/src/Utils/TestIP.cpp',
     'test/src/Utils/TestJson.cpp',
     'test/src/Utils/TestString.cpp',
     'test/src/Utils/TestTime.cpp',
+]
+
+mediasoup_worker_test = executable(
+  'mediasoup-worker-test',
+  build_by_default: false,
+  install: true,
+  install_tag: 'mediasoup-worker-test',
+  dependencies: dependencies + [
+    catch2_proj.get_variable('catch2_dep'),
   ],
+  sources: common_sources + test_sources,
   include_directories: include_directories(
     'include',
     'test/include',
@@ -375,6 +389,35 @@ mediasoup_worker_test = executable(
 test(
   'mediasoup-worker-test',
   mediasoup_worker_test,
+  workdir: meson.project_source_root(),
+)
+
+mediasoup_worker_test_asan = executable(
+  'mediasoup-worker-test-asan',
+  build_by_default: false,
+  install: true,
+  install_tag: 'mediasoup-worker-test-asan',
+  dependencies: dependencies + [
+    catch2_proj.get_variable('catch2_dep'),
+  ],
+  sources: common_sources + test_sources,
+  include_directories: include_directories(
+    'include',
+    'test/include',
+  ),
+  cpp_args: cpp_args + [
+    '-DMS_LOG_STD',
+    '-DMS_TEST',
+    '-fsanitize=address',
+  ],
+  link_args: [
+    '-fsanitize=address',
+  ],
+)
+
+test(
+  'mediasoup-worker-test-asan',
+  mediasoup_worker_test_asan,
   workdir: meson.project_source_root(),
 )
 
@@ -396,7 +439,9 @@ executable(
     'fuzzer/src/FuzzerUtils.cpp',
     'fuzzer/src/RTC/FuzzerStunPacket.cpp',
     'fuzzer/src/RTC/FuzzerRtpPacket.cpp',
+    'fuzzer/src/RTC/FuzzerRtpRetransmissionBuffer.cpp',
     'fuzzer/src/RTC/FuzzerRtpStreamSend.cpp',
+    'fuzzer/src/RTC/FuzzerSeqManager.cpp',
     'fuzzer/src/RTC/FuzzerTrendCalculator.cpp',
     'fuzzer/src/RTC/RTCP/FuzzerBye.cpp',
     'fuzzer/src/RTC/RTCP/FuzzerFeedbackPs.cpp',

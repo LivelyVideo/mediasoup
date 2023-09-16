@@ -41,6 +41,7 @@ namespace Channel
 		{ "transport.consumeStreamMeta",                 ChannelRequest::MethodId::TRANSPORT_CONSUME_STREAM_META                    },
 		{ "transport.setMaxIncomingBitrate",             ChannelRequest::MethodId::TRANSPORT_SET_MAX_INCOMING_BITRATE               },
 		{ "transport.setMaxOutgoingBitrate",             ChannelRequest::MethodId::TRANSPORT_SET_MAX_OUTGOING_BITRATE               },
+		{ "transport.setMinOutgoingBitrate",             ChannelRequest::MethodId::TRANSPORT_SET_MIN_OUTGOING_BITRATE               },
 		{ "transport.restartIce",                        ChannelRequest::MethodId::TRANSPORT_RESTART_ICE                            },
 		{ "transport.produce",                           ChannelRequest::MethodId::TRANSPORT_PRODUCE                                },
 		{ "transport.consume",                           ChannelRequest::MethodId::TRANSPORT_CONSUME                                },

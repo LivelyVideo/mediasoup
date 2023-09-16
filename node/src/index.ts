@@ -1,10 +1,11 @@
 import { Logger } from './Logger';
 import { EnhancedEventEmitter } from './EnhancedEventEmitter';
-import { Worker, WorkerSettings } from './Worker';
+import { workerBin, Worker, WorkerSettings } from './Worker';
 import * as utils from './utils';
 import { supportedRtpCapabilities } from './supportedRtpCapabilities';
 import { RtpCapabilities } from './RtpParameters';
 import * as types from './types';
+import { AppData } from './types';
 
 /**
  * Expose all types.
@@ -36,9 +37,14 @@ const observer = new EnhancedEventEmitter<ObserverEvents>();
 export { observer };
 
 /**
+ * Full path of the mediasoup-worker binary.
+ */
+export { workerBin };
+
+/**
  * Create a Worker.
  */
-export async function createWorker(
+export async function createWorker<WorkerAppData extends AppData = AppData>(
 	{
 		logLevel = 'error',
 		logDevLevel = 'none',
@@ -51,16 +57,19 @@ export async function createWorker(
 		rtcMaxPort = 59999,
 		dtlsCertificateFile,
 		dtlsPrivateKeyFile,
-		appData,
-	}: WorkerSettings
-): Promise<Worker>
+		libwebrtcFieldTrials,
+		appData
+	}: WorkerSettings<WorkerAppData> = {}
+): Promise<Worker<WorkerAppData>>
 {
 	logger.debug('createWorker()');
 
 	if (appData && typeof appData !== 'object')
+	{
 		throw new TypeError('if given, appData must be an object');
+	}
 
-	const worker = new Worker(
+	const worker = new Worker<WorkerAppData>(
 		{
 			logLevel,
 			logTags,
@@ -73,7 +82,8 @@ export async function createWorker(
 			rtcMaxPort,
 			dtlsCertificateFile,
 			dtlsPrivateKeyFile,
-			appData,
+			libwebrtcFieldTrials,
+			appData
 		});
 
 	return new Promise((resolve, reject) =>

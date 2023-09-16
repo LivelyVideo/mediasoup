@@ -11,7 +11,8 @@
 #include "RTC/Producer.hpp"
 #include "RTC/RtpObserver.hpp"
 #include "RTC/RtpPacket.hpp"
-#include "RTC/RtpStream.hpp"
+#include "RTC/RtpStreamRecv.hpp"
+#include "RTC/Shared.hpp"
 #include "RTC/Transport.hpp"
 #include "RTC/WebRtcServer.hpp"
 #include <absl/container/flat_hash_map.h>
@@ -39,7 +40,7 @@ namespace RTC
 		};
 
 	public:
-		explicit Router(const std::string& id, Listener* listener);
+		explicit Router(RTC::Shared* shared, const std::string& id, Listener* listener);
 		virtual ~Router();
 
 	public:
@@ -64,16 +65,19 @@ namespace RTC
 		void OnTransportProducerNewRtpStream(
 		  RTC::Transport* transport,
 		  RTC::Producer* producer,
-		  RTC::RtpStream* rtpStream,
+		  RTC::RtpStreamRecv* rtpStream,
 		  uint32_t mappedSsrc) override;
 		void OnTransportProducerRtpStreamScore(
 		  RTC::Transport* transport,
 		  RTC::Producer* producer,
-		  RTC::RtpStream* rtpStream,
+		  RTC::RtpStreamRecv* rtpStream,
 		  uint8_t score,
 		  uint8_t previousScore) override;
 		void OnTransportProducerRtcpSenderReport(
-		  RTC::Transport* transport, RTC::Producer* producer, RTC::RtpStream* rtpStream, bool first) override;
+		  RTC::Transport* transport,
+		  RTC::Producer* producer,
+		  RTC::RtpStreamRecv* rtpStream,
+		  bool first) override;
 		void OnTransportProducerRtpPacketReceived(
 		  RTC::Transport* transport, RTC::Producer* producer, RTC::RtpPacket* packet) override;
 		void OnTransportNeedWorstRemoteFractionLost(
@@ -111,9 +115,11 @@ namespace RTC
 	public:
 		// Passed by argument.
 		const std::string id;
-		Listener* listener{ nullptr };
 
 	private:
+		// Passed by argument.
+		RTC::Shared* shared{ nullptr };
+		Listener* listener{ nullptr };
 		// Allocated by this.
 		absl::flat_hash_map<std::string, RTC::Transport*> mapTransports;
 		absl::flat_hash_map<std::string, RTC::RtpObserver*> mapRtpObservers;

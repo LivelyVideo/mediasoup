@@ -22,6 +22,7 @@
 #include "RTC/RtpPacket.hpp"
 #include "RTC/SctpAssociation.hpp"
 #include "RTC/SctpListener.hpp"
+#include "RTC/Shared.hpp"
 #ifdef ENABLE_RTC_SENDER_BANDWIDTH_ESTIMATOR
 #include "RTC/SenderBandwidthEstimator.hpp"
 #endif
@@ -69,16 +70,19 @@ namespace RTC
 			virtual void OnTransportProducerNewRtpStream(
 			  RTC::Transport* transport,
 			  RTC::Producer* producer,
-			  RTC::RtpStream* rtpStream,
+			  RTC::RtpStreamRecv* rtpStream,
 			  uint32_t mappedSsrc) = 0;
 			virtual void OnTransportProducerRtpStreamScore(
 			  RTC::Transport* transport,
 			  RTC::Producer* producer,
-			  RTC::RtpStream* rtpStream,
+			  RTC::RtpStreamRecv* rtpStream,
 			  uint8_t score,
 			  uint8_t previousScore) = 0;
 			virtual void OnTransportProducerRtcpSenderReport(
-			  RTC::Transport* transport, RTC::Producer* producer, RTC::RtpStream* rtpStream, bool first) = 0;
+			  RTC::Transport* transport,
+			  RTC::Producer* producer,
+			  RTC::RtpStreamRecv* rtpStream,
+			  bool first) = 0;
 			virtual void OnTransportProducerRtpPacketReceived(
 			  RTC::Transport* transport, RTC::Producer* producer, RTC::RtpPacket* packet) = 0;
 			virtual void OnTransportNeedWorstRemoteFractionLost(
@@ -120,7 +124,7 @@ namespace RTC
 		};
 
 	public:
-		Transport(const std::string& id, Listener* listener, json& data);
+		Transport(RTC::Shared* shared, const std::string& id, Listener* listener, json& data);
 		virtual ~Transport();
 
 	public:
@@ -147,6 +151,7 @@ namespace RTC
 
 	protected:
 		// Must be called from the subclass.
+		void Destroying();
 		void Connected();
 		void Disconnected();
 		void DataReceived(size_t len)
@@ -206,11 +211,14 @@ namespace RTC
 		void OnProducerPaused(RTC::Producer* producer) override;
 		void OnProducerResumed(RTC::Producer* producer) override;
 		void OnProducerNewRtpStream(
-		  RTC::Producer* producer, RTC::RtpStream* rtpStream, uint32_t mappedSsrc) override;
+		  RTC::Producer* producer, RTC::RtpStreamRecv* rtpStream, uint32_t mappedSsrc) override;
 		void OnProducerRtpStreamScore(
-		  RTC::Producer* producer, RTC::RtpStream* rtpStream, uint8_t score, uint8_t previousScore) override;
+		  RTC::Producer* producer,
+		  RTC::RtpStreamRecv* rtpStream,
+		  uint8_t score,
+		  uint8_t previousScore) override;
 		void OnProducerRtcpSenderReport(
-		  RTC::Producer* producer, RTC::RtpStream* rtpStream, bool first) override;
+		  RTC::Producer* producer, RTC::RtpStreamRecv* rtpStream, bool first) override;
 		void OnProducerRtpPacketReceived(RTC::Producer* producer, RTC::RtpPacket* packet) override;
 		void OnProducerSendRtcpPacket(RTC::Producer* producer, RTC::RTCP::Packet* packet) override;
 		void OnProducerNeedWorstRemoteFractionLost(
@@ -309,6 +317,7 @@ namespace RTC
 		bool AddCallStatsSample(); // adds a new record, tells the caller if it's ready to write data out
 
 	protected:
+		RTC::Shared* shared{ nullptr };
 		size_t maxMessageSize{ 262144u };
 		// Allocated by this.
 		RTC::SctpAssociation* sctpAssociation{ nullptr };
@@ -324,10 +333,10 @@ namespace RTC
 		absl::flat_hash_map<uint32_t, RTC::Consumer*> mapSsrcConsumer;
 		absl::flat_hash_map<uint32_t, RTC::Consumer*> mapRtxSsrcConsumer;
 		Timer* rtcpTimer{ nullptr };
-		RTC::TransportCongestionControlClient* tccClient{ nullptr };
-		RTC::TransportCongestionControlServer* tccServer{ nullptr };
+		std::shared_ptr<RTC::TransportCongestionControlClient> tccClient{ nullptr };
+		std::shared_ptr<RTC::TransportCongestionControlServer> tccServer{ nullptr };
 #ifdef ENABLE_RTC_SENDER_BANDWIDTH_ESTIMATOR
-		RTC::SenderBandwidthEstimator* senderBwe{ nullptr };
+		std::shared_ptr<RTC::SenderBandwidthEstimator> senderBwe{ nullptr };
 #endif
 		// Others.
 		bool direct{ false }; // Whether this Transport allows PayloadChannel comm.
@@ -346,6 +355,7 @@ namespace RTC
 		uint32_t initialAvailableOutgoingBitrate{ 600000u };
 		uint32_t maxIncomingBitrate{ 0u };
 		uint32_t maxOutgoingBitrate{ 0u };
+		uint32_t minOutgoingBitrate{ 0u };
 		struct TraceEventTypes traceEventTypes;
 	};
 } // namespace RTC

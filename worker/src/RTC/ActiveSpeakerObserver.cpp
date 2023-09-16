@@ -1,11 +1,9 @@
 #define MS_CLASS "RTC::ActiveSpeakerObserver"
 
 #include "RTC/ActiveSpeakerObserver.hpp"
-#include "ChannelMessageHandlers.hpp"
 #include "Logger.hpp"
 #include "MediaSoupErrors.hpp"
 #include "Utils.hpp"
-#include "Channel/ChannelNotifier.hpp"
 #include "RTC/RtpDictionaries.hpp"
 
 namespace RTC
@@ -35,7 +33,7 @@ namespace RTC
 
 	inline int64_t BinomialCoefficient(int32_t n, int32_t r)
 	{
-		int32_t m = n - r;
+		const int32_t m = n - r;
 
 		if (r < m)
 		{
@@ -69,16 +67,16 @@ namespace RTC
 	inline bool ComputeBigs(
 	  const std::vector<uint8_t>& littles, std::vector<uint8_t>& bigs, uint8_t threashold)
 	{
-		uint32_t littleLen       = littles.size();
-		uint32_t bigLen          = bigs.size();
-		uint32_t littleLenPerBig = littleLen / bigLen;
+		uint32_t littleLen             = littles.size();
+		uint32_t bigLen                = bigs.size();
+		const uint32_t littleLenPerBig = littleLen / bigLen;
 		bool changed{ false };
 
 		for (uint32_t b = 0u, l = 0u; b < bigLen; ++b)
 		{
 			uint8_t sum{ 0u };
 
-			for (uint32_t lEnd = l + littleLenPerBig; l < lEnd; ++l)
+			for (const uint32_t lEnd = l + littleLenPerBig; l < lEnd; ++l)
 			{
 				if (littles[l] > threashold)
 				{
@@ -97,8 +95,8 @@ namespace RTC
 	}
 
 	ActiveSpeakerObserver::ActiveSpeakerObserver(
-	  const std::string& id, RTC::RtpObserver::Listener* listener, json& data)
-	  : RTC::RtpObserver(id, listener)
+	  RTC::Shared* shared, const std::string& id, RTC::RtpObserver::Listener* listener, json& data)
+	  : RTC::RtpObserver(shared, id, listener)
 	{
 		MS_TRACE();
 
@@ -121,7 +119,7 @@ namespace RTC
 		this->periodicTimer->Start(interval, interval);
 
 		// NOTE: This may throw.
-		ChannelMessageHandlers::RegisterHandler(
+		this->shared->channelMessageRegistrator->RegisterHandler(
 		  this->id,
 		  /*channelRequestHandler*/ this,
 		  /*payloadChannelRequestHandler*/ nullptr,
@@ -132,7 +130,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		ChannelMessageHandlers::UnregisterHandler(this->id);
+		this->shared->channelMessageRegistrator->UnregisterHandler(this->id);
 
 		delete this->periodicTimer;
 
@@ -263,7 +261,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		uint64_t now = DepLibUV::GetTimeMs();
+		const uint64_t now = DepLibUV::GetTimeMs();
 
 		if (now - this->lastLevelIdleTime >= LevelIdleTimeout)
 		{
@@ -280,7 +278,7 @@ namespace RTC
 			json data          = json::object();
 			data["producerId"] = this->dominantId;
 
-			Channel::ChannelNotifier::Emit(this->id, "dominantspeaker", data);
+			this->shared->channelNotifier->Emit(this->id, "dominantspeaker", data);
 		}
 	}
 
@@ -454,7 +452,7 @@ namespace RTC
 	{
 		if (this->lastLevelChangeTime <= now)
 		{
-			uint64_t elapsed = now - this->lastLevelChangeTime;
+			const uint64_t elapsed = now - this->lastLevelChangeTime;
 
 			this->lastLevelChangeTime = now;
 
@@ -500,25 +498,25 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		int8_t minLevel = this->minLevel + SubunitLengthN1;
-		bool changed    = false;
+		const int8_t minLevel = this->minLevel + SubunitLengthN1;
+		bool changed          = false;
 
 		for (uint32_t i = 0; i < ImmediateBuffLen; ++i)
 		{
 			// this->levels is a circular buffer where new samples are written in the
 			// next vector index. this->immediates is a buffer where the most recent
 			// value is always in index 0.
-			size_t levelIndex = this->nextLevelIndex >= (i + 1)
-			                      ? this->nextLevelIndex - i - 1
-			                      : this->nextLevelIndex + LevelsBuffLen - i - 1;
-			uint8_t level     = this->levels[levelIndex];
+			const size_t levelIndex = this->nextLevelIndex >= (i + 1)
+			                            ? this->nextLevelIndex - i - 1
+			                            : this->nextLevelIndex + LevelsBuffLen - i - 1;
+			uint8_t level           = this->levels[levelIndex];
 
 			if (level < minLevel)
 			{
 				level = MinLevel;
 			}
 
-			uint8_t immediate = (level / SubunitLengthN1);
+			const uint8_t immediate = (level / SubunitLengthN1);
 
 			if (this->immediates[i] != immediate)
 			{

@@ -18,9 +18,9 @@ LCOV = ./deps/lcov/bin/lcov
 DOCKER ?= docker
 PIP_DIR = $(MEDIASOUP_OUT_DIR)/pip
 INSTALL_DIR ?= $(MEDIASOUP_OUT_DIR)/$(MEDIASOUP_BUILDTYPE)
-BUILD_DIR ?= $(MEDIASOUP_OUT_DIR)/$(MEDIASOUP_BUILDTYPE)/build
+BUILD_DIR ?= $(INSTALL_DIR)/build
 MESON ?= $(PIP_DIR)/bin/meson
-MESON_VERSION ?= 0.61.5
+MESON_VERSION ?= 1.1.0
 # `MESON_ARGS` can be used to provide extra configuration parameters to Meson,
 # such as adding defines or changing optimization options. For instance, use
 # `MESON_ARGS="-Dms_log_trace=true -Dms_log_file_line=true" npm i` to compile
@@ -81,10 +81,11 @@ endif
 	lint \
 	format \
 	test \
+	test-asan \
 	tidy \
 	fuzzer \
 	fuzzer-run-all \
-	docker-build \
+	docker \
 	docker-run \
 	bingrep
 
@@ -209,22 +210,27 @@ xcode: setup
 	$(MESON) setup --buildtype debug --backend xcode $(MEDIASOUP_OUT_DIR)/xcode
 
 lint:
-	$(GULP) --gulpfile ./scripts/gulpfile.js lint:worker
+	$(GULP) --gulpfile ./scripts/gulpfile.mjs lint:worker
 
 format:
-	$(GULP) --gulpfile ./scripts/gulpfile.js format:worker
+	$(GULP) --gulpfile ./scripts/gulpfile.mjs format:worker
 
 test: setup
 	$(MESON) compile -C $(BUILD_DIR) -j $(CORES) mediasoup-worker-test
 	$(MESON) install -C $(BUILD_DIR) --no-rebuild --tags mediasoup-worker-test
+ifeq ($(OS),Windows_NT)
 	# On Windows lcov doesn't work (at least not yet) and we need to add `.exe` to
 	# the binary path.
-ifeq ($(OS),Windows_NT)
 	$(BUILD_DIR)/mediasoup-worker-test.exe --invisibles --use-colour=yes $(MEDIASOUP_TEST_TAGS)
 else
 	$(LCOV) --directory ./ --zerocounters
 	$(BUILD_DIR)/mediasoup-worker-test --invisibles --use-colour=yes $(MEDIASOUP_TEST_TAGS)
 endif
+
+test-asan: setup
+	$(MESON) compile -C $(BUILD_DIR) -j $(CORES) mediasoup-worker-test-asan
+	$(MESON) install -C $(BUILD_DIR) --no-rebuild --tags mediasoup-worker-test-asan
+	ASAN_OPTIONS=detect_leaks=1 $(BUILD_DIR)/mediasoup-worker-test-asan --invisibles --use-colour=yes $(MEDIASOUP_TEST_TAGS)
 
 tidy:
 	$(PYTHON) ./scripts/clang-tidy.py \
@@ -243,7 +249,7 @@ fuzzer: setup
 fuzzer-run-all:
 	LSAN_OPTIONS=verbosity=1:log_threads=1 $(BUILD_DIR)/mediasoup-worker-fuzzer -artifact_prefix=fuzzer/reports/ -max_len=1400 fuzzer/new-corpus deps/webrtc-fuzzer-corpora/corpora/stun-corpus deps/webrtc-fuzzer-corpora/corpora/rtp-corpus deps/webrtc-fuzzer-corpora/corpora/rtcp-corpus
 
-docker-build:
+docker:
 ifeq ($(DOCKER_NO_CACHE),true)
 	$(DOCKER) build -f Dockerfile --no-cache --tag mediasoup/docker:latest .
 else

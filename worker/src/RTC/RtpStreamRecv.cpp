@@ -41,11 +41,15 @@ namespace RTC
 
 		// Sanity check. Do not allow spatial layers higher than defined.
 		if (spatialLayer > this->spatialLayerCounters.size() - 1)
+		{
 			spatialLayer = this->spatialLayerCounters.size() - 1;
+		}
 
 		// Sanity check. Do not allow temporal layers higher than defined.
 		if (temporalLayer > this->spatialLayerCounters[0].size() - 1)
+		{
 			temporalLayer = this->spatialLayerCounters[0].size() - 1;
+		}
 
 		auto& counter = this->spatialLayerCounters[spatialLayer][temporalLayer];
 
@@ -82,7 +86,9 @@ namespace RTC
 		auto& counter = this->spatialLayerCounters[spatialLayer][temporalLayer];
 
 		if (counter.GetBitrate(nowMs) == 0)
+		{
 			return 0u;
+		}
 
 		uint32_t rate{ 0u };
 
@@ -183,8 +189,12 @@ namespace RTC
 	/* Instance methods. */
 
 	RtpStreamRecv::RtpStreamRecv(
-	  RTC::RtpStreamRecv::Listener* listener, RTC::RtpStream::Params& params, unsigned int sendNackDelayMs)
+	  RTC::RtpStreamRecv::Listener* listener,
+	  RTC::RtpStream::Params& params,
+	  unsigned int sendNackDelayMs,
+	  bool useRtpInactivityCheck)
 	  : RTC::RtpStream::RtpStream(listener, params, 10), sendNackDelayMs(sendNackDelayMs),
+	    useRtpInactivityCheck(useRtpInactivityCheck),
 	    transmissionCounter(
 	      params.spatialLayers, params.temporalLayers, this->params.useDtx ? 6000 : 2500)
 	{
@@ -201,15 +211,17 @@ namespace RTC
 
 		MS_DEBUG_TAG(rtp, "RtpStreamRecv::HasRtx=%s", HasRtx() ? "TRUE" : "FALSE");
 	
-		// Run the RTP inactivity periodic timer (use a different timeout if DTX is
-		// enabled).
-		this->inactivityCheckPeriodicTimer = new Timer(this);
-		this->inactive                     = false;
+		this->inactive = false;
 
-		if (!this->params.useDtx)
-			this->inactivityCheckPeriodicTimer->Start(InactivityCheckInterval);
-		else
-			this->inactivityCheckPeriodicTimer->Start(InactivityCheckIntervalWithDtx);
+		if (this->useRtpInactivityCheck)
+		{
+			// Run the RTP inactivity periodic timer (use a different timeout if DTX is
+			// enabled).
+			this->inactivityCheckPeriodicTimer = new Timer(this);
+
+			this->inactivityCheckPeriodicTimer->Start(
+			  this->params.useDtx ? InactivityCheckIntervalWithDtx : InactivityCheckInterval);
+		}
 	}
 
 	RtpStreamRecv::~RtpStreamRecv()
@@ -218,18 +230,19 @@ namespace RTC
 
 		// Close the RTP inactivity check periodic timer.
 		delete this->inactivityCheckPeriodicTimer;
+		this->inactivityCheckPeriodicTimer = nullptr;
 	}
 
 	void RtpStreamRecv::FillJsonStats(json& jsonObject)
 	{
 		MS_TRACE();
 
-		uint64_t nowMs = DepLibUV::GetTimeMs();
+		const uint64_t nowMs = DepLibUV::GetTimeMs();
 
 		RTC::RtpStream::FillJsonStats(jsonObject);
 
 		jsonObject["type"]        = "inbound-rtp";
-		jsonObject["jitter"]      = this->jitter;
+		jsonObject["jitter"]      = static_cast<uint32_t>(this->jitter);
 		jsonObject["packetCount"] = this->transmissionCounter.GetPacketCount();
 		jsonObject["byteCount"]   = this->transmissionCounter.GetBytes();
 		jsonObject["bitrate"]     = this->transmissionCounter.GetBitrate(nowMs);
@@ -264,7 +277,9 @@ namespace RTC
 
 		// Process the packet at codec level.
 		if (packet->GetPayloadType() == GetPayloadType())
+		{
 			RTC::Codecs::Tools::ProcessRtpPacket(packet, GetMimeType());
+		}
 
 		// Pass the packet to the NackGenerator.
 		if (this->params.useNack)
@@ -303,7 +318,9 @@ namespace RTC
 
 		// Restart the inactivityCheckPeriodicTimer.
 		if (this->inactivityCheckPeriodicTimer)
+		{
 			this->inactivityCheckPeriodicTimer->Restart();
+		}
 
 		return true;
 	}
@@ -375,7 +392,9 @@ namespace RTC
 
 		// Process the packet at codec level.
 		if (packet->GetPayloadType() == GetPayloadType())
+		{
 			RTC::Codecs::Tools::ProcessRtpPacket(packet, GetMimeType());
+		}
 
 		// Mark the packet as retransmitted.
 		RTC::RtpStream::PacketRetransmitted(packet);
@@ -400,7 +419,9 @@ namespace RTC
 
 			// Restart the inactivityCheckPeriodicTimer.
 			if (this->inactivityCheckPeriodicTimer)
+			{
 				this->inactivityCheckPeriodicTimer->Restart();
+			}
 
 			return true;
 		}
@@ -421,38 +442,49 @@ namespace RTC
 			  ->OnRtpStreamNeedWorstRemoteFractionLost(this, worstRemoteFractionLost);
 
 			if (worstRemoteFractionLost > 0)
+			{
 				MS_DEBUG_TAG(rtcp, "using worst remote fraction lost:%" PRIu8, worstRemoteFractionLost);
+			}
 		}
 
 		auto* report = new RTC::RTCP::ReceiverReport();
 
 		report->SetSsrc(GetSsrc());
 
-		uint32_t prevPacketsLost = this->packetsLost;
+		const uint32_t prevPacketsLost = this->packetsLost;
 
 		// Calculate Packets Expected and Lost.
 		auto expected = GetExpectedPackets();
 
 		if (expected > this->mediaTransmissionCounter.GetPacketCount())
+		{
 			this->packetsLost = expected - this->mediaTransmissionCounter.GetPacketCount();
+		}
 		else
+		{
 			this->packetsLost = 0u;
+		}
 
 		// Calculate Fraction Lost.
-		uint32_t expectedInterval = expected - this->expectedPrior;
+		const uint32_t expectedInterval = expected - this->expectedPrior;
 
 		this->expectedPrior = expected;
 
-		uint32_t receivedInterval = this->mediaTransmissionCounter.GetPacketCount() - this->receivedPrior;
+		const uint32_t receivedInterval =
+		  this->mediaTransmissionCounter.GetPacketCount() - this->receivedPrior;
 
 		this->receivedPrior = this->mediaTransmissionCounter.GetPacketCount();
 
-		int32_t lostInterval = expectedInterval - receivedInterval;
+		const int32_t lostInterval = expectedInterval - receivedInterval;
 
 		if (expectedInterval == 0 || lostInterval <= 0)
+		{
 			this->fractionLost = 0;
+		}
 		else
+		{
 			this->fractionLost = std::round((static_cast<double>(lostInterval << 8) / expectedInterval));
+		}
 
 		// Worst remote fraction lost is not worse than local one.
 		if (worstRemoteFractionLost <= this->fractionLost)
@@ -465,7 +497,7 @@ namespace RTC
 		else
 		{
 			// Recalculate packetsLost.
-			uint32_t newLostInterval = (worstRemoteFractionLost * expectedInterval) >> 8;
+			const uint32_t newLostInterval = (worstRemoteFractionLost * expectedInterval) >> 8;
 
 			this->reportedPacketLost += newLostInterval;
 
@@ -503,7 +535,9 @@ namespace RTC
 		MS_TRACE();
 
 		if (HasRtx())
+		{
 			return this->rtxStream->GetRtcpReceiverReport();
+		}
 
 		return nullptr;
 	}
@@ -534,7 +568,9 @@ namespace RTC
 		MS_TRACE();
 
 		if (HasRtx())
+		{
 			this->rtxStream->ReceiveRtcpSenderReport(report);
+		}
 	}
 
 	void RtpStreamRecv::ReceiveRtcpXrDelaySinceLastRr(RTC::RTCP::DelaySinceLastRr::SsrcInfo* ssrcInfo)
@@ -544,16 +580,16 @@ namespace RTC
 		/* Calculate RTT. */
 
 		// Get the NTP representation of the current timestamp.
-		uint64_t nowMs = DepLibUV::GetTimeMs();
-		auto ntp       = Utils::Time::TimeMs2Ntp(nowMs);
+		const uint64_t nowMs = DepLibUV::GetTimeMs();
+		auto ntp             = Utils::Time::TimeMs2Ntp(nowMs);
 
 		// Get the compact NTP representation of the current timestamp.
 		uint32_t compactNtp = (ntp.seconds & 0x0000FFFF) << 16;
 
 		compactNtp |= (ntp.fractions & 0xFFFF0000) >> 16;
 
-		uint32_t lastRr = ssrcInfo->GetLastReceiverReport();
-		uint32_t dlrr   = ssrcInfo->GetDelaySinceLastReceiverReport();
+		const uint32_t lastRr = ssrcInfo->GetLastReceiverReport();
+		const uint32_t dlrr   = ssrcInfo->GetDelaySinceLastReceiverReport();
 
 		// RTT in 1/2^16 second fractions.
 		uint32_t rtt{ 0 };
@@ -561,18 +597,25 @@ namespace RTC
 		// If no Receiver Extended Report was received by the remote endpoint yet,
 		// ignore lastRr and dlrr values in the Sender Extended Report.
 		if (lastRr && dlrr && (compactNtp > dlrr + lastRr))
+		{
 			rtt = compactNtp - dlrr - lastRr;
+		}
 
 		// RTT in milliseconds.
 		this->rtt = static_cast<float>(rtt >> 16) * 1000;
 		this->rtt += (static_cast<float>(rtt & 0x0000FFFF) / 65536) * 1000;
 
-		if (this->rtt > 0.0f)
-			this->hasRtt = true;
+		// Avoid negative RTT value since it doesn't make sense.
+		if (this->rtt <= 0.0f)
+		{
+			this->rtt = 0.0f;
+		}
 
 		// Tell it to the NackGenerator.
 		if (this->params.useNack)
+		{
 			this->nackGenerator->UpdateRtt(static_cast<uint32_t>(this->rtt));
+		}
 	}
 
 	void RtpStreamRecv::RequestKeyFrame()
@@ -618,10 +661,14 @@ namespace RTC
 		MS_TRACE();
 
 		if (this->inactivityCheckPeriodicTimer)
+		{
 			this->inactivityCheckPeriodicTimer->Stop();
+		}
 
 		if (this->params.useNack)
+		{
 			this->nackGenerator->Reset();
+		}
 
 		// Reset jitter.
 		this->transit = 0;
@@ -633,19 +680,23 @@ namespace RTC
 		MS_TRACE();
 
 		if (this->inactivityCheckPeriodicTimer && !this->inactive)
+		{
 			this->inactivityCheckPeriodicTimer->Restart();
+		}
 	}
 
 	void RtpStreamRecv::CalculateJitter(uint32_t rtpTimestamp)
 	{
 		MS_TRACE();
 
-		if (this->params.clockRate == 0u)
+		if (GetClockRate() == 0u)
+		{
 			return;
+		}
 
-		auto transit =
-		  static_cast<int>(DepLibUV::GetTimeMs() - (rtpTimestamp * 1000 / this->params.clockRate));
-		int d = transit - this->transit;
+		// NOTE: Based on https://github.com/versatica/mediasoup/issues/1018.
+		auto transit = static_cast<int>((DepLibUV::GetTimeMs() * GetClockRate() / 1000) - rtpTimestamp);
+		int d        = transit - this->transit;
 
 		// First transit calculation, save and return.
 		if (this->transit == 0)
@@ -658,9 +709,11 @@ namespace RTC
 		this->transit = transit;
 
 		if (d < 0)
+		{
 			d = -d;
+		}
 
-		this->jitter += (1. / 16.) * (static_cast<double>(d) - this->jitter);
+		this->jitter += (1. / 16.) * (static_cast<float>(d) - this->jitter);
 	}
 
 	void RtpStreamRecv::UpdateScore()
@@ -668,14 +721,14 @@ namespace RTC
 		MS_TRACE();
 
 		// Calculate number of packets expected in this interval.
-		auto totalExpected = GetExpectedPackets();
-		uint32_t expected  = totalExpected - this->expectedPriorScore;
+		const auto totalExpected = GetExpectedPackets();
+		const uint32_t expected  = totalExpected - this->expectedPriorScore;
 
 		this->expectedPriorScore = totalExpected;
 
 		// Calculate number of packets received in this interval.
-		auto totalReceived = this->mediaTransmissionCounter.GetPacketCount();
-		uint32_t received  = totalReceived - this->receivedPriorScore;
+		const auto totalReceived = this->mediaTransmissionCounter.GetPacketCount();
+		const uint32_t received  = totalReceived - this->receivedPriorScore;
 
 		this->receivedPriorScore = totalReceived;
 
@@ -683,24 +736,30 @@ namespace RTC
 		uint32_t lost;
 
 		if (expected < received)
+		{
 			lost = 0;
+		}
 		else
+		{
 			lost = expected - received;
+		}
 
 		// Calculate number of packets repaired in this interval.
-		auto totalRepaired = this->packetsRepaired;
-		uint32_t repaired  = totalRepaired - this->repairedPriorScore;
+		const auto totalRepaired = this->packetsRepaired;
+		uint32_t repaired        = totalRepaired - this->repairedPriorScore;
 
 		this->repairedPriorScore = totalRepaired;
 
 		// Calculate number of packets retransmitted in this interval.
-		auto totatRetransmitted = this->packetsRetransmitted;
-		uint32_t retransmitted  = totatRetransmitted - this->retransmittedPriorScore;
+		const auto totatRetransmitted = this->packetsRetransmitted;
+		uint32_t retransmitted        = totatRetransmitted - this->retransmittedPriorScore;
 
 		this->retransmittedPriorScore = totatRetransmitted;
 
 		if (this->inactive)
+		{
 			return;
+		}
 
 		// We didn't expect more packets to come.
 		if (expected == 0)
@@ -711,7 +770,9 @@ namespace RTC
 		}
 
 		if (lost > received)
+		{
 			lost = received;
+		}
 
 		if (repaired > lost)
 		{
@@ -751,7 +812,9 @@ namespace RTC
 		MS_ASSERT(retransmitted >= repaired, "repaired packets cannot be more than retransmitted ones");
 
 		if (retransmitted > 0)
+		{
 			repairedWeight *= static_cast<float>(repaired) / retransmitted;
+		}
 
 		lost -= repaired * repairedWeight;
 
@@ -771,6 +834,13 @@ namespace RTC
 #endif
 
 		RtpStream::UpdateScore(score);
+	}
+
+	void RtpStreamRecv::UserOnSequenceNumberReset()
+	{
+		MS_TRACE();
+
+		// Nothing to do.
 	}
 
 	inline void RtpStreamRecv::OnTimer(Timer* timer)
@@ -816,7 +886,9 @@ namespace RTC
 				uint16_t shift = *it - seq - 1;
 
 				if (shift > 15)
+				{
 					break;
+				}
 
 				bitmask |= (1 << shift);
 				++it;

@@ -28,6 +28,7 @@ namespace RTC
 		MS_TRACE();
 
 		delete this->rtxStream;
+		this->rtxStream = nullptr;
 	}
 
 	void RtpStream::FillJson(json& jsonObject) const
@@ -49,7 +50,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		uint64_t nowMs = DepLibUV::GetTimeMs();
+		const uint64_t nowMs = DepLibUV::GetTimeMs();
 
 		jsonObject["timestamp"]            = nowMs;
 		jsonObject["ssrc"]                 = this->params.ssrc;
@@ -75,7 +76,7 @@ namespace RTC
 		if (this->rtxStream)
 			jsonObject["rtxPacketsDiscarded"] = this->rtxStream->GetPacketsDiscarded();
 
-		if (this->hasRtt)
+		if (this->rtt > 0.0f)
 			jsonObject["roundTripTime"] = this->rtt;
 	}
 
@@ -113,7 +114,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		uint16_t seq = packet->GetSequenceNumber();
+		const uint16_t seq = packet->GetSequenceNumber();
 
 		// If this is the first packet seen, initialize stuff.
 		if (!this->started)
@@ -174,8 +175,8 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		uint16_t seq    = packet->GetSequenceNumber();
-		uint16_t udelta = seq - this->maxSeq;
+		const uint16_t seq    = packet->GetSequenceNumber();
+		const uint16_t udelta = seq - this->maxSeq;
 
 		// If the new packet sequence number is greater than the max seen but not
 		// "so much bigger", accept it.
@@ -193,7 +194,7 @@ namespace RTC
 			this->maxSeq = seq;
 		}
 		// Too old packet received (older than the allowed misorder).
-		// Or to new packet (more than acceptable dropout).
+		// Or too new packet (more than acceptable dropout).
 		else if (udelta <= RtpSeqMod - MaxMisorder)
 		{
 			// The sequence number made a very large jump. If two sequential packets
@@ -212,6 +213,9 @@ namespace RTC
 
 				this->maxPacketTs = packet->GetTimestamp();
 				this->maxPacketMs = DepLibUV::GetTimeMs();
+
+				// Notify the subclass about it.
+				UserOnSequenceNumberReset();
 			}
 			else
 			{

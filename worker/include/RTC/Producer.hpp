@@ -16,6 +16,7 @@
 #include "RTC/RtpHeaderExtensionIds.hpp"
 #include "RTC/RtpPacket.hpp"
 #include "RTC/RtpStreamRecv.hpp"
+#include "RTC/Shared.hpp"
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -41,11 +42,14 @@ namespace RTC
 			virtual void OnProducerPaused(RTC::Producer* producer)                                   = 0;
 			virtual void OnProducerResumed(RTC::Producer* producer)                                  = 0;
 			virtual void OnProducerNewRtpStream(
-			  RTC::Producer* producer, RTC::RtpStream* rtpStream, uint32_t mappedSsrc) = 0;
+			  RTC::Producer* producer, RTC::RtpStreamRecv* rtpStream, uint32_t mappedSsrc) = 0;
 			virtual void OnProducerRtpStreamScore(
-			  RTC::Producer* producer, RTC::RtpStream* rtpStream, uint8_t score, uint8_t previousScore) = 0;
+			  RTC::Producer* producer,
+			  RTC::RtpStreamRecv* rtpStream,
+			  uint8_t score,
+			  uint8_t previousScore) = 0;
 			virtual void OnProducerRtcpSenderReport(
-			  RTC::Producer* producer, RTC::RtpStream* rtpStream, bool first)                         = 0;
+			  RTC::Producer* producer, RTC::RtpStreamRecv* rtpStream, bool first)                     = 0;
 			virtual void OnProducerRtpPacketReceived(RTC::Producer* producer, RTC::RtpPacket* packet) = 0;
 			virtual void OnProducerSendRtcpPacket(RTC::Producer* producer, RTC::RTCP::Packet* packet) = 0;
 			virtual void OnProducerNeedWorstRemoteFractionLost(
@@ -94,7 +98,7 @@ namespace RTC
 		};
 
 	public:
-		Producer(const std::string& id, RTC::Producer::Listener* listener, json& data, bool producerBinLogEnabled, Lively::AppData* appData = nullptr);
+		Producer(RTC::Shared* shared, const std::string& id, RTC::Producer::Listener* listener, json& data, bool producerBinLogEnabled, Lively::AppData* appData = nullptr);
 		virtual ~Producer();
 
 	public:
@@ -184,6 +188,7 @@ namespace RTC
 
 	private:
 		// Passed by argument.
+		RTC::Shared* shared{ nullptr };
 		RTC::Producer::Listener* listener{ nullptr };
 		// Allocated by this.
 		absl::flat_hash_map<uint32_t, RTC::RtpStreamRecv*> mapSsrcRtpStream;

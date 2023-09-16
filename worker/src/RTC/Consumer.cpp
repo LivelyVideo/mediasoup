@@ -5,7 +5,6 @@
 #include "DepLibUV.hpp"
 #include "Logger.hpp"
 #include "MediaSoupErrors.hpp"
-#include "Channel/ChannelNotifier.hpp"
 #include <iterator> // std::ostream_iterator
 #include <sstream>  // std::ostringstream
 
@@ -16,13 +15,14 @@ namespace RTC
 	/* Instance methods. */
 
 	Consumer::Consumer(
+	  RTC::Shared* shared,
 	  const std::string& id,
 	  const std::string& producerId,
 	  Listener* listener,
 	  json& data,
 	  RTC::RtpParameters::Type type,
 		Lively::AppData* appData)
-	  : id(id), producerId(producerId), listener(listener), type(type)
+	  : id(id), producerId(producerId), shared(shared), listener(listener), type(type)
 	{
 		MS_TRACE();
 
@@ -299,7 +299,7 @@ namespace RTC
 					return;
 				}
 
-				bool wasActive = IsActive();
+				const bool wasActive = IsActive();
 
 				this->paused = true;
 
@@ -373,7 +373,7 @@ namespace RTC
 					if (!type.is_string())
 						MS_THROW_TYPE_ERROR("wrong type (not a string)");
 
-					std::string typeStr = type.get<std::string>();
+					const std::string typeStr = type.get<std::string>();
 
 					if (typeStr == "rtp")
 						newTraceEventTypes.rtp = true;
@@ -436,7 +436,7 @@ namespace RTC
 		if (this->producerPaused)
 			return;
 
-		bool wasActive = IsActive();
+		const bool wasActive = IsActive();
 
 		this->producerPaused = true;
 
@@ -445,7 +445,7 @@ namespace RTC
 		if (wasActive)
 			UserOnPaused();
 
-		Channel::ChannelNotifier::Emit(this->id, "producerpause");
+		this->shared->channelNotifier->Emit(this->id, "producerpause");
 	}
 
 	void Consumer::ProducerResumed()
@@ -462,7 +462,7 @@ namespace RTC
 		if (IsActive())
 			UserOnResumed();
 
-		Channel::ChannelNotifier::Emit(this->id, "producerresume");
+		this->shared->channelNotifier->Emit(this->id, "producerresume");
 	}
 
 	void Consumer::ProducerRtpStreamScores(const std::vector<uint8_t>* scores)
@@ -483,7 +483,7 @@ namespace RTC
 
 		MS_WARN_TAG_LIVELYAPP(rtp, this->appData, "Producer closed");
 
-		Channel::ChannelNotifier::Emit(this->id, "producerclose");
+		this->shared->channelNotifier->Emit(this->id, "producerclose");
 
 		this->listener->OnConsumerProducerClosed(this);
 	}
@@ -505,7 +505,7 @@ namespace RTC
 			if (isRtx)
 				data["info"]["isRtx"] = true;
 
-			Channel::ChannelNotifier::Emit(this->id, "trace", data);
+			this->shared->channelNotifier->Emit(this->id, "trace", data);
 		}
 		else if (this->traceEventTypes.rtp)
 		{
@@ -520,7 +520,7 @@ namespace RTC
 			if (isRtx)
 				data["info"]["isRtx"] = true;
 
-			Channel::ChannelNotifier::Emit(this->id, "trace", data);
+			this->shared->channelNotifier->Emit(this->id, "trace", data);
 		}
 	}
 
@@ -538,7 +538,7 @@ namespace RTC
 		data["direction"]    = "in";
 		data["info"]["ssrc"] = ssrc;
 
-		Channel::ChannelNotifier::Emit(this->id, "trace", data);
+		this->shared->channelNotifier->Emit(this->id, "trace", data);
 	}
 
 	void Consumer::EmitTraceEventFirType(uint32_t ssrc) const
@@ -555,7 +555,7 @@ namespace RTC
 		data["direction"]    = "in";
 		data["info"]["ssrc"] = ssrc;
 
-		Channel::ChannelNotifier::Emit(this->id, "trace", data);
+		this->shared->channelNotifier->Emit(this->id, "trace", data);
 	}
 
 	void Consumer::EmitTraceEventNackType() const
@@ -572,6 +572,6 @@ namespace RTC
 		data["direction"] = "in";
 		data["info"]      = json::object();
 
-		Channel::ChannelNotifier::Emit(this->id, "trace", data);
+		this->shared->channelNotifier->Emit(this->id, "trace", data);
 	}
 } // namespace RTC
