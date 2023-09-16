@@ -1,7 +1,23 @@
 #include <catch2/catch.hpp>
 #include "LivelyBinLogs.hpp"
 
-using namespace Utils;
+SCENARIO("Grab userId from appData with userId")
+{
+    std::string jsonString = R"({"callId":"6d7fb685-0215-4f8a-af3a-29d5d4c1b7ad","displayName":"display6d7fb685-0215-4f8a-af3a-29d5d4c1b7ad","iceConnected":true,"orientation":"landscape-primary","peerId":"8A46F3E0541B11EEBC973176C12C8EFA","streamName":"demo","trackEnabled":true,"userId":"6d7fb685-0215-4f8a-af3a-29d5d4c1b7ad"})";
+    auto appData = nlohmann::json::parse(jsonString);
+    std::string userId = Lively::GetUserIdFromAppData(appData);
+
+    REQUIRE(userId == "6d7fb685-0215-4f8a-af3a-29d5d4c1b7ad");
+}
+
+SCENARIO("Grab userId from appData with no userId, displayName")
+{
+    std::string jsonString = R"({"callId":"6d7fb685-0215-4f8a-af3a-29d5d4c1b7ad","displayName":"display6d7fb685-0215-4f8a-af3a-29d5d4c1b7ad","iceConnected":true,"orientation":"landscape-primary","peerId":"8A46F3E0541B11EEBC973176C12C8EFA","streamName":"demo","trackEnabled":true})";
+    auto appData = nlohmann::json::parse(jsonString);
+    std::string userId = Lively::GetUserIdFromAppData(appData);
+
+    REQUIRE(userId == "display6d7fb685-0215-4f8a-af3a-29d5d4c1b7ad");
+}
 
 SCENARIO("Producer binlog file names are created correctly.")
 {

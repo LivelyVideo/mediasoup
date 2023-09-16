@@ -114,8 +114,8 @@ namespace RTC
 
             std::string const callId = lively.callId;
 
-            this->consumersBinLog.InitLogNew([callId](uint64_t timestamp) -> std::string {
-                return Lively::ConsumerFileName(callId,timestamp, BINLOG_FORMAT_VERSION);
+            this->consumersBinLog.InitLog([callId](uint64_t timestamp) -> std::string {
+                return Lively::ConsumerFileName(callId, timestamp, BINLOG_FORMAT_VERSION);
             });
 		}
 		else

@@ -7,7 +7,7 @@
 #include <functional>
 
 #define BINLOG_MIN_TIMESPAN   20000
-#define BINLOG_FORMAT_VERSION "3b55f9"
+#define BINLOG_FORMAT_VERSION "421b6f"
 //"c1b126"
 
 // CALL_STATS_BIN_LOG_CONS_REC_NUM * sizeof(CallStatsSample)
@@ -201,7 +201,7 @@ class CallStatsRecord
 
     bool IsInitialized() {return initialized;}
     void InitLog(char type, std::string id1, std::string id2); // if type is producer, then log name is a combo of callid, producerid and timestamp
-    void InitLogNew(std::function<std::string(uint64_t)>&& templateFunction);
+    void InitLog(std::function<std::string(uint64_t)>&& templateFunction);
 //    void InitLogNew2(std::string fileNameTemplate);
     int OnLogWrite(CallStatsRecordCtx* ctx);
     void DeinitLog();   // Closes log file and deinitializes state variables
@@ -222,6 +222,7 @@ class CallStatsRecord
     );
 
     std::string ConsumerFileName(const std::string& callId, uint64_t timestamp, const std::string& version);
+    std::string GetUserIdFromAppData(const json& appData);
 
 } //Lively
 

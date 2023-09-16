@@ -81,22 +81,13 @@ namespace RTC
 
                 std::string userId;
                 if (data.contains("appData")) {
-                    auto& rAppData = data["appData"];
-
-                    if (rAppData.contains("userId") && rAppData["userId"].is_string()) {
-                        userId = rAppData["userId"];
-                    } else if (rAppData.contains("displayName") && rAppData["displayName"].is_string()) {
-                        userId = rAppData["displayName"];
-                    } else if (rAppData.contains("peerId") && rAppData["peerId"].is_string()) {
-                        userId = rAppData["peerId"];
-                    } else {
-                        userId = callId;
-                    }
+                    json const& rAppData = data["appData"];
+                    userId = Lively::GetUserIdFromAppData(rAppData);
                 } else {
                     userId = callId;
                 }
 
-                this->binLog.InitLogNew([callId, producerId, userId](uint64_t timestamp) -> std::string {
+                this->binLog.InitLog([callId, producerId, userId](uint64_t timestamp) -> std::string {
                     return Lively::ProducerFileName(callId, producerId, userId, timestamp, BINLOG_FORMAT_VERSION);
                 });
 	        }
