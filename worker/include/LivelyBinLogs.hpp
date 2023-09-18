@@ -7,7 +7,7 @@
 #include <functional>
 
 #define BINLOG_MIN_TIMESPAN   20000
-#define BINLOG_FORMAT_VERSION "421b6f"
+#define BINLOG_FORMAT_VERSION "223fac"
 //"c1b126"
 
 // CALL_STATS_BIN_LOG_CONS_REC_NUM * sizeof(CallStatsSample)

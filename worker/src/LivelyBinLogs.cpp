@@ -629,7 +629,7 @@ std::string ProducerFileName(
         uint64_t timestamp,
         const std::string &version
 ) {
-    return "ms_p_" + callId + "_" + producerId + "_" + userId + "_" + std::to_string(timestamp) + "." + version + ".bin";
+    return "ms_p_" + userId + "_" + callId + "_" + producerId + "_" + std::to_string(timestamp) + "." + version + ".bin";
 }
 
 std::string ConsumerFileName(const std::string& callId, uint64_t timestamp, const std::string& version) {
