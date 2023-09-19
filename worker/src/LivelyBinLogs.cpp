@@ -507,49 +507,8 @@ bool StatsBinLog::CreateBinlogDirsIfMissing()
   return true;
 }
 
-//std::string GenerateLogFormatStringNew(
-//	LogType type,
-//	const std::string& logBinStatsPath,
-//	const std::string& version,
-//	const std::string& id1,
-//	const std::string& id2)
-//{
-//	std::string formatStr;
-//	switch (type)
-//	{
-//		case LogType::Consumer:
-//			formatStr = std::format("{}/bin/current/ms_c_{}_{{}}.{}.bin",
-//				                      logBinStatsPath, id1, version);
-//			break;
-//		case LogType::Producer:
-//			formatStr = std::format("{}/bin/current/ms_p_{}_{}_{{}}.{}.bin",
-//				                      logBinStatsPath, id1, id2, version);
-//			break;
-//	}
-//	return formatStr;
-//}
 
-std::string GenerateLogFormatString(char type, const std::string& id1, const std::string& id2, const std::string& version)
-{
-	//sizeof("/var/log/sfu/bin/current/ms_p_00000000-0000-0000-0000-000000000000_00000000-0000-0000-0000-000000000000_1652210519459.123abc.bin") * 2
-	char tmp[FILENAME_LEN_MAX];
-	std::memset(tmp, '\0', FILENAME_LEN_MAX);
 
-	switch (type)
-	{
-		case 'c':
-			sprintf(tmp,
-				      "%s/bin/current/ms_c_%s_%%llu.%s.bin",
-				      Settings::configuration.logBinStatsPath.c_str(), id1.c_str(), version);
-			break;
-		case 'p':
-			sprintf(tmp,
-				      "%s/bin/current/ms_p_%s_%s_%%llu.%s.bin",
-				      Settings::configuration.logBinStatsPath.c_str(), id1.c_str(), id2.c_str(), version);
-			break;
-	}
-	return tmp;
-}
 
 //todo add back total filepath size check
 void StatsBinLog::InitLog(std::function<std::string(uint64_t)>&& templateFunction)
@@ -604,7 +563,6 @@ void StatsBinLog::DeinitLog()
 
   this->bin_log_name_template.clear();
   this->current_bin_log_name.clear();
-//  this->file_name_template_function.clear();
   this->bin_log_file_path.clear();
 }
 
@@ -618,7 +576,6 @@ std::string GetUserIdFromAppData(const json& appData) {
     return "";
 }
 
-//todo check compatibility with current filename parser
 std::string ProducerFileName(
         const std::string &callId,
         const std::string &producerId,
@@ -632,5 +589,4 @@ std::string ProducerFileName(
 std::string ConsumerFileName(const std::string& callId, uint64_t timestamp, const std::string& version) {
     return "ms_c_" + callId + "_" + std::to_string(timestamp) + "." + version + ".bin";
 }
-
 } //Lively
