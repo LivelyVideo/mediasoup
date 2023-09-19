@@ -570,9 +570,6 @@ std::string GetUserIdFromAppData(const json& appData) {
     if (appData.contains("userId") && appData["userId"].is_string()) {
         return appData["userId"].get<std::string>();
     }
-    if (appData.contains("displayName") && appData["displayName"].is_string()) {
-        return appData["displayName"].get<std::string>();
-    }
     return "";
 }
 

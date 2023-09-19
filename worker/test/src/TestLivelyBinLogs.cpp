@@ -16,7 +16,7 @@ SCENARIO("Grab userId from appData with no userId, displayName")
     auto appData = nlohmann::json::parse(jsonString);
     std::string const userId = Lively::GetUserIdFromAppData(appData);
 
-    REQUIRE(userId == "display6d7fb685-0215-4f8a-af3a-29d5d4c1b7ad");
+    REQUIRE(userId.empty());
 }
 
 SCENARIO("Grab userId from appData with no userId, no displayName")
