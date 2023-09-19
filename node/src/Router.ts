@@ -797,12 +797,14 @@ export class Router<RouterAppData extends AppData = AppData>
 			throw new TypeError('wrong listenIp');
 		}
 
-		const internal = { ...this.#internal, transportId: uuidv4() };
+		const transportId = uuidv4()
+		const internal = { ...this.#internal, transportId: transportId };
 		const reqData = {
+			transportId : transportId,
 			listenIp,
 			shm,
 			log,
-			appData,
+			appData
 		};
 
 		/*

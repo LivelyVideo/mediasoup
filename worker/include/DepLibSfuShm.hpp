@@ -12,10 +12,11 @@ extern "C"
 #include <list>
 #include <unordered_map>
 
-#define UINT64_UNSET ((uint64_t)-1)
-#define MAX_SEQ_DELTA 100
-#define MAX_PTS_DELTA (90000*10)
-#define MTU_SIZE       1500
+#define UINT64_UNSET      ((uint64_t)-1)
+#define MAX_SEQ_DELTA                100
+#define MAX_PTS_DELTA         (90000*10)
+#define MTU_SIZE                    1500
+#define SHM_APP_DATA_MAX_SIZE        256
 
 namespace DepLibSfuShm
 {

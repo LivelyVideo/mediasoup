@@ -2,6 +2,7 @@
 // #define MS_LOG_DEV
 
 #include "RTC/ShmConsumer.hpp"
+#include "ChannelMessageHandlers.hpp"
 #include "DepLibUV.hpp"
 #include "Logger.hpp"
 #include "MediaSoupErrors.hpp"
@@ -11,7 +12,6 @@
 #include "RTC/RtpStreamRecv.hpp"
 #include "Lively.hpp"
 #include "LivelyAppDataToJson.hpp"
-
 
 namespace RTC
 {
@@ -82,15 +82,45 @@ namespace RTC
 
 		CreateRtpStream();
 
+        // Create the encoding context for Opus.
+        if (
+          mediaCodec->mimeType.type == RTC::RtpCodecMimeType::Type::AUDIO &&
+          (mediaCodec->mimeType.subtype == RTC::RtpCodecMimeType::Subtype::OPUS ||
+           mediaCodec->mimeType.subtype == RTC::RtpCodecMimeType::Subtype::MULTIOPUS))
+        {
+            RTC::Codecs::EncodingContext::Params params;
+
+            this->encodingContext.reset(
+              RTC::Codecs::Tools::GetEncodingContext(mediaCodec->mimeType, params));
+
+            auto jsonIgnoreDtx = data.find("ignoreDtx");
+
+            if (jsonIgnoreDtx != data.end() && jsonIgnoreDtx->is_boolean())
+            {
+                auto ignoreDtx = jsonIgnoreDtx->get<bool>();
+
+                this->encodingContext->SetIgnoreDtx(ignoreDtx);
+            }
+        }
+
 		this->shmIdleCheckTimer = new Timer(this);
 		this->shmIdleCheckTimer->Start(ShmIdleCheckInterval);
 
 		this->shmCtx->ResetShmMediaStatsAndQueue((this->GetKind() == RTC::Media::Kind::AUDIO) ? DepLibSfuShm::Media::AUDIO : DepLibSfuShm::Media::VIDEO);
+
+        // NOTE: This may throw.
+        ChannelMessageHandlers::RegisterHandler(
+          this->id,
+          /*channelRequestHandler*/ this,
+          /*payloadChannelRequestHandler*/ nullptr,
+          /*payloadChannelNotificationHandler*/ nullptr);
 	}
 
 	ShmConsumer::~ShmConsumer()
 	{
 		MS_TRACE();
+
+		ChannelMessageHandlers::UnregisterHandler(this->id);
 
 		delete this->rtpStream;
 		delete this->shmIdleCheckTimer;
@@ -246,7 +276,7 @@ namespace RTC
 	}
 
 
-	void ShmConsumer::SendRtpPacket(RTC::RtpPacket* packet)
+	void ShmConsumer::SendRtpPacket(RTC::RtpPacket* packet, std::shared_ptr<RTC::RtpPacket>& sharedPacket)
 	{
 		MS_TRACE();
 
@@ -264,12 +294,28 @@ namespace RTC
 
 		// NOTE: This may happen if this Consumer supports just some codecs of those
 		// in the corresponding Producer.
-		if (this->supportedCodecPayloadTypes.find(payloadType) == this->supportedCodecPayloadTypes.end())
+		if (!this->supportedCodecPayloadTypes[payloadType])
 		{
 			MS_WARN_TAG_LIVELYAPP(rtp, this->appData, "payload type not supported [payloadType:%" PRIu8 "]", payloadType);
 
 			return;
 		}
+
+		bool marker;
+
+        // Process the payload if needed. Drop packet if necessary.
+        if (this->encodingContext && !packet->ProcessPayload(this->encodingContext.get(), marker))
+        {
+            MS_DEBUG_DEV(
+              "discarding packet [ssrc:%" PRIu32 ", seq:%" PRIu16 ", ts:%" PRIu32 "]",
+              packet->GetSsrc(),
+              packet->GetSequenceNumber(),
+              packet->GetTimestamp());
+
+            this->rtpSeqManager.Drop(packet->GetSequenceNumber());
+
+            return;
+        }
 
 		// If we need to sync, support key frames but this pkt is not a key frame,
 		// do not write it into shm,
@@ -357,7 +403,7 @@ namespace RTC
 		}
 
 		// Process the packet. In case of shm writer this logic is still needed for NACKs
-		if (this->rtpStream->ReceivePacket(packet))
+		if (this->rtpStream->ReceivePacket(packet, sharedPacket))
 		{
 			// Send the packet.
 			this->listener->OnConsumerSendRtpPacket(this, packet);
@@ -694,29 +740,41 @@ namespace RTC
 	}
 
 
-	void ShmConsumer::GetRtcp(
-	  RTC::RTCP::CompoundPacket* packet, RTC::RtpStreamSend* rtpStream, uint64_t nowMs)
+	bool ShmConsumer::GetRtcp(
+	        RTC::RTCP::CompoundPacket* packet, uint64_t nowMs)
 	{
-		MS_TRACE();
+	    MS_TRACE();
 
-		MS_ASSERT(rtpStream == this->rtpStream, "RTP stream does not match");
+	    MS_ASSERT(rtpStream == this->rtpStream, "RTP stream does not match");
 
-		if (static_cast<float>((nowMs - this->lastRtcpSentTime) * 1.15) < this->maxRtcpInterval)
-			return;
+	    if (static_cast<float>((nowMs - this->lastRtcpSentTime) * 1.15) < this->maxRtcpInterval)
+	        return true;
 
-		auto* report = this->rtpStream->GetRtcpSenderReport(nowMs);
+	    auto* senderReport = this->rtpStream->GetRtcpSenderReport(nowMs);
 
-		if (!report)
-			return;
+	    if (!senderReport)
+	        return true;
 
-		packet->AddSenderReport(report);
+	    // Build SDES chunk for this sender.
+	    auto* sdesChunk = this->rtpStream->GetRtcpSdesChunk();
 
-		// Build SDES chunk for this sender.
-		auto* sdesChunk = this->rtpStream->GetRtcpSdesChunk();
+	    RTC::RTCP::DelaySinceLastRr* delaySinceLastRrReport{ nullptr };
 
-		packet->AddSdesChunk(sdesChunk);
+	    auto* dlrr = this->rtpStream->GetRtcpXrDelaySinceLastRr(nowMs);
 
-		this->lastRtcpSentTime = nowMs;
+	    if (dlrr)
+	    {
+	        delaySinceLastRrReport = new RTC::RTCP::DelaySinceLastRr();
+	        delaySinceLastRrReport->AddSsrcInfo(dlrr);
+	    }
+
+	    // RTCP Compound packet buffer cannot hold the data.
+	    if (!packet->Add(senderReport, sdesChunk, delaySinceLastRrReport))
+	        return false;
+
+	    this->lastRtcpSentTime = nowMs;
+
+	    return true;
 	}
 
 	void ShmConsumer::NeedWorstRemoteFractionLost(
@@ -787,6 +845,12 @@ namespace RTC
 		this->rtpStream->ReceiveRtcpReceiverReport(report);
 	}
 
+    void ShmConsumer::ReceiveRtcpXrReceiverReferenceTime(RTC::RTCP::ReceiverReferenceTime* report)
+    {
+        MS_TRACE();
+
+        this->rtpStream->ReceiveRtcpXrReceiverReferenceTime(report);
+    }
 
 	uint32_t ShmConsumer::GetTransmissionRate(uint64_t nowMs)
 	{
@@ -897,7 +961,7 @@ namespace RTC
 		// Create a RtpStreamSend for sending a single media stream.
 		size_t bufferSize = params.useNack ? 600u : 0u;
 
-		this->rtpStream = new RTC::RtpStreamSend(this, params, bufferSize);
+		this->rtpStream = new RTC::RtpStreamSend(this, params, this->rtpParameters.mid);
 		this->rtpStreams.push_back(this->rtpStream);
 
 		// If the Consumer is paused, tell the RtpStreamSend.

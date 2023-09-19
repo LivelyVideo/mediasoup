@@ -65,6 +65,9 @@ export class ShmTransport extends Transport
 
 	private _log?: string;
 
+        // Next MID for Consumers. It's converted into string when used.
+        #nextMidForConsumers = 0;
+
 	/**
 	* @private
 	 *
@@ -173,9 +176,11 @@ export class ShmTransport extends Transport
 			producerId,
 			rtpCapabilities,
 			paused = false,
+			mid,
 			preferredLayers,
+			ignoreDtx = false,
 			pipe = false,
-			appData = {}
+			appData
 		}: ConsumerOptions
 	): Promise<Consumer>
 	{
@@ -185,6 +190,8 @@ export class ShmTransport extends Transport
 			throw new TypeError('missing producerId');
 		else if (appData && typeof appData !== 'object')
 			throw new TypeError('if given, appData must be an object');
+		else if (mid && (typeof mid !== 'string' || mid.length === 0))
+			throw new TypeError('if given, mid must be non empty string');
 
 		// This may throw.
 		ortc.validateRtpCapabilities(rtpCapabilities!);
@@ -198,17 +205,40 @@ export class ShmTransport extends Transport
 		const rtpParameters = ortc.getConsumerRtpParameters(
 			producer.consumableRtpParameters, rtpCapabilities!, pipe);
 
-		// Skipped MID, see in Transport.ts: rtpParameters.mid = `${this._nextMidForConsumers++}`;
-
-		const internal = { ...this.internal, consumerId: uuidv4(), producerId };
-		const shmData = appData ? 
+		// Set MID.
+		if (!pipe)
+		{
+			if (mid)
 			{
-				shm: (appData.shm !== undefined) ? appData.shm : {}, 
+				rtpParameters.mid = mid;
+			}
+			else
+			{
+				rtpParameters.mid = `${this.#nextMidForConsumers++}`;
+
+				// We use up to 8 bytes for MID (string).
+				if (this.#nextMidForConsumers === 100000000)
+				{
+					logger.error(
+						`consume() | reaching max MID value "${this.#nextMidForConsumers}"`);
+
+					this.#nextMidForConsumers = 0;
+				}
+			}
+		}
+
+		const consumerId = uuidv4();
+		const internal = { ...this.internal, consumerId, producerId };
+		const shmData = appData ?
+			{
+				shm: (appData.shm !== undefined) ? appData.shm : {},
 				log: (appData.log !== undefined) ? appData.log : {}
-			} 
+			}
 			: {};
 		const reqData =
 		{
+			consumerId,
+			producerId,
 			kind                   : producer.kind,
 			rtpParameters,
 			type                   : 'shm',
@@ -217,13 +247,14 @@ export class ShmTransport extends Transport
 			paused,
 			preferredLayers,
 			appData,
+			ignoreDtx,
 		};
 
 		const status =
 			await this.channel.request('transport.consume', this.internal.transportId, reqData);
 
-		const data = 
-		{ 
+		const data =
+		{
 			producerId,
 			kind : producer.kind,
 			rtpParameters,
@@ -252,7 +283,6 @@ export class ShmTransport extends Transport
 
 		return consumer;
 	}
-
 
 	/**
 	 * Provide the ShmTransport remote parameters.
