@@ -30,8 +30,8 @@ constexpr uint8_t hexVal[256] = {
     0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 };
 
-#define FILENAME_LEN_MAX                    1024
-#define DAY_IN_MS           ((uint64_t)86400000)
+constexpr uint16_t FILENAME_LEN_MAX = 255;
+constexpr uint64_t DAY_IN_MS = 86400000ULL;
 
 CallStatsRecord::CallStatsRecord(uint64_t type, uint16_t ssrc, uint8_t payload, char content, std::string callId, std::string obj, std::string producer)
   : type(type), call_id(callId), object_id(obj), producer_id(producer)
