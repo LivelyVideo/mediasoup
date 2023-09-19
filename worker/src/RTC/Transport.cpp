@@ -74,9 +74,6 @@ namespace RTC
 		}
 		
 		auto jsonAppDataIt = data.find("appData");
-
-        MS_DEBUG_TAG(rtp, "XXXXX assigning appData to lively. data=%s", data.dump().c_str());
-
 		bool hasCallId = false;
 		if (jsonAppDataIt != data.end() && jsonAppDataIt->is_object())
 		{

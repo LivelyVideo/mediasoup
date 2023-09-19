@@ -81,11 +81,6 @@ struct ProducerRecord
   CallStatsSample samples[CALL_STATS_BIN_LOG_PROD_REC_NUM]; // collection of data samples
 };
 
-//enum class LogType {
-//	Consumer,
-//	Producer,
-//};
-
 class CallStatsRecord
 {
   public:
