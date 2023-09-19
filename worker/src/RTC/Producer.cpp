@@ -72,9 +72,6 @@ namespace RTC
 	        else
 	        {
 	            MS_DEBUG_TAG(rtp, "XXXXX creating producer bin log. lively=%s", lively.ToStr().c_str());
-	            MS_DEBUG_TAG(rtp, "XXXXX creating producer bin log. data=%s", data.dump().c_str());
-
-//	            this->binLog.InitLog('p', lively.callId, lively.id);
 
                 std::string const callId = lively.callId;
                 std::string const producerId = lively.id;

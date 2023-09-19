@@ -107,10 +107,8 @@ namespace RTC
 		if (hasCallId) {
 			MS_DEBUG_TAG(rtp, "XXXXX creating consumer bin log. lively=%s", lively.ToStr().c_str());
 
-//			this->consumersBinLog.InitLog('c', lively.callId, lively.id); // initialize consumers bin log here, it is shared btw all consumers
-
+            // initialize consumers bin log here, it is shared btw all consumers
             std::string const callId = lively.callId;
-
             this->consumersBinLog.InitLog([callId](uint64_t timestamp) -> std::string {
                 return Lively::ConsumerFileName(callId, timestamp, BINLOG_FORMAT_VERSION);
             });
@@ -739,9 +737,6 @@ namespace RTC
 
 				// This may throw.
 				SetNewProducerIdFromData(request->data, producerId);
-
-                MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData, "XXXX Transport Produce Data: %s", request->data.dump().c_str());
-                MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData, "XXXX Transport Produce Lively: %s", lively.ToStr().c_str());
 
 				// This may throw.
 				auto* producer = new RTC::Producer(producerId, this, request->data, this->producerBinLogEnabled, &lively);
