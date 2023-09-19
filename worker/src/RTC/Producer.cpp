@@ -85,7 +85,8 @@ namespace RTC
                     userId = Lively::GetUserIdFromAppData(rAppData);
                 }
                 if (userId.empty()) {
-                    userId = callId;
+                    MS_WARN_TAG(rtp, "producer create missing appdata or user info, defaulting to 0 for userId");
+                    userId = "0";
                 }
 
                 this->binLog.InitLog([callId, producerId, userId](uint64_t timestamp) -> std::string {

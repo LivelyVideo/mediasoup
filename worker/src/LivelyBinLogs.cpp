@@ -615,9 +615,6 @@ std::string GetUserIdFromAppData(const json& appData) {
     if (appData.contains("displayName") && appData["displayName"].is_string()) {
         return appData["displayName"].get<std::string>();
     }
-//    if (appData.contains("peerId") && appData["peerId"].is_string()) {
-//        return appData["peerId"].get<std::string>();
-//    }
     return "";
 }
 
