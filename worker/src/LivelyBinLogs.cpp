@@ -508,9 +508,6 @@ bool StatsBinLog::CreateBinlogDirsIfMissing()
 }
 
 
-
-
-//todo add back total filepath size check
 void StatsBinLog::InitLog(std::function<std::string(uint64_t)>&& templateFunction)
 {
 	this->initialized = false;
