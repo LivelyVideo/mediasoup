@@ -412,12 +412,15 @@ export class Worker<WorkerAppData extends AppData = AppData>
 		this.#pid = this.#child.pid!;
 
 		// each worker writes into its own log file: insert pid before file extension
-		this.#mslog = path.format(
-			{
-				dir: path.dirname(logFile),
-				name: path.basename(logFile, path.extname(logFile)) + "." + this.#pid,
-				ext: path.extname(logFile)
-			});
+		if (logFile !== undefined)
+			this.#mslog = path.format(
+				{
+					dir: path.dirname(logFile),
+					name: path.basename(logFile, path.extname(logFile)) + "." + this.#pid,
+					ext: path.extname(logFile)
+				});
+		else
+			this.#mslog = "ms" + this.#pid + ".log";
 
 		this.#channel = new Channel(
 			{
