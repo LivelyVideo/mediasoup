@@ -1036,7 +1036,7 @@ namespace RTC
 #ifdef TRANSCODE
 						MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData, "ShmConsumer will be created with data [%s]", request->data.dump().c_str());
 						// This may throw.
-            consumer = new RTC::ShmConsumer(consumerId, producerId, this, request->data, dynamic_cast<RTC::ShmTransport*>(this)->ShmCtx());
+            consumer = new RTC::ShmConsumer(this->shared, consumerId, producerId, this, request->data, dynamic_cast<RTC::ShmTransport*>(this)->ShmCtx());
 						dynamic_cast<RTC::ShmTransport*>(this)->StopNoConsumeTimer();
 #endif
 						break;

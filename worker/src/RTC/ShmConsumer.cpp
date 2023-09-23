@@ -2,7 +2,6 @@
 // #define MS_LOG_DEV
 
 #include "RTC/ShmConsumer.hpp"
-#include "ChannelMessageHandlers.hpp"
 #include "DepLibUV.hpp"
 #include "Logger.hpp"
 #include "MediaSoupErrors.hpp"
@@ -52,8 +51,8 @@ namespace RTC
 	}
 
 
-	ShmConsumer::ShmConsumer(const std::string& id, const std::string& producerId, RTC::Consumer::Listener* listener, json& data, DepLibSfuShm::ShmCtx *shmCtx)
-	  : RTC::Consumer::Consumer(id, producerId, listener, data, RTC::RtpParameters::Type::SHM)
+	ShmConsumer::ShmConsumer(RTC::Shared* shared, const std::string& id, const std::string& producerId, RTC::Consumer::Listener* listener, json& data, DepLibSfuShm::ShmCtx *shmCtx)
+	  : RTC::Consumer::Consumer(shared, id, producerId, listener, data, RTC::RtpParameters::Type::SHM)
 	{
 		MS_TRACE();
 
@@ -108,19 +107,19 @@ namespace RTC
 
 		this->shmCtx->ResetShmMediaStatsAndQueue((this->GetKind() == RTC::Media::Kind::AUDIO) ? DepLibSfuShm::Media::AUDIO : DepLibSfuShm::Media::VIDEO);
 
-        // NOTE: This may throw.
-        ChannelMessageHandlers::RegisterHandler(
-          this->id,
-          /*channelRequestHandler*/ this,
-          /*payloadChannelRequestHandler*/ nullptr,
-          /*payloadChannelNotificationHandler*/ nullptr);
+		// NOTE: This may throw.
+		this->shared->channelMessageRegistrator->RegisterHandler(
+		  this->id,
+		  /*channelRequestHandler*/ this,
+		  /*payloadChannelRequestHandler*/ nullptr,
+		  /*payloadChannelNotificationHandler*/ nullptr);
 	}
 
 	ShmConsumer::~ShmConsumer()
 	{
 		MS_TRACE();
 
-		ChannelMessageHandlers::UnregisterHandler(this->id);
+		this->shared->channelMessageRegistrator->UnregisterHandler(this->id);
 
 		delete this->rtpStream;
 		delete this->shmIdleCheckTimer;
@@ -208,7 +207,7 @@ namespace RTC
 
 		MS_WARN_TAG_LIVELYAPP(xcode, this->appData, "shm[%s] idle shm consumer", this->shmCtx->StreamName().c_str());
 
-		Channel::ChannelNotifier::Emit(this->id, "idleshmconsumer");
+		this->shared->channelNotifier->Emit(this->id, "idleshmconsumer");
 	}
 
 	void ShmConsumer::HandleRequest(Channel::ChannelRequest* request)
@@ -235,7 +234,7 @@ namespace RTC
 		}
 	}
 
-	void ShmConsumer::ProducerRtpStream(RTC::RtpStream* rtpStream, uint32_t /*mappedSsrc*/)
+	void ShmConsumer::ProducerRtpStream(RTC::RtpStreamRecv* rtpStream, uint32_t /*mappedSsrc*/)
 	{
 		MS_TRACE();
 
@@ -243,7 +242,7 @@ namespace RTC
 		MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData, "ShmConsumer's producerRtpStream is set up");
 	}
 
-	void ShmConsumer::ProducerNewRtpStream(RTC::RtpStream* rtpStream, uint32_t /*mappedSsrc*/)
+	void ShmConsumer::ProducerNewRtpStream(RTC::RtpStreamRecv* rtpStream, uint32_t /*mappedSsrc*/)
 	{
 		MS_TRACE();
 
@@ -251,7 +250,7 @@ namespace RTC
 	}
 
 	void ShmConsumer::ProducerRtpStreamScore(
-	  RTC::RtpStream* /*rtpStream*/, uint8_t /*score*/, uint8_t /*previousScore*/)
+	  RTC::RtpStreamRecv* /*rtpStream*/, uint8_t /*score*/, uint8_t /*previousScore*/)
 	{
 		MS_TRACE();
 
@@ -259,7 +258,7 @@ namespace RTC
 	}
 
 
-	void ShmConsumer::ProducerRtcpSenderReport(RTC::RtpStream* /*rtpStream*/, bool /*first*/)
+	void ShmConsumer::ProducerRtcpSenderReport(RTC::RtpStreamRecv* /*rtpStream*/, bool /*first*/)
 	{
 		MS_TRACE();
 

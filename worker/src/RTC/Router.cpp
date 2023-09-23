@@ -361,7 +361,8 @@ namespace RTC
 				// This may throw
 				SetNewTransportIdFromData(request->data, transportId);
 
-				auto* shmTransport = new RTC::ShmTransport(transportId, this, request->data);
+				auto* shmTransport = 
+					new RTC::ShmTransport(this->shared, transportId, this, request->data);
 
 				// Insert into the map.
 				this->mapTransports[transportId] = shmTransport;

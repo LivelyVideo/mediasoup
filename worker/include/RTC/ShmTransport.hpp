@@ -24,7 +24,7 @@ namespace RTC
 		};
 
 	public:
-		ShmTransport(const std::string& id, RTC::Transport::Listener* listener, json& data);
+		ShmTransport(RTC::Shared* shared, const std::string& id, RTC::Transport::Listener* listener, json& data);
 		~ShmTransport() override;
 
 	public:

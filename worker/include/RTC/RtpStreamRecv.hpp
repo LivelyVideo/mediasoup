@@ -110,10 +110,10 @@ namespace RTC
 		{
 			return this->useRtpInactivityCheck;
 		}
-		//uint32_t GetJitter()
-		//{
-		//	return this->jitter;
-		//}
+		uint32_t GetJitter()
+		{
+			return this->jitter;
+		}
 	private:
 		void CalculateJitter(uint32_t rtpTimestamp);
 		void UpdateScore();
