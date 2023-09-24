@@ -30,8 +30,8 @@ constexpr uint8_t hexVal[256] = {
     0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 };
 
-#define FILENAME_LEN_MAX                    1024
-#define DAY_IN_MS           ((uint64_t)86400000)
+constexpr uint16_t FILENAME_LEN_MAX = 255;
+constexpr uint64_t DAY_IN_MS = 86400000ULL;
 
 CallStatsRecord::CallStatsRecord(uint64_t type, uint16_t ssrc, uint8_t payload, char content, std::string callId, std::string obj, std::string producer)
   : type(type), call_id(callId), object_id(obj), producer_id(producer)
@@ -48,13 +48,13 @@ CallStatsRecord::CallStatsRecord(uint64_t type, uint16_t ssrc, uint8_t payload, 
     record.c.content = content;
     std::memset(record.c.consumer_id, 0, UUID_BYTE_LEN);
     uuidToBytes(obj, record.c.consumer_id);
-    
+
     std::memset(record.c.producer_id, 0, UUID_BYTE_LEN);
     uuidToBytes(producer, record.c.producer_id);
 
     std::memset(record.c.samples, 0, sizeof(record.c.samples));
 
-    MS_DEBUG_TAG(rtp, "CallStatsRecord ctor(): consumer start_tm=%" PRIu64 " ssrc=%" PRIu16 " payload=%" PRIu8 " type=%c callId=%s consumerId=%s producerId=%s", 
+    MS_DEBUG_TAG(rtp, "CallStatsRecord ctor(): consumer start_tm=%" PRIu64 " ssrc=%" PRIu16 " payload=%" PRIu8 " type=%c callId=%s consumerId=%s producerId=%s",
       ts, ssrc, payload, content, call_id.c_str(), object_id.c_str(), producer_id.c_str());
   }
   else // producer
@@ -64,7 +64,7 @@ CallStatsRecord::CallStatsRecord(uint64_t type, uint16_t ssrc, uint8_t payload, 
     record.p.content = content;
     std::memset(record.p.samples, 0, sizeof(record.p.samples));
 
-    MS_DEBUG_TAG(rtp, "CallStatsRecord ctor(): producer start_tm=%" PRIu64 " ssrc=%" PRIu16 " payload=%" PRIu8 " type=%c callId=%s producerId=%s", 
+    MS_DEBUG_TAG(rtp, "CallStatsRecord ctor(): producer start_tm=%" PRIu64 " ssrc=%" PRIu16 " payload=%" PRIu8 " type=%c callId=%s producerId=%s",
       ts, ssrc, payload, content, call_id.c_str(), object_id.c_str());
   }
 }
@@ -138,7 +138,7 @@ bool CallStatsRecord::addSample(StreamStats& last, StreamStats& curr)
 
   MS_ASSERT(last.ts != UINT64_UNSET,
             "Timestamp of a previous sample is unset, quitting...");
-            
+
   MS_ASSERT(curr.ts != UINT64_UNSET,
             "Timestamp of a current sample is unset, quitting...");
 
@@ -167,7 +167,7 @@ bool CallStatsRecord::addSample(StreamStats& last, StreamStats& curr)
 bool CallStatsRecord::isPktCountZero() const
 {
   if (filled() < maxSamples())
-  { 
+  {
     return false; // can be true only for full collection of samples
   }
 
@@ -295,12 +295,12 @@ void StatsBinLog::LogClose()
     return;
 
   // Do not preserve binlogs with too little data
-  if (log_start_ts == UINT64_UNSET 
-      || log_last_ts == UINT64_UNSET 
+  if (log_start_ts == UINT64_UNSET
+      || log_last_ts == UINT64_UNSET
       || BINLOG_MIN_TIMESPAN > log_last_ts - log_start_ts)
   {
     std::remove(bin_log_file_path.c_str());
-    MS_DEBUG_TAG(rtp, "binlog %s removed, short timespan (%" PRIu64 "-%" PRIu64 ")", 
+    MS_DEBUG_TAG(rtp, "binlog %s removed, short timespan (%" PRIu64 "-%" PRIu64 ")",
                   this->bin_log_file_path.c_str(), this->log_start_ts, log_last_ts);
     return;
   }
@@ -323,7 +323,7 @@ void StatsBinLog::LogClose()
             Settings::configuration.logBinStatsPath.c_str(),
             logname.c_str(),
             now/1000);
-    
+
     if (!CreateBinlogDirsIfMissing() || std::rename(this->bin_log_file_path.c_str(), tmp))
     {
       MS_WARN_TAG(rtp, "failed to move %s to %s", this->bin_log_file_path.c_str(), tmp);
@@ -410,13 +410,13 @@ bool StatsBinLog::CreateBinlogDirsIfMissing()
   std::string bin_log_dir      = Settings::configuration.logBinStatsPath + "/bin/";
   std::string bin_log_curr_dir = Settings::configuration.logBinStatsPath + "/bin/current/";
   std::string bin_log_done_dir = Settings::configuration.logBinStatsPath + "/bin/done/";
-  
+
   struct stat info;
   int ret = 0;
 
   if (Settings::configuration.logBinStatsDisabled)
     return false;
-  
+
   if( stat( Settings::configuration.logBinStatsPath.c_str(), &info ) != 0 )
   {
     if (errno == ENOENT)
@@ -508,60 +508,42 @@ bool StatsBinLog::CreateBinlogDirsIfMissing()
 }
 
 
-void StatsBinLog::InitLog(char type, std::string id1, std::string id2)
+void StatsBinLog::InitLog(std::function<std::string(uint64_t)>&& templateFunction)
 {
-  this->initialized = false;
-  
-  if (Settings::configuration.logBinStatsDisabled)
-    return;
+	this->initialized = false;
 
+	if (Settings::configuration.logBinStatsDisabled)
+		return;
 
-  //sizeof("/var/log/sfu/bin/current/ms_p_00000000-0000-0000-0000-000000000000_00000000-0000-0000-0000-000000000000_1652210519459.123abc.bin") * 2
-  char tmp[FILENAME_LEN_MAX];
-  std::memset(tmp, '\0', FILENAME_LEN_MAX);
-  
-  switch(type)
-  {
-    case 'c':
-      sprintf(tmp,
-        "%s/bin/current/ms_c_%s_%%llu.%s.bin", 
-        Settings::configuration.logBinStatsPath.c_str(), id1.c_str(), version);
-      this->bin_log_name_template.assign(tmp);
-      MS_DEBUG_TAG(rtp, "consumers binlog %s [transportId: %s]", this->bin_log_name_template.c_str(), id2.c_str());
-      break;
-    case 'p':
-      sprintf(tmp, 
-        "%s/bin/current/ms_p_%s_%s_%%llu.%s.bin", 
-        Settings::configuration.logBinStatsPath.c_str(), id1.c_str(), id2.c_str(), version);
-      this->bin_log_name_template.assign(tmp);
-      MS_DEBUG_TAG(rtp, "producer binlog %s", this->bin_log_name_template.c_str());
-      break;
-    default:
-      break;
-  }
+	this->file_name_template_function = std::move(templateFunction);
+    this->bin_log_name_template = Settings::configuration.logBinStatsPath + "/bin/current/%s";
 
-  uint64_t now = Utils::Time::currentStdEpochMs();
-  UpdateLogTimestamps(now);
+	uint64_t const now = Utils::Time::currentStdEpochMs();
+	UpdateLogTimestamps(now);
 
-  CreateBinlogDirsIfMissing();
-  if (Settings::configuration.logBinStatsDisabled)
-    return;
+	MS_DEBUG_TAG(rtp, "binlog %s", this->current_bin_log_name.c_str());
 
-  this->sampling_interval = CALL_STATS_BIN_LOG_SAMPLING;
-  this->initialized = true;
+	CreateBinlogDirsIfMissing();
+	if (Settings::configuration.logBinStatsDisabled)
+		return;
+
+	this->sampling_interval = CALL_STATS_BIN_LOG_SAMPLING;
+	this->initialized = true;
 }
 
 
 void StatsBinLog::UpdateLogTimestamps(uint64_t now)
 {
-  char buff[100];
-  memset(buff, '\0', 100);
+  char buff[FILENAME_LEN_MAX];
+  memset(buff, '\0', FILENAME_LEN_MAX);
 
   this->log_start_ts = now;
 
   this->next_day_start_ts = ((now / DAY_IN_MS) + 1) * DAY_IN_MS;
 
-  sprintf(buff, this->bin_log_name_template.c_str(), this->log_start_ts);
+  this->current_bin_log_name = this->file_name_template_function(log_start_ts);
+
+  sprintf(buff, this->bin_log_name_template.c_str(), this->current_bin_log_name.c_str());
   this->bin_log_file_path.assign(buff);
 }
 
@@ -571,12 +553,34 @@ void StatsBinLog::DeinitLog()
   LogClose();
 
   this->initialized       = false;
-  
+
   this->log_start_ts      = UINT64_UNSET;
   this->next_day_start_ts = UINT64_UNSET;
   this->log_last_ts       = UINT64_UNSET;
 
   this->bin_log_name_template.clear();
+  this->current_bin_log_name.clear();
   this->bin_log_file_path.clear();
+}
+
+std::string GetUserIdFromAppData(const json& appData) {
+    if (appData.contains("userId") && appData["userId"].is_string()) {
+        return appData["userId"].get<std::string>();
+    }
+    return "";
+}
+
+std::string ProducerFileName(
+        const std::string &callId,
+        const std::string &producerId,
+        const std::string &userId,
+        uint64_t timestamp,
+        const std::string &version
+) {
+    return "ms_p_" + userId + "_" + callId + "_" + producerId + "_" + std::to_string(timestamp) + "." + version + ".bin";
+}
+
+std::string ConsumerFileName(const std::string& callId, uint64_t timestamp, const std::string& version) {
+    return "ms_c_" + callId + "_" + std::to_string(timestamp) + "." + version + ".bin";
 }
 } //Lively

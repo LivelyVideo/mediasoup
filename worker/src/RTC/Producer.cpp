@@ -50,7 +50,7 @@ namespace RTC
 		}
 		else
 		{
-			auto jsonAppDataIt = data.find("appData");			
+			auto jsonAppDataIt = data.find("appData");
 			if (jsonAppDataIt != data.end() && jsonAppDataIt->is_object())
 			{
 				try {
@@ -71,12 +71,27 @@ namespace RTC
 	        {
 	            MS_DEBUG_TAG(rtp, "XXXXX creating producer bin log. lively=%s", lively.ToStr().c_str());
 
-	            this->binLog.InitLog('p', lively.callId, lively.id);
+                std::string const callId = lively.callId;
+                std::string const producerId = lively.id;
+
+                std::string userId; //default ""
+                if (data.contains("appData")) {
+                    json const& rAppData = data["appData"];
+                    userId = Lively::GetUserIdFromAppData(rAppData);
+                }
+                if (userId.empty()) {
+                    MS_WARN_TAG(rtp, "producer create missing appdata or user info, defaulting to 0 for userId");
+                    userId = "0";
+                }
+
+                this->binLog.InitLog([callId, producerId, userId](uint64_t timestamp) -> std::string {
+                    return Lively::ProducerFileName(callId, producerId, userId, timestamp, BINLOG_FORMAT_VERSION);
+                });
 	        }
 		} else {
             MS_DEBUG_TAG(rtp, "XXXXX producer bin log is disabled. lively=%s", lively.ToStr().c_str());
 		}
-		
+
 		// This may throw.
 		this->kind = RTC::Media::GetKind(jsonKindIt->get<std::string>());
 
@@ -787,10 +802,10 @@ namespace RTC
 		{
 			result = ReceiveRtpPacketResult::RETRANSMISSION;
 			isRtx  = true;
-			
+
 			MS_DEBUG_DEV("Retransmitted packet received [ssrc:%" PRIu32 " seq:%" PRIu16 " ts:%" PRIu32 "]",
 				packet->GetSsrc(),packet->GetSequenceNumber(), packet->GetTimestamp());
-			
+
 			// Process the packet.
 			if (!rtpStream->ReceiveRtxPacket(packet))
 			{
@@ -1092,7 +1107,7 @@ namespace RTC
 
 						if (rtpStream->GetRid() == rid)
 						{
-							MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData, 
+							MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData,
 								"ignoring packet with unknown ssrc but already handled RID (RID lookup)");
 
 							return nullptr;
@@ -1163,7 +1178,7 @@ namespace RTC
 				// Ensure there is no other RTP stream already.
 				if (!this->mapSsrcRtpStream.empty())
 				{
-					MS_DEBUG_TAG_LIVELYAPP(rtp, 
+					MS_DEBUG_TAG_LIVELYAPP(rtp,
 						this->appData,
 					  "ignoring packet with unknown ssrc not matching the already existing stream (single RtpStream lookup)");
 
@@ -1228,7 +1243,7 @@ namespace RTC
 		auto& encodingMapping = this->rtpMapping.encodings[encodingIdx];
 
 		MS_DEBUG_TAG_LIVELYAPP(
-			rtp, this->appData, 
+			rtp, this->appData,
 		  "[encodingIdx:%zu, ssrc:%" PRIu32 ", rid:%s, payloadType:%" PRIu8 "]",
 		  encodingIdx,
 		  ssrc,
