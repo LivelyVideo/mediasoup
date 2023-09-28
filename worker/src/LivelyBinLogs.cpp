@@ -31,6 +31,7 @@ constexpr uint8_t hexVal[256] = {
 };
 
 constexpr uint16_t FILENAME_LEN_MAX = 255;
+constexpr uint16_t FILEPATH_LEN_MAX = 4096 / 2; //I doubt we need the full 4096 linux path limit. Save some buff allocations.
 constexpr uint64_t DAY_IN_MS = 86400000ULL;
 
 CallStatsRecord::CallStatsRecord(uint64_t type, uint16_t ssrc, uint8_t payload, char content, std::string callId, std::string obj, std::string producer)
@@ -316,7 +317,7 @@ void StatsBinLog::LogClose()
   }
   else
   {
-    char tmp[FILENAME_LEN_MAX];
+    char tmp[FILEPATH_LEN_MAX];
     auto logname = this->bin_log_file_path.substr(found + 1);
     uint64_t now = Utils::Time::currentStdEpochMs();
     snprintf(tmp, sizeof(tmp), "%s/bin/done/%s.%" PRIu64,
@@ -534,16 +535,16 @@ void StatsBinLog::InitLog(std::function<std::string(uint64_t)>&& templateFunctio
 
 void StatsBinLog::UpdateLogTimestamps(uint64_t now)
 {
-  char buff[FILENAME_LEN_MAX];
-  memset(buff, '\0', FILENAME_LEN_MAX);
+  char buff[FILEPATH_LEN_MAX];
 
   this->log_start_ts = now;
 
   this->next_day_start_ts = ((now / DAY_IN_MS) + 1) * DAY_IN_MS;
 
   this->current_bin_log_name = this->file_name_template_function(log_start_ts);
+  MS_ASSERT(this->current_bin_log_name.length() <= FILENAME_LEN_MAX, "%s", this->current_bin_log_name.c_str())
 
-  sprintf(buff, this->bin_log_name_template.c_str(), this->current_bin_log_name.c_str());
+  snprintf(buff, sizeof(buff), this->bin_log_name_template.c_str(), this->current_bin_log_name.c_str());
   this->bin_log_file_path.assign(buff);
 }
 
