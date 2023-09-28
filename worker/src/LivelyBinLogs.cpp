@@ -542,7 +542,9 @@ void StatsBinLog::UpdateLogTimestamps(uint64_t now)
   this->next_day_start_ts = ((now / DAY_IN_MS) + 1) * DAY_IN_MS;
 
   this->current_bin_log_name = this->file_name_template_function(log_start_ts);
-  MS_ASSERT(this->current_bin_log_name.length() <= FILENAME_LEN_MAX, "%s", this->current_bin_log_name.c_str())
+  if(this->current_bin_log_name.length() > FILENAME_LEN_MAX) {
+      MS_ERROR("Filename is longer than FILENAME_LEN_MAX: %" PRIu16, FILENAME_LEN_MAX);
+  }
 
   snprintf(buff, sizeof(buff), this->bin_log_name_template.c_str(), this->current_bin_log_name.c_str());
   this->bin_log_file_path.assign(buff);
