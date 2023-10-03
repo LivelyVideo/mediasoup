@@ -6,14 +6,15 @@ use crate::messages::{
     TransportConsumeDataRequest, TransportConsumeRequest, TransportDumpRequest,
     TransportEnableTraceEventRequest, TransportGetStatsRequest, TransportProduceDataRequest,
     TransportProduceRequest, TransportSetMaxIncomingBitrateRequest,
-    TransportSetMaxOutgoingBitrateRequest,
+    TransportSetMaxOutgoingBitrateRequest, TransportSetMinOutgoingBitrateRequest,
 };
 pub use crate::ortc::{
     ConsumerRtpParametersError, RtpCapabilitiesError, RtpParametersError, RtpParametersMappingError,
 };
 use crate::producer::{Producer, ProducerId, ProducerOptions};
 use crate::router::Router;
-use crate::rtp_parameters::RtpEncodingParameters;
+use crate::rtp_parameters::{MediaKind, RtpEncodingParameters};
+use crate::sctp_parameters::SctpStreamParameters;
 use crate::worker::{Channel, PayloadChannel, RequestError};
 use crate::{ortc, uuid_based_wrapper_type};
 use async_executor::Executor;
@@ -395,6 +396,12 @@ pub(super) trait TransportImpl: TransportGeneric {
             .await
     }
 
+    async fn set_min_outgoing_bitrate_impl(&self, bitrate: u32) -> Result<(), RequestError> {
+        self.channel()
+            .request(self.id(), TransportSetMinOutgoingBitrateRequest { bitrate })
+            .await
+    }
+
     async fn produce_impl(
         &self,
         producer_options: ProducerOptions,
@@ -507,6 +514,7 @@ pub(super) trait TransportImpl: TransportGeneric {
             paused,
             mid,
             preferred_layers,
+            enable_rtx,
             ignore_dtx,
             pipe,
             app_data,
@@ -521,6 +529,8 @@ pub(super) trait TransportImpl: TransportGeneric {
             }
         };
 
+        let enable_rtx = enable_rtx.unwrap_or(producer.kind() == MediaKind::Video);
+
         let rtp_parameters = if transport_type == TransportType::Pipe {
             ortc::get_pipe_consumer_rtp_parameters(producer.consumable_rtp_parameters(), rtx)
         } else {
@@ -528,6 +538,7 @@ pub(super) trait TransportImpl: TransportGeneric {
                 producer.consumable_rtp_parameters(),
                 &rtp_capabilities,
                 pipe,
+                enable_rtx,
             )
             .map_err(ConsumeError::BadConsumerRtpParameters)?;
 
@@ -539,7 +550,7 @@ pub(super) trait TransportImpl: TransportGeneric {
                         .next_mid_for_consumers()
                         .fetch_add(1, Ordering::Relaxed);
                     let mid = next_mid_for_consumers % 100_000_000;
-                    Some(format!("{}", mid))
+                    Some(format!("{mid}"))
                 })
             }
 
@@ -687,24 +698,33 @@ pub(super) trait TransportImpl: TransportGeneric {
 
         let sctp_stream_parameters = match r#type {
             DataConsumerType::Sctp => {
-                let mut sctp_stream_parameters = data_producer.sctp_stream_parameters();
-                if let Some(sctp_stream_parameters) = &mut sctp_stream_parameters {
-                    if let Some(stream_id) = self.allocate_sctp_stream_id() {
-                        sctp_stream_parameters.stream_id = stream_id;
-                    } else {
-                        return Err(ConsumeDataError::NoSctpStreamId);
-                    }
-                    if let Some(ordered) = ordered {
-                        sctp_stream_parameters.ordered = ordered;
-                    }
-                    if let Some(max_packet_life_time) = max_packet_life_time {
-                        sctp_stream_parameters.max_packet_life_time = Some(max_packet_life_time);
-                    }
-                    if let Some(max_retransmits) = max_retransmits {
-                        sctp_stream_parameters.max_retransmits = Some(max_retransmits);
-                    }
+                let stream_id = self
+                    .allocate_sctp_stream_id()
+                    .ok_or(ConsumeDataError::NoSctpStreamId)?;
+                let mut sctp_stream_parameters = data_producer.sctp_stream_parameters().map_or(
+                    SctpStreamParameters {
+                        stream_id,
+                        ordered: true,
+                        max_packet_life_time,
+                        max_retransmits,
+                    },
+                    |mut sctp_parameters| {
+                        sctp_parameters.stream_id = stream_id;
+
+                        sctp_parameters
+                    },
+                );
+                if let Some(ordered) = ordered {
+                    sctp_stream_parameters.ordered = ordered;
                 }
-                sctp_stream_parameters
+                if let Some(max_packet_life_time) = max_packet_life_time {
+                    sctp_stream_parameters.max_packet_life_time = Some(max_packet_life_time);
+                }
+                if let Some(max_retransmits) = max_retransmits {
+                    sctp_stream_parameters.max_retransmits = Some(max_retransmits);
+                }
+
+                Some(sctp_stream_parameters)
             }
             DataConsumerType::Direct => {
                 if ordered.is_some() || max_packet_life_time.is_some() || max_retransmits.is_some()

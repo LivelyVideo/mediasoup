@@ -92,6 +92,7 @@
 #include "Settings.hpp"
 #include "Channel/ChannelSocket.hpp"
 #include "Utils.hpp"
+#include "RTC/Shared.hpp"
 
 #include <cstdio>  // std::snprintf(), std::fprintf(), stdout, stderr
 #include <cstdlib> // std::abort()
@@ -132,7 +133,7 @@
 class Logger
 {
 public:
-	static bool MSlogopen(json& data);
+	static bool MSlogopen(json& data, RTC::Shared* shared);
 	static void MSlogrotate();
 	static void MSlogclose();
 	static void MSlogwrite(int written); 
@@ -148,6 +149,7 @@ public:
 	static std::string logfilename;
 	static std::FILE*  logfd;
 	static bool openLogFile;
+	static RTC::Shared *shared;
 };
 
 /* Logging macros. */
@@ -431,7 +433,7 @@ public:
 		    int loggerWritten = std::snprintf(Logger::buffer + bufferDataLen, Logger::bufferSize, "\n%06X ", static_cast<unsigned int>(i)); \
 		    bufferDataLen += loggerWritten; \
 		  } \
-		  int loggerWritten = std::snprintf(Logger::buffer + bufferDataLen, Logger::bufferSize, "%02X ", static_cast<unsigned char>(data[i])); \
+		  const int loggerWritten = std::snprintf(Logger::buffer + bufferDataLen, Logger::bufferSize, "%02X ", static_cast<unsigned char>(data[i])); \
 		  bufferDataLen += loggerWritten; \
 		} \
 		if (bufferDataLen != 0) \
@@ -457,10 +459,10 @@ public:
 		  		std::fprintf(stdout, "%s", Logger::buffer); \
 		  		bufferDataLen = 0; \
 		  	} \
-		    int loggerWritten = std::snprintf(Logger::buffer + bufferDataLen, Logger::bufferSize, "\n%06X ", static_cast<unsigned int>(i)); \
+		    const int loggerWritten = std::snprintf(Logger::buffer + bufferDataLen, Logger::bufferSize, "\n%06X ", static_cast<unsigned int>(i)); \
 		    bufferDataLen += loggerWritten; \
 		  } \
-		  int loggerWritten = std::snprintf(Logger::buffer + bufferDataLen, Logger::bufferSize, "%02X ", static_cast<unsigned char>(data[i])); \
+		  const int loggerWritten = std::snprintf(Logger::buffer + bufferDataLen, Logger::bufferSize, "%02X ", static_cast<unsigned char>(data[i])); \
 		  bufferDataLen += loggerWritten; \
 		} \
 		if (bufferDataLen != 0) \

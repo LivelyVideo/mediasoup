@@ -12,8 +12,8 @@ namespace RTC
 {
 	/* Instance methods. */
 
-	ShmTransport::ShmTransport(const std::string& id, RTC::Transport::Listener* listener, json& data)
-	  : RTC::Transport::Transport(id, listener, data)
+	ShmTransport::ShmTransport(RTC::Shared* shared, const std::string& id, RTC::Transport::Listener* listener, json& data)
+	  : RTC::Transport::Transport(shared, id, listener, data)
 	{
 		MS_TRACE();
 		/*
@@ -148,9 +148,15 @@ namespace RTC
 
 			this->listenIp.announcedIp.assign(jsonAnnouncedIpIt->get<std::string>());
 		}
+		// NOTE: This may throw.
+		this->shared->channelMessageRegistrator->RegisterHandler(
+		  this->id,
+		  /*channelRequestHandler*/ this,
+		  /*payloadChannelRequestHandler*/ this,
+		  /*payloadChannelNotificationHandler*/ this);
 
- 	  this->shmCtx.InitializeShmWriterCtx(shm, queueAge, useReverse, testNack, logname /* + "." + shm + "." + this->id */, loglevel, shmAppData);
-	
+		this->shmCtx.InitializeShmWriterCtx(shm, queueAge, useReverse, testNack, logname /* + "." + shm + "." + this->id */, loglevel, shmAppData);
+
 		this->shmNoConsumeTimer = new Timer(this);
 		this->shmNoConsumeTimer->Start(60000);
 	}
@@ -159,6 +165,9 @@ namespace RTC
 	ShmTransport::~ShmTransport()
 	{
 		MS_TRACE();
+
+		this->shared->channelMessageRegistrator->UnregisterHandler(this->id);
+
 		MS_DEBUG_TAG_LIVELYAPP(xcode, this->appData, "shm[%s] ShmTransport dtor[transportId:%s]", this->shmCtx.StreamName().c_str(), this->id.c_str());
 		this->shmCtx.CloseShmWriterCtx();
 		delete this->shmNoConsumeTimer;
@@ -386,7 +395,7 @@ namespace RTC
 	}
 
 
-	void ShmTransport::HandleNotification(PayloadChannel::Notification* notification)
+	void ShmTransport::HandleNotification(PayloadChannel::PayloadChannelNotification* notification)
 	{
 		MS_TRACE();
 

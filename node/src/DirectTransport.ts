@@ -8,8 +8,9 @@ import {
 	TransportConstructorOptions
 } from './Transport';
 import { SctpParameters } from './SctpParameters';
+import { AppData } from './types';
 
-export type DirectTransportOptions =
+export type DirectTransportOptions<DirectTransportAppData extends AppData = AppData> =
 {
 	/**
 	 * Maximum allowed size for direct messages sent from DataProducers.
@@ -20,7 +21,7 @@ export type DirectTransportOptions =
 	/**
 	 * Custom application data.
 	 */
-	appData?: Record<string, unknown>;
+	appData?: DirectTransportAppData;
 };
 
 export type DirectTransportStat =
@@ -58,10 +59,11 @@ export type DirectTransportObserverEvents = TransportObserverEvents &
 	rtcp: [Buffer];
 };
 
-type DirectTransportConstructorOptions = TransportConstructorOptions &
-{
-	data: DirectTransportData;
-};
+type DirectTransportConstructorOptions<DirectTransportAppData> =
+	TransportConstructorOptions<DirectTransportAppData> &
+	{
+		data: DirectTransportData;
+	};
 
 export type DirectTransportData =
 {
@@ -70,8 +72,8 @@ export type DirectTransportData =
 
 const logger = new Logger('DirectTransport');
 
-export class DirectTransport extends
-	Transport<DirectTransportEvents, DirectTransportObserverEvents>
+export class DirectTransport<DirectTransportAppData extends AppData = AppData>
+	extends Transport<DirectTransportAppData, DirectTransportEvents, DirectTransportObserverEvents>
 {
 	// DirectTransport data.
 	readonly #data: DirectTransportData;
@@ -79,7 +81,7 @@ export class DirectTransport extends
 	/**
 	 * @private
 	 */
-	constructor(options: DirectTransportConstructorOptions)
+	constructor(options: DirectTransportConstructorOptions<DirectTransportAppData>)
 	{
 		super(options);
 
@@ -101,7 +103,9 @@ export class DirectTransport extends
 	close(): void
 	{
 		if (this.closed)
+		{
 			return;
+		}
 
 		super.close();
 	}
@@ -115,7 +119,9 @@ export class DirectTransport extends
 	routerClosed(): void
 	{
 		if (this.closed)
+		{
 			return;
+		}
 
 		super.routerClosed();
 	}
@@ -160,6 +166,16 @@ export class DirectTransport extends
 	{
 		throw new UnsupportedError(
 			'setMaxOutgoingBitrate() not implemented in DirectTransport');
+	}
+
+	/**
+	 * @override
+	 */
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	async setMinOutgoingBitrate(bitrate: number): Promise<void>
+	{
+		throw new UnsupportedError(
+			'setMinOutgoingBitrate() not implemented in DirectTransport');
 	}
 
 	/**
@@ -210,7 +226,9 @@ export class DirectTransport extends
 					case 'rtcp':
 					{
 						if (this.closed)
+						{
 							break;
+						}
 
 						const packet = payload;
 

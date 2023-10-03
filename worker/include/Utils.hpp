@@ -123,6 +123,19 @@ namespace Utils
 			return uint32_t{ data[i + 2] } | uint32_t{ data[i + 1] } << 8 | uint32_t{ data[i] } << 16;
 		}
 
+		static int32_t Get3BytesSigned(const uint8_t* data, size_t i)
+		{
+			auto byte2 = data[i]; // The most significant byte.
+			auto byte1 = data[i + 1];
+			auto byte0 = data[i + 2]; // The less significant byte.
+
+			// Check bit 7 (sign).
+			uint8_t extension = byte2 & 0b10000000 ? 0b11111111 : 0b00000000;
+
+			return int32_t{ byte0 } | (int32_t{ byte1 } << 8) | (int32_t{ byte2 } << 16) |
+			       (int32_t{ extension } << 24);
+		}
+
 		static uint32_t Get4Bytes(const uint8_t* data, size_t i)
 		{
 			return uint32_t{ data[i + 3] } | uint32_t{ data[i + 2] } << 8 |
@@ -152,6 +165,13 @@ namespace Utils
 			data[i]     = static_cast<uint8_t>(value >> 16);
 		}
 
+		static void Set3BytesSigned(uint8_t* data, size_t i, int32_t value)
+		{
+			data[i + 2] = static_cast<int8_t>(value);
+			data[i + 1] = static_cast<uint8_t>(value >> 8);
+			data[i]     = static_cast<uint8_t>(value >> 16);
+		}
+
 		static void Set4Bytes(uint8_t* data, size_t i, uint32_t value)
 		{
 			data[i + 3] = static_cast<uint8_t>(value);
@@ -176,18 +196,26 @@ namespace Utils
 		{
 			// If size is not multiple of 32 bits then pad it.
 			if (size & 0x03)
+			{
 				return (size & 0xFFFC) + 4;
+			}
 			else
+			{
 				return size;
+			}
 		}
 
 		static uint32_t PadTo4Bytes(uint32_t size)
 		{
 			// If size is not multiple of 32 bits then pad it.
 			if (size & 0x03)
+			{
 				return (size & 0xFFFFFFFC) + 4;
+			}
 			else
+			{
 				return size;
+			}
 		}
 	};
 
@@ -217,10 +245,14 @@ namespace Utils
 
 			// Special case.
 			if (max == 4294967295)
+			{
 				--max;
+			}
 
 			if (min > max)
+			{
 				min = max;
+			}
 
 			return (((Crypto::seed >> 4) & 0x7FFF7FFF) % (max - min + 1)) + min;
 		}
@@ -233,7 +265,9 @@ namespace Utils
 				                            'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z' };
 
 			if (len > 64)
+			{
 				len = 64;
+			}
 
 			for (size_t i{ 0 }; i < len; ++i)
 			{
@@ -327,10 +361,12 @@ namespace Utils
 			// IsNewer(t2,t1)=false
 			// rather than having IsNewer(t1,t2) = IsNewer(t2,t1) = false.
 			if (static_cast<uint32_t>(timestamp - prevTimestamp) == 0x80000000)
+			{
 				return timestamp > prevTimestamp;
+			}
 
-			return timestamp != prevTimestamp &&
-			       static_cast<uint32_t>(timestamp - prevTimestamp) < 0x80000000;
+			return (
+			  timestamp != prevTimestamp && static_cast<uint32_t>(timestamp - prevTimestamp) < 0x80000000);
 		}
 
 		static uint32_t LatestTimestamp(uint32_t timestamp1, uint32_t timestamp2)
@@ -378,11 +414,17 @@ namespace Utils
 		static bool IsPositiveInteger(const json& value)
 		{
 			if (value.is_number_unsigned())
+			{
 				return true;
+			}
 			else if (value.is_number_integer())
+			{
 				return value.get<int64_t>() >= 0;
+			}
 			else
+			{
 				return false;
+			}
 		}
 	};
 } // namespace Utils

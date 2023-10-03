@@ -14,6 +14,7 @@ thread_local std::string Logger::appdataBuffer = "";
 std::string Logger::logfilename = "";
 std::FILE* Logger::logfd {nullptr};
 bool Logger::openLogFile {false};
+RTC::Shared* Logger::shared {nullptr};
 
 
 /* Class methods. */
@@ -21,8 +22,10 @@ bool Logger::openLogFile {false};
 /*
   {mslogname: "path_to_mslog"};
 */
-bool Logger::MSlogopen(json& data)
+bool Logger::MSlogopen(json& data, RTC::Shared* shared)
 {
+	Logger::shared = shared;
+
 	auto jsonLognameIt = data.find("mslogname");
 	if (jsonLognameIt != data.end() && jsonLognameIt->is_string())
 	{
@@ -40,8 +43,8 @@ bool Logger::MSlogopen(json& data)
 		msg["file"] = Logger::logfilename;
 		msg["data"] = data.dump();
 
-		if (Channel::ChannelNotifier::channel)
-			Channel::ChannelNotifier::Emit(std::to_string(Logger::pid), "failedlog", msg);
+		if (Logger::shared)
+			Logger::shared->channelNotifier->Emit(std::to_string(Logger::pid), "failedlog", msg);
 	}
 	else
 	{
@@ -51,8 +54,8 @@ bool Logger::MSlogopen(json& data)
 		msg["file"] = "";
 		msg["data"] = data.dump();
 	
-		if (Channel::ChannelNotifier::channel)
-			Channel::ChannelNotifier::Emit(std::to_string(Logger::pid), "failedlog", msg);
+		if (Logger::shared)
+			Logger::shared->channelNotifier->Emit(std::to_string(Logger::pid), "failedlog", msg);
 	}
 	// unsuccessful 
 	Logger::logfd = nullptr;
@@ -87,8 +90,8 @@ void Logger::MSlogrotate()
 	data["file"] = Logger::logfilename;
 	data["data"] = Logger::openLogFile ? "failed logrotate" : "skip logrotate";
 
-	if (Channel::ChannelNotifier::channel)
-		Channel::ChannelNotifier::Emit(std::to_string(Logger::pid), "failedlog", data);
+	if (Logger::shared)
+		Logger::shared->channelNotifier->Emit(std::to_string(Logger::pid), "failedlog", data);
 }
 
 
@@ -112,8 +115,8 @@ void Logger::MSlogwrite(int written)
 			// Back up a new log msg, try writing it out next time
 			Logger::backupBuffer.assign(Logger::buffer, written);
 
-			if (Channel::ChannelNotifier::channel)
-				Channel::ChannelNotifier::Emit(std::to_string(Logger::pid), "failedlog", data);
+			if (Logger::shared)
+				Logger::shared->channelNotifier->Emit(std::to_string(Logger::pid), "failedlog", data);
 			return;
 		}
 

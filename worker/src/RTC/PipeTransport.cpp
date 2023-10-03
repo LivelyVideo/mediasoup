@@ -2,7 +2,6 @@
 // #define MS_LOG_DEV_LEVEL 3
 
 #include "RTC/PipeTransport.hpp"
-#include "ChannelMessageHandlers.hpp"
 #include "Logger.hpp"
 #include "MediaSoupErrors.hpp"
 #include "Utils.hpp"
@@ -23,8 +22,9 @@ namespace RTC
 	/* Instance methods. */
 
 	// NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init)
-	PipeTransport::PipeTransport(const std::string& id, RTC::Transport::Listener* listener, json& data)
-	  : RTC::Transport::Transport(id, listener, data)
+	PipeTransport::PipeTransport(
+	  RTC::Shared* shared, const std::string& id, RTC::Transport::Listener* listener, json& data)
+	  : RTC::Transport::Transport(shared, id, listener, data)
 	{
 		MS_TRACE();
 
@@ -106,7 +106,7 @@ namespace RTC
 				this->udpSocket = new RTC::UdpSocket(this, this->listenIp.ip);
 
 			// NOTE: This may throw.
-			ChannelMessageHandlers::RegisterHandler(
+			this->shared->channelMessageRegistrator->RegisterHandler(
 			  this->id,
 			  /*channelRequestHandler*/ this,
 			  /*payloadChannelRequestHandler*/ this,
@@ -127,7 +127,11 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		ChannelMessageHandlers::UnregisterHandler(this->id);
+		// Tell the Transport parent class that we are about to destroy
+		// the class instance.
+		Destroying();
+
+		this->shared->channelMessageRegistrator->UnregisterHandler(this->id);
 
 		delete this->udpSocket;
 		this->udpSocket = nullptr;

@@ -75,6 +75,7 @@ void Settings::SetConfiguration(int argc, char* argv[])
 		{ "rtcMaxPort",          optional_argument, nullptr, 'M' },
 		{ "dtlsCertificateFile", optional_argument, nullptr, 'c' },
 		{ "dtlsPrivateKeyFile",  optional_argument, nullptr, 'p' },
+		{ "libwebrtcFieldTrials", optional_argument, nullptr, 'W' },
 		{ nullptr, 0, nullptr, 0 }
 	};
 	// clang-format on
@@ -185,6 +186,22 @@ void Settings::SetConfiguration(int argc, char* argv[])
 				break;
 			}
 
+			case 'W':
+			{
+				stringValue = std::string(optarg);
+
+				if (stringValue != Settings::configuration.libwebrtcFieldTrials)
+				{
+					MS_WARN_TAG(
+					  info,
+					  "overriding default value of libwebrtcFieldTrials may generate crashes in mediasoup-worker");
+
+					Settings::configuration.libwebrtcFieldTrials = stringValue;
+				}
+
+				break;
+			}
+
 			// Invalid option.
 			case '?':
 			{
@@ -269,7 +286,7 @@ void Settings::PrintConfiguration()
 
 	MS_DEBUG_TAG_STD(
 	  info,
-	  "  logLevel            : %s",
+	  "  logLevel             : %s",
 	  Settings::logLevel2String[Settings::configuration.logLevel].c_str());
 	MS_DEBUG_TAG_STD(
 		info,
@@ -289,6 +306,11 @@ void Settings::PrintConfiguration()
 		  info, "  dtlsCertificateFile : %s", Settings::configuration.dtlsCertificateFile.c_str());
 		MS_DEBUG_TAG_STD(
 		  info, "  dtlsPrivateKeyFile  : %s", Settings::configuration.dtlsPrivateKeyFile.c_str());
+	}
+	if (!Settings::configuration.libwebrtcFieldTrials.empty())
+	{
+		MS_DEBUG_TAG(
+		  info, "  libwebrtcFieldTrials : %s", Settings::configuration.libwebrtcFieldTrials.c_str());
 	}
 
 	MS_DEBUG_TAG_STD(info, "</configuration>");
@@ -414,7 +436,7 @@ void Settings::SetLogTags(const std::vector<std::string>& tags)
 	// Reset logTags.
 	struct LogTags newLogTags;
 
-	for (auto& tag : tags)
+	for (const auto& tag : tags)
 	{
 		if (tag == "info")
 			newLogTags.info = true;

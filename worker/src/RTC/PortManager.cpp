@@ -12,9 +12,16 @@
 
 /* Static methods for UV callbacks. */
 
-static inline void onClose(uv_handle_t* handle)
+// NOTE: We have different onCloseXxx() callbacks to avoid an ASAN warning by
+// ensuring that we call `delete xxx` with same type as `new xxx` before.
+static inline void onCloseUdp(uv_handle_t* handle)
 {
-	delete handle;
+	delete reinterpret_cast<uv_udp_t*>(handle);
+}
+
+static inline void onCloseTcp(uv_handle_t* handle)
+{
+	delete reinterpret_cast<uv_tcp_t*>(handle);
 }
 
 inline static void onFakeConnection(uv_stream_t* /*handle*/, int /*status*/)
@@ -39,13 +46,13 @@ namespace RTC
 		Utils::IP::NormalizeIp(ip);
 
 		int err;
-		int family = Utils::IP::GetFamily(ip);
+		const int family = Utils::IP::GetFamily(ip);
 		struct sockaddr_storage bindAddr; // NOLINT(cppcoreguidelines-pro-type-member-init)
 		size_t portIdx;
 		int flags{ 0 };
 		std::vector<bool>& ports = PortManager::GetPorts(transport, ip);
 		size_t attempt{ 0u };
-		size_t numAttempts = ports.size();
+		const size_t numAttempts = ports.size();
 		uv_handle_t* uvHandle{ nullptr };
 		uint16_t port;
 		std::string transportStr;
@@ -161,30 +168,43 @@ namespace RTC
 			switch (transport)
 			{
 				case Transport::UDP:
+				{
 					uvHandle = reinterpret_cast<uv_handle_t*>(new uv_udp_t());
 					err      = uv_udp_init(DepLibUV::GetLoop(), reinterpret_cast<uv_udp_t*>(uvHandle)); //uv_udp_init_ex(
-            //DepLibUV::GetLoop(), reinterpret_cast<uv_udp_t*>(uvHandle), UV_UDP_RECVMMSG);
+            //DepLibUV::GetLoop(), reinterpret_cast<uv_udp_t*>(uvHandle), UV_UDP_RECVMMSG); disabled per https://github.com/versatica/mediasoup/issues/429
 					break;
+				}
 
 				case Transport::TCP:
+				{
 					uvHandle = reinterpret_cast<uv_handle_t*>(new uv_tcp_t());
 					err      = uv_tcp_init(DepLibUV::GetLoop(), reinterpret_cast<uv_tcp_t*>(uvHandle));
+
 					break;
+				}
 			}
 
 			if (err != 0)
 			{
-				delete uvHandle;
-
 				switch (transport)
 				{
 					case Transport::UDP:
-						MS_THROW_ERROR("uv_udp_init_ex() failed: %s", uv_strerror(err)); //uv_udp_init_ex
+					{
+						delete reinterpret_cast<uv_udp_t*>(uvHandle);
+
+						MS_THROW_ERROR("uv_udp_init() failed: %s", uv_strerror(err)); //uv_udp_init_ex
+
 						break;
+					}
 
 					case Transport::TCP:
+					{
+						delete reinterpret_cast<uv_tcp_t*>(uvHandle);
+
 						MS_THROW_ERROR("uv_tcp_init() failed: %s", uv_strerror(err));
+
 						break;
+					}
 				}
 			}
 
@@ -259,7 +279,22 @@ namespace RTC
 				break;
 
 			// If it failed, close the handle and check the reason.
-			uv_close(reinterpret_cast<uv_handle_t*>(uvHandle), static_cast<uv_close_cb>(onClose));
+			switch (transport)
+			{
+				case Transport::UDP:
+				{
+					uv_close(reinterpret_cast<uv_handle_t*>(uvHandle), static_cast<uv_close_cb>(onCloseUdp));
+
+					break;
+				};
+
+				case Transport::TCP:
+				{
+					uv_close(reinterpret_cast<uv_handle_t*>(uvHandle), static_cast<uv_close_cb>(onCloseTcp));
+
+					break;
+				}
+			}
 
 			switch (err)
 			{
@@ -322,7 +357,7 @@ namespace RTC
 		Utils::IP::NormalizeIp(ip);
 
 		int err;
-		int family = Utils::IP::GetFamily(ip);
+		const int family = Utils::IP::GetFamily(ip);
 		struct sockaddr_storage bindAddr; // NOLINT(cppcoreguidelines-pro-type-member-init)
 		int flags{ 0 };
 		uv_handle_t* uvHandle{ nullptr };
@@ -400,17 +435,25 @@ namespace RTC
 
 		if (err != 0)
 		{
-			delete uvHandle;
-
 			switch (transport)
 			{
 				case Transport::UDP:
+				{
+					delete reinterpret_cast<uv_udp_t*>(uvHandle);
+
 					MS_THROW_ERROR("uv_udp_init_ex() failed: %s", uv_strerror(err));
+
 					break;
+				}
 
 				case Transport::TCP:
+				{
+					delete reinterpret_cast<uv_tcp_t*>(uvHandle);
+
 					MS_THROW_ERROR("uv_tcp_init() failed: %s", uv_strerror(err));
+
 					break;
+				}
 			}
 		}
 
@@ -426,7 +469,7 @@ namespace RTC
 				if (err != 0)
 				{
 					// If it failed, close the handle and check the reason.
-					uv_close(reinterpret_cast<uv_handle_t*>(uvHandle), static_cast<uv_close_cb>(onClose));
+					uv_close(reinterpret_cast<uv_handle_t*>(uvHandle), static_cast<uv_close_cb>(onCloseUdp));
 
 					MS_THROW_ERROR(
 					  "uv_udp_bind() failed [transport:%s, ip:'%s', port:%" PRIu16 "]: %s",
@@ -449,7 +492,7 @@ namespace RTC
 				if (err != 0)
 				{
 					// If it failed, close the handle and check the reason.
-					uv_close(reinterpret_cast<uv_handle_t*>(uvHandle), static_cast<uv_close_cb>(onClose));
+					uv_close(reinterpret_cast<uv_handle_t*>(uvHandle), static_cast<uv_close_cb>(onCloseTcp));
 
 					MS_THROW_ERROR(
 					  "uv_tcp_bind() failed [transport:%s, ip:'%s', port:%" PRIu16 "]: %s",
@@ -469,7 +512,7 @@ namespace RTC
 				if (err != 0)
 				{
 					// If it failed, close the handle and check the reason.
-					uv_close(reinterpret_cast<uv_handle_t*>(uvHandle), static_cast<uv_close_cb>(onClose));
+					uv_close(reinterpret_cast<uv_handle_t*>(uvHandle), static_cast<uv_close_cb>(onCloseTcp));
 
 					MS_THROW_ERROR(
 					  "uv_listen() failed [transport:%s, ip:'%s', port:%" PRIu16 "]: %s",
@@ -505,7 +548,7 @@ namespace RTC
 			return;
 		}
 
-		size_t portIdx = static_cast<size_t>(port) - Settings::configuration.rtcMinPort;
+		const size_t portIdx = static_cast<size_t>(port) - Settings::configuration.rtcMinPort;
 
 		switch (transport)
 		{
@@ -564,7 +607,7 @@ namespace RTC
 				}
 
 				// Otherwise add an entry in the map and return it.
-				uint16_t numPorts =
+				const uint16_t numPorts =
 				  Settings::configuration.rtcMaxPort - Settings::configuration.rtcMinPort + 1;
 
 				// Emplace a new vector filled with numPorts false values, meaning that
@@ -591,7 +634,7 @@ namespace RTC
 				}
 
 				// Otherwise add an entry in the map and return it.
-				uint16_t numPorts =
+				const uint16_t numPorts =
 				  Settings::configuration.rtcMaxPort - Settings::configuration.rtcMinPort + 1;
 
 				// Emplace a new vector filled with numPorts false values, meaning that

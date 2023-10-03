@@ -20,8 +20,9 @@ import { AudioLevelObserver, AudioLevelObserverOptions } from './AudioLevelObser
 import { RtpCapabilities, RtpCodecCapability } from './RtpParameters';
 import { NumSctpStreams } from './SctpParameters';
 import { ShmTransport, ShmTransportOptions } from './ShmTransport';
+import { AppData } from './types';
 
-export type RouterOptions =
+export type RouterOptions<RouterAppData extends AppData = AppData> =
 {
 	/**
 	 * Router media codecs.
@@ -31,7 +32,7 @@ export type RouterOptions =
 	/**
 	 * Custom application data.
 	 */
-	appData?: Record<string, unknown>;
+	appData?: RouterAppData;
 };
 
 export type PipeToRouterOptions =
@@ -106,7 +107,7 @@ type PipeTransportPair =
 };
 
 export type RouterEvents =
-{ 
+{
 	workerclose: [];
 	// Private events.
 	'@close': [];
@@ -124,18 +125,21 @@ export type RouterInternal =
 	routerId: string;
 };
 
+type RouterData =
+{
+	rtpCapabilities: RtpCapabilities;
+};
+
 const logger = new Logger('Router');
 
-export class Router extends EnhancedEventEmitter<RouterEvents>
+export class Router<RouterAppData extends AppData = AppData>
+	extends EnhancedEventEmitter<RouterEvents>
 {
 	// Internal data.
 	readonly #internal: RouterInternal;
 
 	// Router data.
-	readonly #data:
-	{
-		rtpCapabilities: RtpCapabilities;
-	};
+	readonly #data: RouterData;
 
 	// Channel instance.
 	readonly #channel: Channel;
@@ -147,7 +151,7 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 	#closed = false;
 
 	// Custom app data.
-	readonly #appData: Record<string, unknown>;
+	#appData: RouterAppData;
 
 	// Transports map.
 	readonly #transports: Map<string, Transport> = new Map();
@@ -182,10 +186,10 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 		}:
 		{
 			internal: RouterInternal;
-			data: any;
+			data: RouterData;
 			channel: Channel;
 			payloadChannel: PayloadChannel;
-			appData?: Record<string, unknown>;
+			appData?: RouterAppData;
 		}
 	)
 	{
@@ -197,7 +201,7 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 		this.#data = data;
 		this.#channel = channel;
 		this.#payloadChannel = payloadChannel;
-		this.#appData = appData || {};
+		this.#appData = appData || {} as RouterAppData;
 	}
 
 	/**
@@ -227,17 +231,17 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 	/**
 	 * App custom data.
 	 */
-	get appData(): Record<string, unknown>
+	get appData(): RouterAppData
 	{
 		return this.#appData;
 	}
 
 	/**
-	 * Invalid setter.
+	 * App custom data setter.
 	 */
-	set appData(appData: Record<string, unknown>) // eslint-disable-line no-unused-vars
+	set appData(appData: RouterAppData)
 	{
-		throw new Error('cannot override appData object');
+		this.#appData = appData;
 	}
 
 	/**
@@ -263,7 +267,9 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 	close(): void
 	{
 		if (this.#closed)
+		{
 			return;
+		}
 
 		logger.debug('close()');
 
@@ -308,7 +314,9 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 	workerClosed(): void
 	{
 		if (this.#closed)
+		{
 			return;
+		}
 
 		logger.debug('workerClosed()');
 
@@ -353,7 +361,7 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 	/**
 	 * Create a WebRtcTransport.
 	 */
-	async createWebRtcTransport(
+	async createWebRtcTransport<WebRtcTransportAppData extends AppData = AppData>(
 		{
 			webRtcServer,
 			listenIps,
@@ -368,15 +376,19 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 			maxSctpMessageSize = 262144,
 			sctpSendBufferSize = 262144,
 			appData
-		}: WebRtcTransportOptions
-	): Promise<WebRtcTransport>
+		}: WebRtcTransportOptions<WebRtcTransportAppData>
+	): Promise<WebRtcTransport<WebRtcTransportAppData>>
 	{
 		logger.debug('createWebRtcTransport()');
 
 		if (!webRtcServer && !Array.isArray(listenIps))
+		{
 			throw new TypeError('missing webRtcServer and listenIps (one of them is mandatory)');
+		}
 		else if (appData && typeof appData !== 'object')
+		{
 			throw new TypeError('if given, appData must be an object');
+		}
 
 		if (listenIps)
 		{
@@ -423,7 +435,7 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 			? await this.#channel.request('router.createWebRtcTransportWithServer', this.#internal.routerId, reqData)
 			: await this.#channel.request('router.createWebRtcTransport', this.#internal.routerId, reqData);
 
-		const transport = new WebRtcTransport(
+		const transport = new WebRtcTransport<WebRtcTransportAppData>(
 			{
 				internal :
 				{
@@ -455,11 +467,13 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 			this.#dataProducers.delete(dataProducer.id)
 		));
 
-		if (webRtcServer)
-			webRtcServer.handleWebRtcTransport(transport);
-
 		// Emit observer event.
 		this.#observer.safeEmit('newtransport', transport);
+
+		if (webRtcServer)
+		{
+			webRtcServer.handleWebRtcTransport(transport);
+		}
 
 		return transport;
 	}
@@ -467,7 +481,7 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 	/**
 	 * Create a PlainTransport.
 	 */
-	async createPlainTransport(
+	async createPlainTransport<PlainTransportAppData extends AppData = AppData>(
 		{
 			listenIp,
 			port,
@@ -480,16 +494,20 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 			sctpSendBufferSize = 262144,
 			enableSrtp = false,
 			srtpCryptoSuite = 'AES_CM_128_HMAC_SHA1_80',
-			appData,
-		}: PlainTransportOptions
-	): Promise<PlainTransport>
+			appData
+		}: PlainTransportOptions<PlainTransportAppData>
+	): Promise<PlainTransport<PlainTransportAppData>>
 	{
 		logger.debug('createPlainTransport()');
 
 		if (!listenIp)
+		{
 			throw new TypeError('missing listenIp');
+		}
 		else if (appData && typeof appData !== 'object')
+		{
 			throw new TypeError('if given, appData must be an object');
+		}
 
 		if (typeof listenIp === 'string' && listenIp)
 		{
@@ -529,7 +547,7 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 		const data =
 			await this.#channel.request('router.createPlainTransport', this.#internal.routerId, reqData);
 
-		const transport = new PlainTransport(
+		const transport = new PlainTransport<PlainTransportAppData>(
 			{
 				internal :
 				{
@@ -570,7 +588,7 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 	/**
 	 * Create a PipeTransport.
 	 */
-	async createPipeTransport(
+	async createPipeTransport<PipeTransportAppData extends AppData = AppData>(
 		{
 			listenIp,
 			disableOriginCheck = false,
@@ -581,16 +599,20 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 			sctpSendBufferSize = 268435456,
 			enableRtx = false,
 			enableSrtp = false,
-			appData,
-		}: PipeTransportOptions
-	): Promise<PipeTransport>
+			appData
+		}: PipeTransportOptions<PipeTransportAppData>
+	): Promise<PipeTransport<PipeTransportAppData>>
 	{
 		logger.debug('createPipeTransport() listenIp:[%o] enableRtx:[%o] appData:[%o]', listenIp, enableRtx, appData);
 
 		if (!listenIp)
+		{
 			throw new TypeError('missing listenIp');
+		}
 		else if (appData && typeof appData !== 'object')
+		{
 			throw new TypeError('if given, appData must be an object');
+		}
 
 		if (typeof listenIp === 'string' && listenIp)
 		{
@@ -628,7 +650,7 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 		const data =
 			await this.#channel.request('router.createPipeTransport', this.#internal.routerId, reqData);
 
-		const transport = new PipeTransport(
+		const transport = new PipeTransport<PipeTransportAppData>(
 			{
 				internal :
 				{
@@ -669,15 +691,15 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 	/**
 	 * Create a DirectTransport.
 	 */
-	async createDirectTransport(
+	async createDirectTransport<DirectTransportAppData extends AppData = AppData>(
 		{
 			maxMessageSize = 262144,
-			appData,
-		}: DirectTransportOptions =
+			appData
+		}: DirectTransportOptions<DirectTransportAppData> =
 		{
 			maxMessageSize : 262144
 		}
-	): Promise<DirectTransport>
+	): Promise<DirectTransport<DirectTransportAppData>>
 	{
 		logger.debug('createDirectTransport()');
 
@@ -693,7 +715,7 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 		const data =
 			await this.#channel.request('router.createDirectTransport', this.#internal.routerId, reqData);
 
-		const transport = new DirectTransport(
+		const transport = new DirectTransport<DirectTransportAppData>(
 			{
 				internal :
 				{
@@ -775,12 +797,14 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 			throw new TypeError('wrong listenIp');
 		}
 
-		const internal = { ...this.#internal, transportId: uuidv4() };
+		const transportId = uuidv4()
+		const internal = { ...this.#internal, transportId: transportId };
 		const reqData = {
+			transportId : transportId,
 			listenIp,
 			shm,
 			log,
-			appData,
+			appData
 		};
 
 		/*
@@ -859,13 +883,21 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 		logger.debug('pipeToRouter()');
 
 		if (!producerId && !dataProducerId)
+		{
 			throw new TypeError('missing producerId or dataProducerId');
+		}
 		else if (producerId && dataProducerId)
+		{
 			throw new TypeError('just producerId or dataProducerId can be given');
+		}
 		else if (!router)
+		{
 			throw new TypeError('Router not found');
+		}
 		else if (router === this)
+		{
 			throw new TypeError('cannot use this Router as destination');
+		}
 
 		let producer: Producer | undefined;
 		let dataProducer: DataProducer | undefined;
@@ -875,14 +907,18 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 			producer = this.#producers.get(producerId);
 
 			if (!producer)
+			{
 				throw new TypeError('Producer not found');
+			}
 		}
 		else if (dataProducerId)
 		{
 			dataProducer = this.#dataProducers.get(dataProducerId);
 
 			if (!dataProducer)
+			{
 				throw new TypeError('DataProducer not found');
+			}
 		}
 
 		const pipeTransportPairKey = router.id;
@@ -961,10 +997,14 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 							error);
 
 						if (localPipeTransport)
+						{
 							localPipeTransport.close();
+						}
 
 						if (remotePipeTransport)
+						{
 							remotePipeTransport.close();
+						}
 
 						reject(error);
 					});
@@ -1001,16 +1041,22 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 
 				// Ensure that the producer has not been closed in the meanwhile.
 				if (producer.closed)
+				{
 					throw new InvalidStateError('original Producer closed');
+				}
 
 				// Ensure that producer.paused has not changed in the meanwhile and, if
 				// so, sync the pipeProducer.
 				if (pipeProducer.paused !== producer.paused)
 				{
 					if (producer.paused)
+					{
 						await pipeProducer.pause();
+					}
 					else
+					{
 						await pipeProducer.resume();
+					}
 				}
 
 				// Pipe events from the pipe Consumer to the pipe Producer.
@@ -1030,10 +1076,14 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 					error);
 
 				if (pipeConsumer)
+				{
 					pipeConsumer.close();
+				}
 
 				if (pipeProducer)
+				{
 					pipeProducer.close();
+				}
 
 				throw error;
 			}
@@ -1061,7 +1111,9 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 
 				// Ensure that the dataProducer has not been closed in the meanwhile.
 				if (dataProducer.closed)
+				{
 					throw new InvalidStateError('original DataProducer closed');
+				}
 
 				// Pipe events from the pipe DataConsumer to the pipe DataProducer.
 				pipeDataConsumer!.observer.on('close', () => pipeDataProducer!.close());
@@ -1078,10 +1130,14 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 					error);
 
 				if (pipeDataConsumer)
+				{
 					pipeDataConsumer.close();
+				}
 
 				if (pipeDataProducer)
+				{
 					pipeDataProducer.close();
+				}
 
 				throw error;
 			}
@@ -1132,18 +1188,20 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 	/**
 	 * Create an ActiveSpeakerObserver
 	 */
-	async createActiveSpeakerObserver(
+	async createActiveSpeakerObserver<ActiveSpeakerObserverAppData extends AppData = AppData>(
 		{
 			interval = 300,
 			appData
-		}: ActiveSpeakerObserverOptions = {}
-	): Promise<ActiveSpeakerObserver>
+		}: ActiveSpeakerObserverOptions<ActiveSpeakerObserverAppData> = {}
+	): Promise<ActiveSpeakerObserver<ActiveSpeakerObserverAppData>>
 	{
 		logger.debug('createActiveSpeakerObserver()');
 
 		if (appData && typeof appData !== 'object')
+		{
 			throw new TypeError('if given, appData must be an object');
-		
+		}
+
 		const reqData =
 		{
 			rtpObserverId : uuidv4(),
@@ -1152,7 +1210,7 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 
 		await this.#channel.request('router.createActiveSpeakerObserver', this.#internal.routerId, reqData);
 
-		const activeSpeakerObserver = new ActiveSpeakerObserver(
+		const activeSpeakerObserver = new ActiveSpeakerObserver<ActiveSpeakerObserverAppData>(
 			{
 				internal :
 				{
@@ -1166,7 +1224,7 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 					this.#producers.get(producerId)
 				)
 			});
-		
+
 		this.#rtpObservers.set(activeSpeakerObserver.id, activeSpeakerObserver);
 		activeSpeakerObserver.on('@close', () =>
 		{
@@ -1182,19 +1240,21 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 	/**
 	 * Create an AudioLevelObserver.
 	 */
-	async createAudioLevelObserver(
+	async createAudioLevelObserver<AudioLevelObserverAppData extends AppData = AppData>(
 		{
 			maxEntries = 1,
 			threshold = -80,
 			interval = 1000,
 			appData
-		}: AudioLevelObserverOptions = {}
-	): Promise<AudioLevelObserver>
+		}: AudioLevelObserverOptions<AudioLevelObserverAppData> = {}
+	): Promise<AudioLevelObserver<AudioLevelObserverAppData>>
 	{
 		logger.debug('createAudioLevelObserver()');
 
 		if (appData && typeof appData !== 'object')
+		{
 			throw new TypeError('if given, appData must be an object');
+		}
 
 		const reqData =
 		{
@@ -1206,7 +1266,7 @@ export class Router extends EnhancedEventEmitter<RouterEvents>
 
 		await this.#channel.request('router.createAudioLevelObserver', this.#internal.routerId, reqData);
 
-		const audioLevelObserver = new AudioLevelObserver(
+		const audioLevelObserver = new AudioLevelObserver<AudioLevelObserverAppData>(
 			{
 				internal :
 				{

@@ -45,9 +45,9 @@ inline static void onSend(uv_udp_send_t* req, int status)
 	delete sendData;
 }
 
-inline static void onClose(uv_handle_t* handle)
+inline static void onCloseUdp(uv_handle_t* handle)
 {
-	delete handle;
+	delete reinterpret_cast<uv_udp_t*>(handle);
 }
 
 /* Instance methods. */
@@ -66,7 +66,7 @@ UdpSocketHandler::UdpSocketHandler(uv_udp_t* uvHandle) : uvHandle(uvHandle)
 
 	if (err != 0)
 	{
-		uv_close(reinterpret_cast<uv_handle_t*>(this->uvHandle), static_cast<uv_close_cb>(onClose));
+		uv_close(reinterpret_cast<uv_handle_t*>(this->uvHandle), static_cast<uv_close_cb>(onCloseUdp));
 
 		MS_THROW_ERROR("uv_udp_recv_start() failed: %s", uv_strerror(err));
 	}
@@ -74,7 +74,7 @@ UdpSocketHandler::UdpSocketHandler(uv_udp_t* uvHandle) : uvHandle(uvHandle)
 	// Set local address.
 	if (!SetLocalAddress())
 	{
-		uv_close(reinterpret_cast<uv_handle_t*>(this->uvHandle), static_cast<uv_close_cb>(onClose));
+		uv_close(reinterpret_cast<uv_handle_t*>(this->uvHandle), static_cast<uv_close_cb>(onCloseUdp));
 
 		MS_THROW_ERROR("error setting local IP and port");
 	}
@@ -101,12 +101,12 @@ void UdpSocketHandler::Close()
 	this->uvHandle->data = nullptr;
 
 	// Don't read more.
-	int err = uv_udp_recv_stop(this->uvHandle);
+	const int err = uv_udp_recv_stop(this->uvHandle);
 
 	if (err != 0)
 		MS_ABORT("uv_udp_recv_stop() failed: %s", uv_strerror(err));
 
-	uv_close(reinterpret_cast<uv_handle_t*>(this->uvHandle), static_cast<uv_close_cb>(onClose));
+	uv_close(reinterpret_cast<uv_handle_t*>(this->uvHandle), static_cast<uv_close_cb>(onCloseUdp));
 }
 
 void UdpSocketHandler::Dump() const
@@ -149,7 +149,7 @@ void UdpSocketHandler::Send(
 	// then build a uv_req_t and use uv_udp_send().
 
 	uv_buf_t buffer = uv_buf_init(reinterpret_cast<char*>(const_cast<uint8_t*>(data)), len);
-	int sent        = uv_udp_try_send(this->uvHandle, &buffer, 1, addr);
+	const int sent  = uv_udp_try_send(this->uvHandle, &buffer, 1, addr);
 
 	// Entire datagram was sent. Done.
 	if (sent == static_cast<int>(len))

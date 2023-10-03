@@ -11,9 +11,9 @@ thread_local uv_loop_t* DepLibUV::loop{ nullptr };
 
 /* Static methods for UV callbacks. */
 
-inline static void onClose(uv_handle_t* handle)
+inline static void onCloseLoop(uv_handle_t* handle)
 {
-	delete handle;
+	delete reinterpret_cast<uv_loop_t*>(handle);
 }
 
 inline static void onWalk(uv_handle_t* handle, void* /*arg*/)
@@ -27,7 +27,7 @@ inline static void onWalk(uv_handle_t* handle, void* /*arg*/)
 	  uv_has_ref(handle));
 
 	if (!uv_is_closing(handle))
-		uv_close(handle, onClose);
+		uv_close(handle, onCloseLoop);
 }
 
 /* Static methods. */
@@ -38,7 +38,7 @@ void DepLibUV::ClassInit()
 
 	DepLibUV::loop = new uv_loop_t;
 
-	int err = uv_loop_init(DepLibUV::loop);
+	const int err = uv_loop_init(DepLibUV::loop);
 
 	if (err != 0)
 		MS_ABORT("libuv loop initialization failed");
@@ -88,7 +88,7 @@ void DepLibUV::RunLoop()
 	// This should never happen.
 	MS_ASSERT(DepLibUV::loop != nullptr, "loop unset");
 
-	int ret = uv_run(DepLibUV::loop, UV_RUN_DEFAULT);
+	const int ret = uv_run(DepLibUV::loop, UV_RUN_DEFAULT);
 
 	MS_ASSERT(ret == 0, "uv_run() returned %s", uv_err_name(ret));
 }

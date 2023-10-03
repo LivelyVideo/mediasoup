@@ -48,7 +48,9 @@ namespace RTC
 			  new FeedbackRtpTransportPacket(commonHeader, len));
 
 			if (!packet->IsCorrect())
+			{
 				return nullptr;
+			}
 
 			return packet.release();
 		}
@@ -77,7 +79,7 @@ namespace RTC
 
 			this->baseSequenceNumber  = Utils::Byte::Get2Bytes(data, 0);
 			this->packetStatusCount   = Utils::Byte::Get2Bytes(data, 2);
-			this->referenceTime       = Utils::Byte::Get3Bytes(data, 4);
+			this->referenceTime       = Utils::Byte::Get3BytesSigned(data, 4);
 			this->feedbackPacketCount = Utils::Byte::Get1Byte(data, 7);
 			this->size                = len;
 
@@ -236,7 +238,7 @@ namespace RTC
 			offset += 2;
 
 			// Reference time.
-			Utils::Byte::Set3Bytes(buffer, offset, static_cast<uint32_t>(this->referenceTime));
+			Utils::Byte::Set3BytesSigned(buffer, offset, this->referenceTime);
 			offset += 3;
 
 			// Feedback packet count.
@@ -265,7 +267,7 @@ namespace RTC
 			}
 
 			// 32 bits padding.
-			size_t padding = (-offset) & 3;
+			const size_t padding = (-offset) & 3;
 
 			for (size_t i{ 0u }; i < padding; ++i)
 			{
@@ -318,7 +320,7 @@ namespace RTC
 
 			// Deltas are represented as multiples of 250 us.
 			// NOTE: Read it as int 64 to detect long elapsed times.
-			int64_t delta64 = (timestamp - this->latestTimestamp) * 4;
+			const int64_t delta64 = (timestamp - this->latestTimestamp) * 4;
 
 			// clang-format off
 			if (
@@ -399,7 +401,9 @@ namespace RTC
 				auto& packetResult = packetResults[idx];
 
 				if (!packetResult.received)
+				{
 					continue;
+				}
 
 				currentReceivedAtMs += this->deltas.at(deltaIdx) / 4;
 				packetResult.delta        = this->deltas.at(deltaIdx);
@@ -414,11 +418,13 @@ namespace RTC
 		{
 			MS_TRACE();
 
-			uint16_t expected = this->packetStatusCount;
+			const uint16_t expected = this->packetStatusCount;
 			uint16_t lost{ 0u };
 
 			if (expected == 0u)
+			{
 				return 0u;
+			}
 
 			for (auto* chunk : this->chunks)
 			{
@@ -428,7 +434,9 @@ namespace RTC
 			// NOTE: If lost equals expected, the math below would produce 256, which
 			// becomes 0 in uint8_t.
 			if (lost == expected)
+			{
 				return 255u;
+			}
 
 			return (lost << 8) / expected;
 		}
@@ -487,9 +495,13 @@ namespace RTC
 			Status status;
 
 			if (delta >= 0 && delta <= 255)
+			{
 				status = Status::SmallDelta;
+			}
 			else
+			{
 				status = Status::LargeDelta;
+			}
 
 			// Create a long run chunk before processing this packet, if needed.
 			// clang-format off
@@ -576,7 +588,9 @@ namespace RTC
 		{
 			// No pending status packets.
 			if (this->context.statuses.empty())
+			{
 				return;
+			}
 
 			if (this->context.allSameStatus)
 			{
@@ -638,9 +652,13 @@ namespace RTC
 				uint8_t symbolSize = data[0] & 0x40;
 
 				if (symbolSize == 0)
+				{
 					return new OneBitVectorChunk(bytes, count);
+				}
 				else
+				{
 					return new TwoBitVectorChunk(bytes, count);
+				}
 			}
 
 			return nullptr;
@@ -717,9 +735,13 @@ namespace RTC
 			MS_TRACE();
 
 			if (this->status == Status::SmallDelta || this->status == Status::LargeDelta)
+			{
 				return this->count;
+			}
 			else
+			{
 				return 0u;
+			}
 		}
 
 		void FeedbackRtpTransportPacket::RunLengthChunk::FillResults(
@@ -837,7 +859,9 @@ namespace RTC
 			for (auto status : this->statuses)
 			{
 				if (status == Status::SmallDelta || status == Status::LargeDelta)
+				{
 					count++;
+				}
 			}
 
 			return count;
@@ -975,7 +999,9 @@ namespace RTC
 			for (auto status : this->statuses)
 			{
 				if (status == Status::SmallDelta || status == Status::LargeDelta)
+				{
 					count++;
+				}
 			}
 
 			return count;

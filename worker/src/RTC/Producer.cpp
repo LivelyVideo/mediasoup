@@ -2,12 +2,10 @@
 // #define MS_LOG_DEV_LEVEL 3
 
 #include "RTC/Producer.hpp"
-#include "ChannelMessageHandlers.hpp"
 #include "DepLibUV.hpp"
 #include "Logger.hpp"
 #include "MediaSoupErrors.hpp"
 #include "Utils.hpp"
-#include "Channel/ChannelNotifier.hpp"
 #include "RTC/Codecs/Tools.hpp"
 #include "RTC/RTCP/FeedbackPs.hpp"
 #include "RTC/RTCP/FeedbackRtp.hpp"
@@ -33,8 +31,8 @@ namespace RTC
 	/* Instance methods. */
 
 	Producer::Producer(
-	        const std::string& id, RTC::Producer::Listener* listener, json& data, bool producerBinLogEnabled, Lively::AppData* appData)
-	  : id(id), listener(listener)
+	  RTC::Shared* shared, const std::string& id, RTC::Producer::Listener* listener, json& data, bool producerBinLogEnabled, Lively::AppData* appData)
+	  : id(id), shared(shared), listener(listener)
 	{
 		MS_TRACE();
 
@@ -52,7 +50,7 @@ namespace RTC
 		}
 		else
 		{
-			auto jsonAppDataIt = data.find("appData");			
+			auto jsonAppDataIt = data.find("appData");
 			if (jsonAppDataIt != data.end() && jsonAppDataIt->is_object())
 			{
 				try {
@@ -73,12 +71,27 @@ namespace RTC
 	        {
 	            MS_DEBUG_TAG(rtp, "XXXXX creating producer bin log. lively=%s", lively.ToStr().c_str());
 
-	            this->binLog.InitLog('p', lively.callId, lively.id);
+                std::string const callId = lively.callId;
+                std::string const producerId = lively.id;
+
+                std::string userId; //default ""
+                if (data.contains("appData")) {
+                    json const& rAppData = data["appData"];
+                    userId = Lively::GetUserIdFromAppData(rAppData);
+                }
+                if (userId.empty()) {
+                    MS_WARN_TAG(rtp, "producer create missing appdata or user info, defaulting to 0 for userId");
+                    userId = "0";
+                }
+
+                this->binLog.InitLog([callId, producerId, userId](uint64_t timestamp) -> std::string {
+                    return Lively::ProducerFileName(callId, producerId, userId, timestamp, BINLOG_FORMAT_VERSION);
+                });
 	        }
 		} else {
             MS_DEBUG_TAG(rtp, "XXXXX producer bin log is disabled. lively=%s", lively.ToStr().c_str());
 		}
-		
+
 		// This may throw.
 		this->kind = RTC::Media::GetKind(jsonKindIt->get<std::string>());
 
@@ -108,8 +121,8 @@ namespace RTC
 		this->rtpStreamByEncodingIdx.resize(this->rtpParameters.encodings.size(), nullptr);
 		this->rtpStreamScores.resize(this->rtpParameters.encodings.size(), 0u);
 
-		auto& encoding   = this->rtpParameters.encodings[0];
-		auto* mediaCodec = this->rtpParameters.GetCodecForEncoding(encoding);
+		auto& encoding         = this->rtpParameters.encodings[0];
+		const auto* mediaCodec = this->rtpParameters.GetCodecForEncoding(encoding);
 
 		if (!RTC::Codecs::Tools::IsValidTypeForCodec(this->type, mediaCodec->mimeType))
 		{
@@ -357,7 +370,7 @@ namespace RTC
 		}
 
 		// NOTE: This may throw.
-		ChannelMessageHandlers::RegisterHandler(
+		this->shared->channelMessageRegistrator->RegisterHandler(
 		  this->id,
 		  /*channelRequestHandler*/ this,
 		  /*payloadChannelRequestHandler*/ nullptr,
@@ -368,7 +381,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		ChannelMessageHandlers::UnregisterHandler(this->id);
+		this->shared->channelMessageRegistrator->UnregisterHandler(this->id);
 
 		// Delete all streams.
 		for (auto& kv : this->mapSsrcRtpStream)
@@ -418,7 +431,7 @@ namespace RTC
 			auto jsonCodecsIt             = jsonRtpMappingIt->find("codecs");
 			size_t idx{ 0 };
 
-			for (auto& kv : this->rtpMapping.codecs)
+			for (const auto& kv : this->rtpMapping.codecs)
 			{
 				jsonCodecsIt->emplace_back(json::value_t::object);
 
@@ -660,7 +673,7 @@ namespace RTC
 					if (!type.is_string())
 						MS_THROW_TYPE_ERROR("wrong type (not a string)");
 
-					std::string typeStr = type.get<std::string>();
+					const std::string typeStr = type.get<std::string>();
 
 					if (typeStr == "rtp")
 						newTraceEventTypes.rtp = true;
@@ -742,6 +755,8 @@ namespace RTC
 	{
 		MS_TRACE();
 
+		packet->logger.producerId = this->id;
+
 		// Reset current packet.
 		this->currentRtpPacket = nullptr;
 
@@ -753,6 +768,8 @@ namespace RTC
 		if (!rtpStream)
 		{
 			MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData, "no stream found for received packet [ssrc:%" PRIu32 "]", packet->GetSsrc());
+
+			packet->logger.Dropped(RtcLogger::RtpPacket::DropReason::RECV_RTP_STREAM_NOT_FOUND);
 
 			return ReceiveRtpPacketResult::DISCARDED;
 		}
@@ -775,6 +792,8 @@ namespace RTC
 				if (this->mapSsrcRtpStream.size() > numRtpStreamsBefore)
 					NotifyNewRtpStream(rtpStream);
 
+				packet->logger.Dropped(RtcLogger::RtpPacket::DropReason::RECV_RTP_STREAM_DISCARDED);
+
 				return result;
 			}
 		}
@@ -783,13 +802,17 @@ namespace RTC
 		{
 			result = ReceiveRtpPacketResult::RETRANSMISSION;
 			isRtx  = true;
-			
+
 			MS_DEBUG_DEV("Retransmitted packet received [ssrc:%" PRIu32 " seq:%" PRIu16 " ts:%" PRIu32 "]",
 				packet->GetSsrc(),packet->GetSequenceNumber(), packet->GetTimestamp());
-			
+
 			// Process the packet.
 			if (!rtpStream->ReceiveRtxPacket(packet))
+			{
+				packet->logger.Dropped(RtcLogger::RtpPacket::DropReason::RECV_RTP_STREAM_NOT_FOUND);
+
 				return result;
+			}
 		}
 		// Should not happen.
 		else
@@ -854,8 +877,8 @@ namespace RTC
 
 		if (it != this->mapSsrcRtpStream.end())
 		{
-			auto* rtpStream = it->second;
-			bool first      = rtpStream->GetSenderReportNtpMs() == 0;
+			auto* rtpStream  = it->second;
+			const bool first = rtpStream->GetSenderReportNtpMs() == 0;
 
 			rtpStream->ReceiveRtcpSenderReport(report);
 
@@ -955,7 +978,7 @@ namespace RTC
 			return;
 		}
 
-		uint32_t ssrc = it->second;
+		const uint32_t ssrc = it->second;
 
 		// If the current RTP packet is a key frame for the given mapped SSRC do
 		// nothing since we are gonna provide Consumers with the requested key frame
@@ -982,8 +1005,8 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		uint32_t ssrc       = packet->GetSsrc();
-		uint8_t payloadType = packet->GetPayloadType();
+		const uint32_t ssrc       = packet->GetSsrc();
+		const uint8_t payloadType = packet->GetPayloadType();
 
 		// If stream found in media ssrcs map, return it.
 		{
@@ -1014,11 +1037,11 @@ namespace RTC
 		// First, look for an encoding with matching media or RTX ssrc value.
 		for (size_t i{ 0 }; i < this->rtpParameters.encodings.size(); ++i)
 		{
-			auto& encoding         = this->rtpParameters.encodings[i];
-			const auto* mediaCodec = this->rtpParameters.GetCodecForEncoding(encoding);
-			const auto* rtxCodec   = this->rtpParameters.GetRtxCodecForEncoding(encoding);
-			bool isMediaPacket     = (mediaCodec->payloadType == payloadType);
-			bool isRtxPacket       = (rtxCodec && rtxCodec->payloadType == payloadType);
+			auto& encoding           = this->rtpParameters.encodings[i];
+			const auto* mediaCodec   = this->rtpParameters.GetCodecForEncoding(encoding);
+			const auto* rtxCodec     = this->rtpParameters.GetRtxCodecForEncoding(encoding);
+			const bool isMediaPacket = (mediaCodec->payloadType == payloadType);
+			const bool isRtxPacket   = (rtxCodec && rtxCodec->payloadType == payloadType);
 
 			if (isMediaPacket && encoding.ssrc == ssrc)
 			{
@@ -1070,10 +1093,10 @@ namespace RTC
 				if (encoding.rid != rid)
 					continue;
 
-				const auto* mediaCodec = this->rtpParameters.GetCodecForEncoding(encoding);
-				const auto* rtxCodec   = this->rtpParameters.GetRtxCodecForEncoding(encoding);
-				bool isMediaPacket     = (mediaCodec->payloadType == payloadType);
-				bool isRtxPacket       = (rtxCodec && rtxCodec->payloadType == payloadType);
+				const auto* mediaCodec   = this->rtpParameters.GetCodecForEncoding(encoding);
+				const auto* rtxCodec     = this->rtpParameters.GetRtxCodecForEncoding(encoding);
+				const bool isMediaPacket = (mediaCodec->payloadType == payloadType);
+				const bool isRtxPacket   = (rtxCodec && rtxCodec->payloadType == payloadType);
 
 				if (isMediaPacket)
 				{
@@ -1084,7 +1107,7 @@ namespace RTC
 
 						if (rtpStream->GetRid() == rid)
 						{
-							MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData, 
+							MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData,
 								"ignoring packet with unknown ssrc but already handled RID (RID lookup)");
 
 							return nullptr;
@@ -1144,18 +1167,18 @@ namespace RTC
 		)
 		// clang-format on
 		{
-			auto& encoding         = this->rtpParameters.encodings[0];
-			const auto* mediaCodec = this->rtpParameters.GetCodecForEncoding(encoding);
-			const auto* rtxCodec   = this->rtpParameters.GetRtxCodecForEncoding(encoding);
-			bool isMediaPacket     = (mediaCodec->payloadType == payloadType);
-			bool isRtxPacket       = (rtxCodec && rtxCodec->payloadType == payloadType);
+			auto& encoding           = this->rtpParameters.encodings[0];
+			const auto* mediaCodec   = this->rtpParameters.GetCodecForEncoding(encoding);
+			const auto* rtxCodec     = this->rtpParameters.GetRtxCodecForEncoding(encoding);
+			const bool isMediaPacket = (mediaCodec->payloadType == payloadType);
+			const bool isRtxPacket   = (rtxCodec && rtxCodec->payloadType == payloadType);
 
 			if (isMediaPacket)
 			{
 				// Ensure there is no other RTP stream already.
 				if (!this->mapSsrcRtpStream.empty())
 				{
-					MS_DEBUG_TAG_LIVELYAPP(rtp, 
+					MS_DEBUG_TAG_LIVELYAPP(rtp,
 						this->appData,
 					  "ignoring packet with unknown ssrc not matching the already existing stream (single RtpStream lookup)");
 
@@ -1207,7 +1230,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		uint32_t ssrc = packet->GetSsrc();
+		const uint32_t ssrc = packet->GetSsrc();
 
 		MS_ASSERT(
 		  this->mapSsrcRtpStream.find(ssrc) == this->mapSsrcRtpStream.end(),
@@ -1220,7 +1243,7 @@ namespace RTC
 		auto& encodingMapping = this->rtpMapping.encodings[encodingIdx];
 
 		MS_DEBUG_TAG_LIVELYAPP(
-			rtp, this->appData, 
+			rtp, this->appData,
 		  "[encodingIdx:%zu, ssrc:%" PRIu32 ", rid:%s, payloadType:%" PRIu8 "]",
 		  encodingIdx,
 		  ssrc,
@@ -1288,8 +1311,13 @@ namespace RTC
 			}
 		}
 
+		// Only perform RTP inactivity check on simulcast and only if there are
+		// more than 1 stream.
+		auto useRtpInactivityCheck =
+		  this->type == RtpParameters::Type::SIMULCAST && this->rtpMapping.encodings.size() > 1;
+
 		// Create a RtpStreamRecv for receiving a media stream.
-		auto* rtpStream = new RTC::RtpStreamRecv(this, params, SendNackDelay);
+		auto* rtpStream = new RTC::RtpStreamRecv(this, params, SendNackDelay, useRtpInactivityCheck);
 
 		// Insert into the maps.
 		this->mapSsrcRtpStream[ssrc]              = rtpStream;
@@ -1320,7 +1348,7 @@ namespace RTC
 		auto mappedSsrc = this->mapRtpStreamMappedSsrc.at(rtpStream);
 
 		// Notify the listener.
-		this->listener->OnProducerNewRtpStream(this, static_cast<RTC::RtpStream*>(rtpStream), mappedSsrc);
+		this->listener->OnProducerNewRtpStream(this, rtpStream, mappedSsrc);
 	}
 
 	inline void Producer::PreProcessRtpPacket(RTC::RtpPacket* packet)
@@ -1341,8 +1369,8 @@ namespace RTC
 
 		// Mangle the payload type.
 		{
-			uint8_t payloadType = packet->GetPayloadType();
-			auto it             = this->rtpMapping.codecs.find(payloadType);
+			const uint8_t payloadType = packet->GetPayloadType();
+			auto it                   = this->rtpMapping.codecs.find(payloadType);
 
 			if (it == this->rtpMapping.codecs.end())
 			{
@@ -1351,14 +1379,14 @@ namespace RTC
 				return false;
 			}
 
-			uint8_t mappedPayloadType = it->second;
+			const uint8_t mappedPayloadType = it->second;
 
 			packet->SetPayloadType(mappedPayloadType);
 		}
 
 		// Mangle the SSRC.
 		{
-			uint32_t mappedSsrc = this->mapRtpStreamMappedSsrc.at(rtpStream);
+			const uint32_t mappedSsrc = this->mapRtpStreamMappedSsrc.at(rtpStream);
 
 			packet->SetSsrc(mappedSsrc);
 		}
@@ -1429,7 +1457,7 @@ namespace RTC
 					extenLen = 3u;
 
 					// NOTE: Add value 0. The sending Transport will update it.
-					uint32_t absSendTime{ 0u };
+					const uint32_t absSendTime{ 0u };
 
 					Utils::Byte::Set3Bytes(bufferPtr, 0, absSendTime);
 
@@ -1445,7 +1473,7 @@ namespace RTC
 					extenLen = 2u;
 
 					// NOTE: Add value 0. The sending Transport will update it.
-					uint16_t wideSeqNumber{ 0u };
+					const uint16_t wideSeqNumber{ 0u };
 
 					Utils::Byte::Set2Bytes(bufferPtr, 0, wideSeqNumber);
 
@@ -1574,7 +1602,7 @@ namespace RTC
 					data["flip"]     = this->videoOrientation.flip;
 					data["rotation"] = this->videoOrientation.rotation;
 
-					Channel::ChannelNotifier::Emit(this->id, "videoorientationchange", data);
+					this->shared->channelNotifier->Emit(this->id, "videoorientationchange", data);
 				}
 			}
 		}
@@ -1604,7 +1632,7 @@ namespace RTC
 			jsonEntry["score"] = rtpStream->GetScore();
 		}
 
-		Channel::ChannelNotifier::Emit(this->id, "score", data);
+		this->shared->channelNotifier->Emit(this->id, "score", data);
 	}
 
 	inline void Producer::EmitTraceEventRtpAndKeyFrameTypes(RTC::RtpPacket* packet, bool isRtx) const
@@ -1624,7 +1652,7 @@ namespace RTC
 			if (isRtx)
 				data["info"]["isRtx"] = true;
 
-			Channel::ChannelNotifier::Emit(this->id, "trace", data);
+			this->shared->channelNotifier->Emit(this->id, "trace", data);
 		}
 		else if (this->traceEventTypes.rtp)
 		{
@@ -1639,7 +1667,7 @@ namespace RTC
 			if (isRtx)
 				data["info"]["isRtx"] = true;
 
-			Channel::ChannelNotifier::Emit(this->id, "trace", data);
+			this->shared->channelNotifier->Emit(this->id, "trace", data);
 		}
 	}
 
@@ -1657,7 +1685,7 @@ namespace RTC
 		data["direction"]    = "out";
 		data["info"]["ssrc"] = ssrc;
 
-		Channel::ChannelNotifier::Emit(this->id, "trace", data);
+		this->shared->channelNotifier->Emit(this->id, "trace", data);
 	}
 
 	inline void Producer::EmitTraceEventFirType(uint32_t ssrc) const
@@ -1674,7 +1702,7 @@ namespace RTC
 		data["direction"]    = "out";
 		data["info"]["ssrc"] = ssrc;
 
-		Channel::ChannelNotifier::Emit(this->id, "trace", data);
+		this->shared->channelNotifier->Emit(this->id, "trace", data);
 	}
 
 	inline void Producer::EmitTraceEventNackType() const
@@ -1691,7 +1719,7 @@ namespace RTC
 		data["direction"] = "out";
 		data["info"]      = json::object();
 
-		Channel::ChannelNotifier::Emit(this->id, "trace", data);
+		this->shared->channelNotifier->Emit(this->id, "trace", data);
 	}
 
 	inline void Producer::OnRtpStreamScore(RTC::RtpStream* rtpStream, uint8_t score, uint8_t previousScore)
@@ -1702,7 +1730,8 @@ namespace RTC
 		this->rtpStreamScores[rtpStream->GetEncodingIdx()] = score;
 
 		// Notify the listener.
-		this->listener->OnProducerRtpStreamScore(this, rtpStream, score, previousScore);
+		this->listener->OnProducerRtpStreamScore(
+		  this, static_cast<RTC::RtpStreamRecv*>(rtpStream), score, previousScore);
 
 		// Emit the score event.
 		EmitScore();

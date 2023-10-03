@@ -4,6 +4,7 @@ import { Channel } from './Channel';
 import { PayloadChannel } from './PayloadChannel';
 import { RouterInternal } from './Router';
 import { Producer } from './Producer';
+import { AppData } from './types';
 
 export type RtpObserverEvents =
 {
@@ -21,12 +22,12 @@ export type RtpObserverObserverEvents =
 	removeproducer: [Producer];
 };
 
-export type RtpObserverConstructorOptions =
+export type RtpObserverConstructorOptions<RtpObserverAppData> =
 {
 	internal: RtpObserverObserverInternal;
 	channel: Channel;
 	payloadChannel: PayloadChannel;
-	appData?: Record<string, unknown>;
+	appData?: RtpObserverAppData;
 	getProducerById: (producerId: string) => Producer | undefined;
 };
 
@@ -45,8 +46,10 @@ export type RtpObserverAddRemoveProducerOptions =
 	producerId: string;
 };
 
-export class RtpObserver<E extends RtpObserverEvents = RtpObserverEvents>
-	extends EnhancedEventEmitter<E>
+export class RtpObserver
+	<RtpObserverAppData extends AppData = AppData,
+	Events extends RtpObserverEvents = RtpObserverEvents>
+	extends EnhancedEventEmitter<Events>
 {
 	// Internal data.
 	protected readonly internal: RtpObserverObserverInternal;
@@ -64,7 +67,7 @@ export class RtpObserver<E extends RtpObserverEvents = RtpObserverEvents>
 	#paused = false;
 
 	// Custom app data.
-	readonly #appData: Record<string, unknown>;
+	#appData: RtpObserverAppData;
 
 	// Method to retrieve a Producer.
 	protected readonly getProducerById: (producerId: string) => Producer | undefined;
@@ -83,7 +86,7 @@ export class RtpObserver<E extends RtpObserverEvents = RtpObserverEvents>
 			payloadChannel,
 			appData,
 			getProducerById
-		}: RtpObserverConstructorOptions
+		}: RtpObserverConstructorOptions<RtpObserverAppData>
 	)
 	{
 		super();
@@ -93,7 +96,7 @@ export class RtpObserver<E extends RtpObserverEvents = RtpObserverEvents>
 		this.internal = internal;
 		this.channel = channel;
 		this.payloadChannel = payloadChannel;
-		this.#appData = appData || {};
+		this.#appData = appData || {} as RtpObserverAppData;
 		this.getProducerById = getProducerById;
 	}
 
@@ -124,17 +127,17 @@ export class RtpObserver<E extends RtpObserverEvents = RtpObserverEvents>
 	/**
 	 * App custom data.
 	 */
-	get appData(): Record<string, unknown>
+	get appData(): RtpObserverAppData
 	{
 		return this.#appData;
 	}
 
 	/**
-	 * Invalid setter.
+	 * App custom data setter.
 	 */
-	set appData(appData: Record<string, unknown>) // eslint-disable-line no-unused-vars
+	set appData(appData: RtpObserverAppData)
 	{
-		throw new Error('cannot override appData object');
+		this.#appData = appData;
 	}
 
 	/**
@@ -151,7 +154,9 @@ export class RtpObserver<E extends RtpObserverEvents = RtpObserverEvents>
 	close(): void
 	{
 		if (this.#closed)
+		{
 			return;
+		}
 
 		logger.debug('close()');
 
@@ -180,7 +185,9 @@ export class RtpObserver<E extends RtpObserverEvents = RtpObserverEvents>
 	routerClosed(): void
 	{
 		if (this.#closed)
+		{
 			return;
+		}
 
 		logger.debug('routerClosed()');
 
@@ -211,7 +218,9 @@ export class RtpObserver<E extends RtpObserverEvents = RtpObserverEvents>
 
 		// Emit observer event.
 		if (!wasPaused)
+		{
 			this.#observer.safeEmit('pause');
+		}
 	}
 
 	/**
@@ -229,7 +238,9 @@ export class RtpObserver<E extends RtpObserverEvents = RtpObserverEvents>
 
 		// Emit observer event.
 		if (wasPaused)
+		{
 			this.#observer.safeEmit('resume');
+		}
 	}
 
 	/**
@@ -242,7 +253,9 @@ export class RtpObserver<E extends RtpObserverEvents = RtpObserverEvents>
 		const producer = this.getProducerById(producerId);
 
 		if (!producer)
+		{
 			throw Error(`Producer with id "${producerId}" not found`);
+		}
 
 		const reqData = { producerId };
 
@@ -262,7 +275,9 @@ export class RtpObserver<E extends RtpObserverEvents = RtpObserverEvents>
 		const producer = this.getProducerById(producerId);
 
 		if (!producer)
+		{
 			throw Error(`Producer with id "${producerId}" not found`);
+		}
 
 		const reqData = { producerId };
 

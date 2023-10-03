@@ -24,14 +24,14 @@ namespace RTC
 		};
 
 	public:
-		ShmTransport(const std::string& id, RTC::Transport::Listener* listener, json& data);
+		ShmTransport(RTC::Shared* shared, const std::string& id, RTC::Transport::Listener* listener, json& data);
 		~ShmTransport() override;
 
 	public:
 		void FillJson(json& jsonObject) const override;
 		void FillJsonStats(json& jsonArray) override;
 		void HandleRequest(Channel::ChannelRequest* request) override;
-		void HandleNotification(PayloadChannel::Notification* notification) override;
+		void HandleNotification(PayloadChannel::PayloadChannelNotification* notification) override;
 		DepLibSfuShm::ShmCtx* ShmCtx() { return &this->shmCtx; }
 
 	private:

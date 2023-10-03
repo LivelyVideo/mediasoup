@@ -48,7 +48,7 @@ namespace RTC
 											public Timer::Listener
 	{
 	public:
-		ShmConsumer(const std::string& id, const std::string& producerId, RTC::Consumer::Listener* listener, json& data, DepLibSfuShm::ShmCtx *shmCtx);
+		ShmConsumer(RTC::Shared* shared, const std::string& id, const std::string& producerId, RTC::Consumer::Listener* listener, json& data, DepLibSfuShm::ShmCtx *shmCtx);
 		~ShmConsumer() override;
 
 	public:
@@ -57,22 +57,26 @@ namespace RTC
 		void FillJsonScore(json& jsonObject) const override;
 		void HandleRequest(Channel::ChannelRequest* request) override;
 		bool IsActive() const override;
-		void ProducerRtpStream(RTC::RtpStream* rtpStream, uint32_t mappedSsrc) override;
-		void ProducerNewRtpStream(RTC::RtpStream* rtpStream, uint32_t mappedSsrc) override;
-		void ProducerRtpStreamScore(RTC::RtpStream* rtpStream, uint8_t score, uint8_t previousScore) override;
-		void ProducerRtcpSenderReport(RTC::RtpStream* rtpStream, bool first) override;
+		void ProducerRtpStream(RTC::RtpStreamRecv* rtpStream, uint32_t mappedSsrc) override;
+		void ProducerNewRtpStream(RTC::RtpStreamRecv* rtpStream, uint32_t mappedSsrc) override;
+		void ProducerRtpStreamScore(RTC::RtpStreamRecv* rtpStream, uint8_t score, uint8_t previousScore) override;
+		void ProducerRtcpSenderReport(RTC::RtpStreamRecv* rtpStream, bool first) override;
 		uint8_t GetBitratePriority() const override;
 		uint32_t IncreaseLayer(uint32_t bitrate, bool considerLoss) override;
 		void ApplyLayers() override;
 		uint32_t GetDesiredBitrate() const override;
 
-		void SendRtpPacket(RTC::RtpPacket* packet) override;
-		void GetRtcp(RTC::RTCP::CompoundPacket* packet, RTC::RtpStreamSend* rtpStream, uint64_t now) override;
-		std::vector<RTC::RtpStreamSend*> GetRtpStreams() override;
+		void SendRtpPacket(RTC::RtpPacket* packet, std::shared_ptr<RTC::RtpPacket>& sharedPacket) override;
+		bool GetRtcp(RTC::RTCP::CompoundPacket* packet, uint64_t now) override;
+        const std::vector<RTC::RtpStreamSend*>& GetRtpStreams() const override
+        {
+            return this->rtpStreams;
+        }
 		void NeedWorstRemoteFractionLost(uint32_t mappedSsrc, uint8_t& worstRemoteFractionLost) override;
 		void ReceiveNack(RTC::RTCP::FeedbackRtpNackPacket* nackPacket) override;
 		void ReceiveKeyFrameRequest(RTC::RTCP::FeedbackPs::MessageType messageType, uint32_t ssrc) override;
 		void ReceiveRtcpReceiverReport(RTC::RTCP::ReceiverReport* report) override;
+		void ReceiveRtcpXrReceiverReferenceTime(RTC::RTCP::ReceiverReferenceTime* report) override;
 		uint32_t GetTransmissionRate(uint64_t now) override;
 		float GetRtt() const override;
 		uint32_t GetBitrate(uint64_t nowMs);
@@ -116,7 +120,7 @@ namespace RTC
 		bool keyFrameSupported{ false };
 		bool syncRequired{ false };
 		RTC::SeqManager<uint16_t> rtpSeqManager;
-
+		std::unique_ptr<RTC::Codecs::EncodingContext> encodingContext;
 		DepLibSfuShm::ShmCtx       *shmCtx{ nullptr };         // Handle to shm context which will be received from ShmTransport during transport.consume()
 		uint16_t                   rotation{ 0 };             // Current rotation value for video read from RTP packet's videoOrientationExtensionId
 		bool                       rotationDetected{ false }; // Whether video rotation data was ever picked in this stream, then we only write it into shm if there was a change
@@ -139,11 +143,6 @@ namespace RTC
 	inline bool ShmConsumer::IsActive() const
 	{
 		return (RTC::Consumer::IsActive() && this->producerRtpStream);
-	}
-
-	inline std::vector<RTC::RtpStreamSend*> ShmConsumer::GetRtpStreams()
-	{
-		return this->rtpStreams;
 	}
 
 	/* Copied from RtpStreamSend */

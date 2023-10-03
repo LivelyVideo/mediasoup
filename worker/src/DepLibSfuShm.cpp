@@ -94,13 +94,23 @@ namespace DepLibSfuShm {
     wrt_init.conf.log_level = level;
     wrt_init.conf.redirect_stdio = false;
 
+
+    MS_DEBUG_TAG(xcode, "shm[%s] shmAppData: %s",
+            this->stream_name.c_str(), shmAppData.c_str());
+
     // application data. This is an opaque string that is stored in the shared
     // memory for application level usage e.g. xcode internal controller
     if (shmAppData.length() > 0) {
-        wrt_init.app_data = const_cast<char*>(shmAppData.c_str());
-        wrt_init.conf.app_data_sz = shmAppData.length() + 1; // reserve space for null terminator
+        if (shmAppData.length() + 1 > SHM_APP_DATA_MAX_SIZE) {
+            MS_DEBUG_TAG(xcode, "shm[%s] shmAppData too long",
+                    this->stream_name.c_str());
+        } else {
+            wrt_init.app_data = const_cast<char*>(shmAppData.c_str());
+        }
     }
     
+    wrt_init.conf.app_data_sz = SHM_APP_DATA_MAX_SIZE; // reserve space for application data
+
     // TODO: if needed, target_kbps may be passed as config param instead
     // and codec_id, sample_rate may be read from ShmConsumer in the same way as in ShmConsumer::CreateRtpStream()
     wrt_init.conf.channels[0].target_buf_ms = 20000;
