@@ -568,7 +568,21 @@ void StatsBinLog::DeinitLog()
 
 std::string GetUserIdFromAppData(const json& appData) {
     if (appData.contains("userId") && appData["userId"].is_string()) {
-        return appData["userId"].get<std::string>();
+        const char* userId = appData["userId"].get<std::string>().c_str();
+        char slugifyUserId[512];
+        const char *q;
+        char *p, *end;
+
+        end = slugifyUserId + sizeof(slugifyUserId);
+        for (p = slugifyUserId, q = userId; p < end && *q; p++, q++) {
+            if ( (*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z') || (*q >= '0' && *q <= '9') || (*q == '-')) {
+                *p = *q;
+            } else {
+                *p = '-';
+            }
+        }
+
+        return std::string(slugifyUserId, p - slugifyUserId);
     }
     return "";
 }
