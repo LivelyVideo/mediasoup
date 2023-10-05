@@ -28,6 +28,15 @@ SCENARIO("Grab userId from appData with no userId, no displayName")
     REQUIRE(userId.empty());
 }
 
+SCENARIO("Grab userId from appData with userId invalid characters")
+{
+    std::string const jsonString = R"({"callId":"6d7fb685-0215-4f8a-af3a-29d5d4c1b7ad","displayName":"display6d7fb685-0215-4f8a-af3a-29d5d4c1b7ad","iceConnected":true,"orientation":"landscape-primary","peerId":"8A46F3E0541B11EEBC973176C12C8EFA","streamName":"demo","trackEnabled":true,"userId":"6:7fb685-0215-4f8a-af3a-29d5d&c1b7a."})";
+    auto appData = nlohmann::json::parse(jsonString);
+    std::string const userId = Lively::GetUserIdFromAppData(appData);
+
+    REQUIRE(userId == "6-7fb685-0215-4f8a-af3a-29d5d-c1b7a-");
+}
+
 SCENARIO("Producer binlog file names are created correctly.")
 {
     const auto *callId = "call-id";

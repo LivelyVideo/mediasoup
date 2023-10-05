@@ -366,6 +366,7 @@ test_sources = [
     'test/src/Utils/TestJson.cpp',
     'test/src/Utils/TestString.cpp',
     'test/src/Utils/TestTime.cpp',
+    'test/src/TestLivelyBinLogs.cpp',
 ]
 
 mediasoup_worker_test = executable(
