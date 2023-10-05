@@ -30,11 +30,18 @@ SCENARIO("Grab userId from appData with no userId, no displayName")
 
 SCENARIO("Grab userId from appData with userId invalid characters")
 {
-    std::string const jsonString = R"({"callId":"6d7fb685-0215-4f8a-af3a-29d5d4c1b7ad","displayName":"display6d7fb685-0215-4f8a-af3a-29d5d4c1b7ad","iceConnected":true,"orientation":"landscape-primary","peerId":"8A46F3E0541B11EEBC973176C12C8EFA","streamName":"demo","trackEnabled":true,"userId":"6:7fb685-0215-4f8a-af3a-29d5d&c1b7a."})";
-    auto appData = nlohmann::json::parse(jsonString);
-    std::string const userId = Lively::GetUserIdFromAppData(appData);
+    std::string const inputUserId = "6:7fb685-0215-4f8a-af3a-29d5d&c1b7a.";
+    std::string const expectedUserId = "6-7fb685-0215-4f8a-af3a-29d5d-c1b7a-";
+    std::string const jsonString =
+            R"({"callId":"6d7fb685-0215-4f8a-af3a-29d5d4c1b7ad","displayName":"display6d7fb685-0215-4f8a-af3a-29d5d4c1b7ad","iceConnected":true,"orientation":"landscape-primary","peerId":"8A46F3E0541B11EEBC973176C12C8EFA","streamName":"demo","trackEnabled":true,"userId":")" +
+                    inputUserId + R"("})";
 
-    REQUIRE(userId == "6-7fb685-0215-4f8a-af3a-29d5d-c1b7a-");
+    auto appData = nlohmann::json::parse(jsonString);
+    std::string const actualUserId = Lively::GetUserIdFromAppData(appData);
+
+    REQUIRE(actualUserId == expectedUserId);
+    // Make sure we didn't edit the original appdata
+    REQUIRE(appData["userId"].get<std::string>() == inputUserId);
 }
 
 SCENARIO("Producer binlog file names are created correctly.")
