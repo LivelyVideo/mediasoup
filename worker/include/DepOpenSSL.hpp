@@ -6,24 +6,25 @@
 class DepOpenSSL
 {
 public:
-	static void ClassInit();
+  static void ClassInit();
 
-	static void DetectAESNI();
+  static void DetectAESNI();
 
-	struct CPUIDinfo {
-			unsigned int EAX;
-			unsigned int EBX;
-			unsigned int ECX;
-			unsigned int EDX;
-	};
+  struct CPUIDinfo {
+    unsigned int EAX;
+    unsigned int EBX;
+    unsigned int ECX;
+    unsigned int EDX;
+  };
 
 private:
-	static int HasIntelCpu();
-	static int HasAESNI();
+  static int HasIntelCpu();
+  static int HasAESNI();
   static void cpuid_info(CPUIDinfo *info, const unsigned int func, const unsigned int subfunc);
 };
 
 
+#ifdef __x86_64__
 inline int DepOpenSSL::HasIntelCpu() {
     DepOpenSSL::CPUIDinfo info;
     DepOpenSSL::cpuid_info(&info, 0, 0);
@@ -60,5 +61,16 @@ inline void DepOpenSSL::cpuid_info(CPUIDinfo *info, unsigned int func, unsigned 
             : "a"(func), "c"(subfunc)
     );
 }
+
+#else // (arm64 macs) 
+inline int DepOpenSSL::HasIntelCpu() {
+    return 0;
+}
+
+
+inline int DepOpenSSL::HasAESNI() {
+    return 0;
+}
+#endif
 
 #endif
