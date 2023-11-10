@@ -567,24 +567,42 @@ void StatsBinLog::DeinitLog()
 }
 
 std::string GetUserIdFromAppData(const json& appData) {
-    if (appData.contains("userId") && appData["userId"].is_string()) {
-        const char* userId = appData["userId"].get<std::string>().c_str();
-        char slugifyUserId[512];
-        const char *q;
-        char *p, *end;
+    const char* userId;
+    char        slugifyUserId[512];
+    const char  *q;
+    char        *p, *end;
+    std::string strValue;
+    int         intVal;
 
-        end = slugifyUserId + sizeof(slugifyUserId);
-        for (p = slugifyUserId, q = userId; p < end && *q; p++, q++) {
-            if ( (*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z') || (*q >= '0' && *q <= '9') || (*q == '-')) {
-                *p = *q;
-            } else {
-                *p = '-';
-            }
-        }
+    if (!appData.contains("userId")) return "";
 
-        return std::string(slugifyUserId, p - slugifyUserId);
+    if (appData["userId"].is_string())
+    {
+        strValue = appData["userId"].get<std::string>();
+        userId = strValue.c_str();
     }
-    return "";
+    else if (appData["userId"].is_number())
+    {
+        intVal = appData["userId"].get<int>();
+        strValue = std::to_string(intVal);
+        userId = strValue.c_str();
+    }
+    else
+    {
+        return "";
+    }
+
+
+    end = slugifyUserId + sizeof(slugifyUserId);
+    for (p = slugifyUserId, q = userId; p < end && *q; p++, q++) {
+        if ( (*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z') || (*q >= '0' && *q <= '9') || (*q == '-')) {
+            *p = *q;
+        } else {
+            *p = '-';
+        }
+    }
+
+    return std::string(slugifyUserId, p - slugifyUserId);
 }
 
 std::string ProducerFileName(
