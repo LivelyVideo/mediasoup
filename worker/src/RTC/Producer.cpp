@@ -57,7 +57,7 @@ namespace RTC
 					lively = jsonAppDataIt->get<Lively::AppData>();
 				}
 				catch (const std::exception& e) {
-					MS_WARN_TAG(rtp, "%s\t%s", e.what(), (*jsonAppDataIt).dump().c_str());
+					MS_WARN_TAG(rtp, "failed to get lively appData. %s\t%s", e.what(), (*jsonAppDataIt).dump().c_str());
 				}
 			}
 		}
@@ -69,27 +69,48 @@ namespace RTC
 	            MS_WARN_TAG(rtp, "Missing callId, cannot init producer binlog [id: %s] [data: %s]", lively.id.c_str(), data.dump().c_str());
 	        else
 	        {
-	            MS_DEBUG_TAG(rtp, "XXXXX creating producer bin log. lively=%s", lively.ToStr().c_str());
-
                 std::string const callId = lively.callId;
                 std::string const producerId = lively.id;
 
+                // PM-1560 adding userId for ICF binary logs
                 std::string userId; //default ""
+
+                // PM-2288 adding client referrer to bin logs for Saas
+                std::string clientReferrer; //default ""
+
                 if (data.contains("appData")) {
                     json const& rAppData = data["appData"];
                     userId = Lively::GetUserIdFromAppData(rAppData);
+
+                    auto jsonClientReferrerIt = rAppData.find("clientReferrer");
+
+                    if (jsonClientReferrerIt != rAppData.end())
+                    {
+                        if (!jsonClientReferrerIt->is_string()) {
+                            MS_THROW_TYPE_ERROR("clientReferrer in producer appData is not a string");
+                        } else {
+                            clientReferrer = jsonClientReferrerIt->get<std::string>();
+                        }
+                    }
                 }
                 if (userId.empty()) {
                     MS_WARN_TAG(rtp, "producer create missing appdata or user info, defaulting to 0 for userId");
                     userId = "0";
                 }
 
-                this->binLog.InitLog([callId, producerId, userId](uint64_t timestamp) -> std::string {
-                    return Lively::ProducerFileName(callId, producerId, userId, timestamp, BINLOG_FORMAT_VERSION);
+                if (clientReferrer.empty()) {
+                    MS_WARN_TAG(rtp, "producer create missing appdata or clientReferrer info");
+                }
+
+                MS_DEBUG_TAG(rtp, "creating producer bin log. lively=%s userId=%s clientReferrer=%s",
+                        lively.ToStr().c_str(), userId.c_str(), clientReferrer.c_str());
+
+                this->binLog.InitLog([callId, producerId, userId, clientReferrer](uint64_t timestamp) -> std::string {
+                    return Lively::ProducerFileName(callId, producerId, userId, clientReferrer, timestamp, BINLOG_FORMAT_VERSION);
                 });
 	        }
 		} else {
-            MS_DEBUG_TAG(rtp, "XXXXX producer bin log is disabled. lively=%s", lively.ToStr().c_str());
+            MS_DEBUG_TAG(rtp, "producer bin log is disabled. lively=%s", lively.ToStr().c_str());
 		}
 
 		// This may throw.

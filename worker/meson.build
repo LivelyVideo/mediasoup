@@ -322,6 +322,7 @@ libmediasoup_worker = library(
 
 test_sources = [
     'test/src/tests.cpp',
+    'test/src/TestLivelyBinLogs.cpp',
     'test/src/PayloadChannel/TestPayloadChannelNotification.cpp',
     'test/src/PayloadChannel/TestPayloadChannelRequest.cpp',
     'test/src/RTC/TestKeyFrameRequestManager.cpp',

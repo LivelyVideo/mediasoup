@@ -7,6 +7,7 @@
 #include "Utils.hpp"
 #include <cstring>
 #include <sys/stat.h>
+#include <libgen.h>
 
 namespace Lively
 {
@@ -134,7 +135,7 @@ void CallStatsRecord::resetSamples(uint64_t ts)
 bool CallStatsRecord::addSample(StreamStats& last, StreamStats& curr)
 {
   MS_ASSERT(filled() >= 0 && filled() < maxSamples(),
-            "Cannot have %" PRIu32 " >= %" PRIu32 " samples in record, quitting...",
+            "Cannot have %" PRIu32 " >= %zu samples in record, quitting...",
 			filled(), maxSamples());
 
   MS_ASSERT(last.ts != UINT64_UNSET,
@@ -254,7 +255,7 @@ int StatsBinLog::LogOpen()
   int ret = 0;
 
   // Check that binlog directories are in place, try to restore them if not, then open fd
-  if (!CreateBinlogDirsIfMissing() || !(this->fd = std::fopen(this->bin_log_file_path.c_str(), "a")))
+  if (!CreateBinlogDirsIfMissing(&this->bin_log_file_path) || !(this->fd = std::fopen(this->bin_log_file_path.c_str(), "a")))
   {
     MS_WARN_TAG(
       rtp,
@@ -325,7 +326,7 @@ void StatsBinLog::LogClose()
             logname.c_str(),
             now/1000);
 
-    if (!CreateBinlogDirsIfMissing() || std::rename(this->bin_log_file_path.c_str(), tmp))
+    if (!CreateBinlogDirsIfMissing(&this->bin_log_file_path) || std::rename(this->bin_log_file_path.c_str(), tmp))
     {
       MS_WARN_TAG(rtp, "failed to move %s to %s", this->bin_log_file_path.c_str(), tmp);
     }
@@ -406,7 +407,7 @@ int StatsBinLog::OnLogWrite(CallStatsRecordCtx* ctx)
 
 // If Settings::configuration.logBinStatsPath does not exist and can't be created, then disable stats collection: Settings::configuration.logBinStatsDisabled = true;
 // If subdirectories creation fails then we will keep trying again because automated scripts may delete empty directories during runtime
-bool StatsBinLog::CreateBinlogDirsIfMissing()
+bool StatsBinLog::CreateBinlogDirsIfMissing(const std::string *log_path)
 {
   std::string bin_log_dir      = Settings::configuration.logBinStatsPath + "/bin/";
   std::string bin_log_curr_dir = Settings::configuration.logBinStatsPath + "/bin/current/";
@@ -505,6 +506,36 @@ bool StatsBinLog::CreateBinlogDirsIfMissing()
     }
   }
 
+  if (log_path) {
+      char log_dir[4096];
+      int n = snprintf(log_dir, sizeof(log_dir), "%s", log_path->c_str());
+      if ((size_t)n >= sizeof(log_dir)) {
+          MS_WARN_TAG(rtp, "log path too long. %s", log_path->c_str());
+          return false;
+      }
+      char *d = dirname(log_dir);
+      if( stat( d, &info ) != 0 )
+      {
+        if (errno == ENOENT)
+        {
+          ret = mkdir(d, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH); // | S_IXOTH?
+          if (ret != 0 && errno != EEXIST)
+          {
+            MS_WARN_TAG(rtp, "failed to create bin logs folder %s", d);
+            return false;
+          }
+        }
+      }
+      else
+      {
+        if (!S_ISDIR(info.st_mode))
+        {
+          MS_WARN_TAG(rtp, "found bin logs dir %s but it is not a directory", d);
+          return false;
+        }
+      }
+  }
+
   return true;
 }
 
@@ -524,7 +555,7 @@ void StatsBinLog::InitLog(std::function<std::string(uint64_t)>&& templateFunctio
 
 	MS_DEBUG_TAG(rtp, "binlog %s", this->current_bin_log_name.c_str());
 
-	CreateBinlogDirsIfMissing();
+	CreateBinlogDirsIfMissing(nullptr);
 	if (Settings::configuration.logBinStatsDisabled)
 		return;
 
@@ -609,9 +640,14 @@ std::string ProducerFileName(
         const std::string &callId,
         const std::string &producerId,
         const std::string &userId,
+        const std::string &clientReferrer,
         uint64_t timestamp,
         const std::string &version
 ) {
+    if (!clientReferrer.empty()) {
+        return clientReferrer + "/ms_p_" + userId + "_" + callId + "_" + producerId + "_" +
+                std::to_string(timestamp) + "." + version + ".bin";
+    }
     return "ms_p_" + userId + "_" + callId + "_" + producerId + "_" + std::to_string(timestamp) + "." + version + ".bin";
 }
 

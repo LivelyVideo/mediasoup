@@ -204,13 +204,14 @@ class CallStatsRecord
     int LogOpen();
     void LogClose();
     void UpdateLogTimestamps(uint64_t now);
-    bool CreateBinlogDirsIfMissing();
+    bool CreateBinlogDirsIfMissing(const std::string *log_path);
   };
 
     std::string ProducerFileName(
             const std::string &callId,
             const std::string &producerId,
             const std::string &userId,
+            const std::string &clientReferrer,
             uint64_t timestamp,
             const std::string &version
     );
