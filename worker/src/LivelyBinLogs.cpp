@@ -35,6 +35,10 @@ constexpr uint16_t FILENAME_LEN_MAX = 255;
 constexpr uint16_t FILEPATH_LEN_MAX = 4096 / 2; //I doubt we need the full 4096 linux path limit. Save some buff allocations.
 constexpr uint64_t DAY_IN_MS = 86400000ULL;
 
+#define BIN_LOG_BASE_DIR                     "/bin"
+#define BIN_LOG_CURRENT_DIR BIN_LOG_BASE_DIR "/current/"
+#define BIN_LOG_DONE_DIR    BIN_LOG_BASE_DIR "/done/"
+
 CallStatsRecord::CallStatsRecord(uint64_t type, uint16_t ssrc, uint8_t payload, char content, std::string callId, std::string obj, std::string producer)
   : type(type), call_id(callId), object_id(obj), producer_id(producer)
 {
@@ -250,18 +254,22 @@ void CallStatsRecordCtx::AddStatsRecord(StatsBinLog* log, RTC::RtpStream* stream
 
 /////////////////////////
 //
-int StatsBinLog::LogOpen()
+void StatsBinLog::LogOpen()
 {
-  int ret = 0;
+  if(this->bin_log_file_path.length() > FILENAME_LEN_MAX) {
+      MS_ERROR("bin log file path too long %s", this->bin_log_file_path.c_str());
+      initialized = false;
+      return;
+  }
 
   // Check that binlog directories are in place, try to restore them if not, then open fd
-  if (!CreateBinlogDirsIfMissing(&this->bin_log_file_path) || !(this->fd = std::fopen(this->bin_log_file_path.c_str(), "a")))
+  if (!CreateBinlogDirsIfMissing(&this->bin_log_file_path) ||
+          !(this->fd = std::fopen(this->bin_log_file_path.c_str(), "a")))
   {
     MS_WARN_TAG(
       rtp,
       "binlog failed to open '%s'", this->bin_log_file_path.c_str()
     );
-    ret = errno;
     this->fd = 0;
     initialized = false;
   }
@@ -274,8 +282,6 @@ int StatsBinLog::LogOpen()
       this->next_day_start_ts
     );
   }
-
-  return ret;
 }
 
 
@@ -308,32 +314,24 @@ void StatsBinLog::LogClose()
   }
 
   // Move a closed file into "done" directory
-  std::string bin_log_done_dir = Settings::configuration.logBinStatsPath + "/bin/done/";
+  std::string bin_log_done_path =
+          Settings::configuration.logBinStatsPath + BIN_LOG_DONE_DIR + this->current_bin_log_name;
 
-  std::string logname; // get filename only out of full path
-  std::size_t found = this->bin_log_file_path.find_last_of("/");
-  if (std::string::npos == found)
+  char tmp[FILEPATH_LEN_MAX+16];
+  snprintf(tmp, sizeof(tmp), "%s.%" PRIu64,
+          bin_log_done_path.c_str(),
+          Utils::Time::currentStdEpochMs()/1000);
+
+  if (!CreateBinlogDirsIfMissing(&bin_log_done_path) ||
+          std::rename(this->bin_log_file_path.c_str(), tmp) < 0)
   {
-    MS_WARN_TAG(rtp, "Failed to extract binlog filename from %s, won't move it to %s", this->bin_log_file_path.c_str(), bin_log_done_dir.c_str());
+    MS_WARN_TAG(rtp, "failed to move %s to %s",
+            this->bin_log_file_path.c_str(), tmp);
   }
   else
   {
-    char tmp[FILEPATH_LEN_MAX];
-    auto logname = this->bin_log_file_path.substr(found + 1);
-    uint64_t now = Utils::Time::currentStdEpochMs();
-    snprintf(tmp, sizeof(tmp), "%s/bin/done/%s.%" PRIu64,
-            Settings::configuration.logBinStatsPath.c_str(),
-            logname.c_str(),
-            now/1000);
-
-    if (!CreateBinlogDirsIfMissing(&this->bin_log_file_path) || std::rename(this->bin_log_file_path.c_str(), tmp))
-    {
-      MS_WARN_TAG(rtp, "failed to move %s to %s", this->bin_log_file_path.c_str(), tmp);
-    }
-    else
-    {
-      MS_DEBUG_TAG(rtp, "moved binlog %s to %s", this->bin_log_file_path.c_str(), tmp);
-    }
+    MS_DEBUG_TAG(rtp, "moved binlog %s to %s",
+            this->bin_log_file_path.c_str(), tmp);
   }
 }
 
@@ -409,9 +407,9 @@ int StatsBinLog::OnLogWrite(CallStatsRecordCtx* ctx)
 // If subdirectories creation fails then we will keep trying again because automated scripts may delete empty directories during runtime
 bool StatsBinLog::CreateBinlogDirsIfMissing(const std::string *log_path)
 {
-  std::string bin_log_dir      = Settings::configuration.logBinStatsPath + "/bin/";
-  std::string bin_log_curr_dir = Settings::configuration.logBinStatsPath + "/bin/current/";
-  std::string bin_log_done_dir = Settings::configuration.logBinStatsPath + "/bin/done/";
+  std::string bin_log_dir      = Settings::configuration.logBinStatsPath + BIN_LOG_BASE_DIR;
+  std::string bin_log_curr_dir = Settings::configuration.logBinStatsPath + BIN_LOG_CURRENT_DIR;
+  std::string bin_log_done_dir = Settings::configuration.logBinStatsPath + BIN_LOG_DONE_DIR;
 
   struct stat info;
   int ret = 0;
@@ -423,10 +421,11 @@ bool StatsBinLog::CreateBinlogDirsIfMissing(const std::string *log_path)
   {
     if (errno == ENOENT)
     {
-      ret = mkdir(bin_log_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+      ret = mkdir(Settings::configuration.logBinStatsPath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
       if (ret != 0 && errno != EEXIST)
       {
-        MS_WARN_TAG(rtp, "failed to create top folder %s for binlog files management: %s, disabling stats collection", Settings::configuration.logBinStatsPath.c_str(), std::strerror(errno));
+        MS_WARN_TAG(rtp, "failed to create top folder %s for binlog files management: %s, disabling stats collection",
+                Settings::configuration.logBinStatsPath.c_str(), std::strerror(errno));
         Settings::configuration.logBinStatsDisabled = true;
         return false;
       }
@@ -507,7 +506,9 @@ bool StatsBinLog::CreateBinlogDirsIfMissing(const std::string *log_path)
   }
 
   if (log_path) {
-      char log_dir[4096];
+      // dirname modifies the input therefore
+      // we need to make a copy of log_path
+      char log_dir[FILEPATH_LEN_MAX];
       int n = snprintf(log_dir, sizeof(log_dir), "%s", log_path->c_str());
       if ((size_t)n >= sizeof(log_dir)) {
           MS_WARN_TAG(rtp, "log path too long. %s", log_path->c_str());
@@ -548,7 +549,6 @@ void StatsBinLog::InitLog(std::function<std::string(uint64_t)>&& templateFunctio
 		return;
 
 	this->file_name_template_function = std::move(templateFunction);
-    this->bin_log_name_template = Settings::configuration.logBinStatsPath + "/bin/current/%s";
 
 	uint64_t const now = Utils::Time::currentStdEpochMs();
 	UpdateLogTimestamps(now);
@@ -566,19 +566,11 @@ void StatsBinLog::InitLog(std::function<std::string(uint64_t)>&& templateFunctio
 
 void StatsBinLog::UpdateLogTimestamps(uint64_t now)
 {
-  char buff[FILEPATH_LEN_MAX];
-
   this->log_start_ts = now;
-
   this->next_day_start_ts = ((now / DAY_IN_MS) + 1) * DAY_IN_MS;
-
   this->current_bin_log_name = this->file_name_template_function(log_start_ts);
-  if(this->current_bin_log_name.length() > FILENAME_LEN_MAX) {
-      MS_ERROR("Filename is longer than FILENAME_LEN_MAX: %" PRIu16, FILENAME_LEN_MAX);
-  }
-
-  snprintf(buff, sizeof(buff), this->bin_log_name_template.c_str(), this->current_bin_log_name.c_str());
-  this->bin_log_file_path.assign(buff);
+  this->bin_log_file_path =
+          Settings::configuration.logBinStatsPath + BIN_LOG_CURRENT_DIR + this->current_bin_log_name;
 }
 
 
@@ -592,7 +584,6 @@ void StatsBinLog::DeinitLog()
   this->next_day_start_ts = UINT64_UNSET;
   this->log_last_ts       = UINT64_UNSET;
 
-  this->bin_log_name_template.clear();
   this->current_bin_log_name.clear();
   this->bin_log_file_path.clear();
 }

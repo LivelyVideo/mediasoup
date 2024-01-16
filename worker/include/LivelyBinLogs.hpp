@@ -182,7 +182,6 @@ class CallStatsRecord
   
   private:
     bool          initialized {false};
-    std::string   bin_log_name_template;          // Log name template, use to rotate log, keep same name except for timestamp
     std::string   current_bin_log_name;
     std::function<std::string(uint64_t)> file_name_template_function;
     const char    version[7] = BINLOG_FORMAT_VERSION;
@@ -201,7 +200,7 @@ class CallStatsRecord
     void DeinitLog();   // Closes log file and deinitializes state variables
 
   private:
-    int LogOpen();
+    void LogOpen();
     void LogClose();
     void UpdateLogTimestamps(uint64_t now);
     bool CreateBinlogDirsIfMissing(const std::string *log_path);
