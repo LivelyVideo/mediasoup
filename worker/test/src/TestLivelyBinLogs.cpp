@@ -58,12 +58,13 @@ SCENARIO("Producer binlog file names are created correctly without client referr
 
 SCENARIO("Consumer binlog file names are created correctly.")
 {
+    const auto *clientReferrer = "demo";
     const auto *callId = "call-id";
     auto now = Utils::Time::currentStdEpochMs();
     const auto *version = "312b3129";
 
-    std::string const filename = Lively::ConsumerFileName(callId, now, version);
+    std::string const filename = Lively::ConsumerFileName(clientReferrer, callId, now, version);
 
-    REQUIRE(filename == "ms_c_call-id_" + std::to_string(now) + ".312b3129.bin");
+    REQUIRE(filename == "demo/ms_c_call-id_" + std::to_string(now) + ".312b3129.bin");
 }
 

@@ -71,6 +71,9 @@ namespace RTC
 			this->maxMessageSize = jsonMaxMessageSizeIt->get<size_t>();
 		}
 		
+        // PM-2288 adding client referrer to bin logs for Saas
+        std::string clientReferrer; //default ""
+
 		auto jsonAppDataIt = data.find("appData");
 		bool hasCallId = false;
 		if (jsonAppDataIt != data.end() && jsonAppDataIt->is_object())
@@ -96,6 +99,16 @@ namespace RTC
 			{
 				lively.streamName.assign(jsonStreamNameIt->get<std::string>());
 			}
+
+            auto jsonClientReferrerIt = jsonAppDataIt->find("clientReferrer");
+            if (jsonClientReferrerIt != jsonAppDataIt->end())
+            {
+                if (!jsonClientReferrerIt->is_string()) {
+                    MS_THROW_TYPE_ERROR("clientReferrer in transport appData is not a string");
+                } else {
+                    clientReferrer = jsonClientReferrerIt->get<std::string>();
+                }
+            }
 		}
 
 		lively.id = id;
@@ -103,12 +116,17 @@ namespace RTC
 		MS_DEBUG_TAG(rtp, "Transport ctor [transportId: %s] [data: %s]", lively.id.c_str(), data.dump().c_str());
 
 		if (hasCallId) {
-			MS_DEBUG_TAG(rtp, "XXXXX creating consumer bin log. lively=%s", lively.ToStr().c_str());
+
+		    if (clientReferrer.empty()) {
+		        MS_WARN_TAG(rtp, "transport create missing appdata or clientReferrer info");
+		    }
+
+			MS_DEBUG_TAG(rtp, "creating consumer bin log. lively=%s", lively.ToStr().c_str());
 
             // initialize consumers bin log here, it is shared btw all consumers
             std::string const callId = lively.callId;
-            this->consumersBinLog.InitLog([callId](uint64_t timestamp) -> std::string {
-                return Lively::ConsumerFileName(callId, timestamp, BINLOG_FORMAT_VERSION);
+            this->consumersBinLog.InitLog([clientReferrer, callId](uint64_t timestamp) -> std::string {
+                return Lively::ConsumerFileName(clientReferrer, callId, timestamp, BINLOG_FORMAT_VERSION);
             });
 		}
 		else

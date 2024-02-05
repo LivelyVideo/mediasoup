@@ -642,7 +642,10 @@ std::string ProducerFileName(
     return "ms_p_" + userId + "_" + callId + "_" + producerId + "_" + std::to_string(timestamp) + "." + version + ".bin";
 }
 
-std::string ConsumerFileName(const std::string& callId, uint64_t timestamp, const std::string& version) {
+std::string ConsumerFileName(const std::string &clientReferrer, const std::string& callId, uint64_t timestamp, const std::string& version) {
+    if (!clientReferrer.empty()) {
+        return clientReferrer + "/ms_c_" + callId + "_" + std::to_string(timestamp) + "." + version + ".bin";
+    }
     return "ms_c_" + callId + "_" + std::to_string(timestamp) + "." + version + ".bin";
 }
 } //Lively
