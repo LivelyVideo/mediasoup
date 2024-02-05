@@ -30,8 +30,11 @@ namespace RTC
 			if (this->newestItemIndex >= this->windowItems)
 				this->newestItemIndex = 0;
 
+			// Modified by Amir Pauker on 02/05/2024
+			// See https://github.com/versatica/mediasoup/issues/1316
+			// See also https://lively-video.atlassian.net/browse/VR-221
 			MS_ASSERT(
-			  this->newestItemIndex != this->oldestItemIndex || this->oldestItemIndex == -1,
+			  this->newestItemIndex != this->oldestItemIndex || this->oldestItemIndex == -1 || this->newestItemIndex,
 			  "newest index overlaps with the oldest one");
 
 			// Set the newest item.

@@ -215,7 +215,7 @@ class CallStatsRecord
             const std::string &version
     );
 
-    std::string ConsumerFileName(const std::string& callId, uint64_t timestamp, const std::string& version);
+    std::string ConsumerFileName(const std::string &clientReferrer, const std::string& callId, uint64_t timestamp, const std::string& version);
     std::string GetUserIdFromAppData(const json& appData);
 
 } //Lively
