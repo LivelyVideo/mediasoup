@@ -7,6 +7,7 @@
 #include "Utils.hpp"
 #include <cstring>
 #include <sys/stat.h>
+#include <libgen.h>
 
 namespace Lively
 {
@@ -33,6 +34,10 @@ constexpr uint8_t hexVal[256] = {
 constexpr uint16_t FILENAME_LEN_MAX = 255;
 constexpr uint16_t FILEPATH_LEN_MAX = 4096 / 2; //I doubt we need the full 4096 linux path limit. Save some buff allocations.
 constexpr uint64_t DAY_IN_MS = 86400000ULL;
+
+#define BIN_LOG_BASE_DIR                     "/bin"
+#define BIN_LOG_CURRENT_DIR BIN_LOG_BASE_DIR "/current/"
+#define BIN_LOG_DONE_DIR    BIN_LOG_BASE_DIR "/done/"
 
 CallStatsRecord::CallStatsRecord(uint64_t type, uint16_t ssrc, uint8_t payload, char content, std::string callId, std::string obj, std::string producer)
   : type(type), call_id(callId), object_id(obj), producer_id(producer)
@@ -134,7 +139,7 @@ void CallStatsRecord::resetSamples(uint64_t ts)
 bool CallStatsRecord::addSample(StreamStats& last, StreamStats& curr)
 {
   MS_ASSERT(filled() >= 0 && filled() < maxSamples(),
-            "Cannot have %" PRIu32 " >= %" PRIu32 " samples in record, quitting...",
+            "Cannot have %" PRIu32 " >= %zu samples in record, quitting...",
 			filled(), maxSamples());
 
   MS_ASSERT(last.ts != UINT64_UNSET,
@@ -249,18 +254,22 @@ void CallStatsRecordCtx::AddStatsRecord(StatsBinLog* log, RTC::RtpStream* stream
 
 /////////////////////////
 //
-int StatsBinLog::LogOpen()
+void StatsBinLog::LogOpen()
 {
-  int ret = 0;
+  if(this->bin_log_file_path.length() > FILENAME_LEN_MAX) {
+      MS_ERROR("bin log file path too long %s", this->bin_log_file_path.c_str());
+      initialized = false;
+      return;
+  }
 
   // Check that binlog directories are in place, try to restore them if not, then open fd
-  if (!CreateBinlogDirsIfMissing() || !(this->fd = std::fopen(this->bin_log_file_path.c_str(), "a")))
+  if (!CreateBinlogDirsIfMissing(&this->bin_log_file_path) ||
+          !(this->fd = std::fopen(this->bin_log_file_path.c_str(), "a")))
   {
     MS_WARN_TAG(
       rtp,
       "binlog failed to open '%s'", this->bin_log_file_path.c_str()
     );
-    ret = errno;
     this->fd = 0;
     initialized = false;
   }
@@ -273,8 +282,6 @@ int StatsBinLog::LogOpen()
       this->next_day_start_ts
     );
   }
-
-  return ret;
 }
 
 
@@ -307,32 +314,24 @@ void StatsBinLog::LogClose()
   }
 
   // Move a closed file into "done" directory
-  std::string bin_log_done_dir = Settings::configuration.logBinStatsPath + "/bin/done/";
+  std::string bin_log_done_path =
+          Settings::configuration.logBinStatsPath + BIN_LOG_DONE_DIR + this->current_bin_log_name;
 
-  std::string logname; // get filename only out of full path
-  std::size_t found = this->bin_log_file_path.find_last_of("/");
-  if (std::string::npos == found)
+  char tmp[FILEPATH_LEN_MAX+16];
+  snprintf(tmp, sizeof(tmp), "%s.%" PRIu64,
+          bin_log_done_path.c_str(),
+          Utils::Time::currentStdEpochMs()/1000);
+
+  if (!CreateBinlogDirsIfMissing(&bin_log_done_path) ||
+          std::rename(this->bin_log_file_path.c_str(), tmp) < 0)
   {
-    MS_WARN_TAG(rtp, "Failed to extract binlog filename from %s, won't move it to %s", this->bin_log_file_path.c_str(), bin_log_done_dir.c_str());
+    MS_WARN_TAG(rtp, "failed to move %s to %s",
+            this->bin_log_file_path.c_str(), tmp);
   }
   else
   {
-    char tmp[FILEPATH_LEN_MAX];
-    auto logname = this->bin_log_file_path.substr(found + 1);
-    uint64_t now = Utils::Time::currentStdEpochMs();
-    snprintf(tmp, sizeof(tmp), "%s/bin/done/%s.%" PRIu64,
-            Settings::configuration.logBinStatsPath.c_str(),
-            logname.c_str(),
-            now/1000);
-
-    if (!CreateBinlogDirsIfMissing() || std::rename(this->bin_log_file_path.c_str(), tmp))
-    {
-      MS_WARN_TAG(rtp, "failed to move %s to %s", this->bin_log_file_path.c_str(), tmp);
-    }
-    else
-    {
-      MS_DEBUG_TAG(rtp, "moved binlog %s to %s", this->bin_log_file_path.c_str(), tmp);
-    }
+    MS_DEBUG_TAG(rtp, "moved binlog %s to %s",
+            this->bin_log_file_path.c_str(), tmp);
   }
 }
 
@@ -406,11 +405,11 @@ int StatsBinLog::OnLogWrite(CallStatsRecordCtx* ctx)
 
 // If Settings::configuration.logBinStatsPath does not exist and can't be created, then disable stats collection: Settings::configuration.logBinStatsDisabled = true;
 // If subdirectories creation fails then we will keep trying again because automated scripts may delete empty directories during runtime
-bool StatsBinLog::CreateBinlogDirsIfMissing()
+bool StatsBinLog::CreateBinlogDirsIfMissing(const std::string *log_path)
 {
-  std::string bin_log_dir      = Settings::configuration.logBinStatsPath + "/bin/";
-  std::string bin_log_curr_dir = Settings::configuration.logBinStatsPath + "/bin/current/";
-  std::string bin_log_done_dir = Settings::configuration.logBinStatsPath + "/bin/done/";
+  std::string bin_log_dir      = Settings::configuration.logBinStatsPath + BIN_LOG_BASE_DIR;
+  std::string bin_log_curr_dir = Settings::configuration.logBinStatsPath + BIN_LOG_CURRENT_DIR;
+  std::string bin_log_done_dir = Settings::configuration.logBinStatsPath + BIN_LOG_DONE_DIR;
 
   struct stat info;
   int ret = 0;
@@ -422,10 +421,11 @@ bool StatsBinLog::CreateBinlogDirsIfMissing()
   {
     if (errno == ENOENT)
     {
-      ret = mkdir(bin_log_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+      ret = mkdir(Settings::configuration.logBinStatsPath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
       if (ret != 0 && errno != EEXIST)
       {
-        MS_WARN_TAG(rtp, "failed to create top folder %s for binlog files management: %s, disabling stats collection", Settings::configuration.logBinStatsPath.c_str(), std::strerror(errno));
+        MS_WARN_TAG(rtp, "failed to create top folder %s for binlog files management: %s, disabling stats collection",
+                Settings::configuration.logBinStatsPath.c_str(), std::strerror(errno));
         Settings::configuration.logBinStatsDisabled = true;
         return false;
       }
@@ -505,6 +505,38 @@ bool StatsBinLog::CreateBinlogDirsIfMissing()
     }
   }
 
+  if (log_path) {
+      // dirname modifies the input therefore
+      // we need to make a copy of log_path
+      char log_dir[FILEPATH_LEN_MAX];
+      int n = snprintf(log_dir, sizeof(log_dir), "%s", log_path->c_str());
+      if ((size_t)n >= sizeof(log_dir)) {
+          MS_WARN_TAG(rtp, "log path too long. %s", log_path->c_str());
+          return false;
+      }
+      char *d = dirname(log_dir);
+      if( stat( d, &info ) != 0 )
+      {
+        if (errno == ENOENT)
+        {
+          ret = mkdir(d, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH); // | S_IXOTH?
+          if (ret != 0 && errno != EEXIST)
+          {
+            MS_WARN_TAG(rtp, "failed to create bin logs folder %s", d);
+            return false;
+          }
+        }
+      }
+      else
+      {
+        if (!S_ISDIR(info.st_mode))
+        {
+          MS_WARN_TAG(rtp, "found bin logs dir %s but it is not a directory", d);
+          return false;
+        }
+      }
+  }
+
   return true;
 }
 
@@ -517,14 +549,13 @@ void StatsBinLog::InitLog(std::function<std::string(uint64_t)>&& templateFunctio
 		return;
 
 	this->file_name_template_function = std::move(templateFunction);
-    this->bin_log_name_template = Settings::configuration.logBinStatsPath + "/bin/current/%s";
 
 	uint64_t const now = Utils::Time::currentStdEpochMs();
 	UpdateLogTimestamps(now);
 
 	MS_DEBUG_TAG(rtp, "binlog %s", this->current_bin_log_name.c_str());
 
-	CreateBinlogDirsIfMissing();
+	CreateBinlogDirsIfMissing(nullptr);
 	if (Settings::configuration.logBinStatsDisabled)
 		return;
 
@@ -535,19 +566,11 @@ void StatsBinLog::InitLog(std::function<std::string(uint64_t)>&& templateFunctio
 
 void StatsBinLog::UpdateLogTimestamps(uint64_t now)
 {
-  char buff[FILEPATH_LEN_MAX];
-
   this->log_start_ts = now;
-
   this->next_day_start_ts = ((now / DAY_IN_MS) + 1) * DAY_IN_MS;
-
   this->current_bin_log_name = this->file_name_template_function(log_start_ts);
-  if(this->current_bin_log_name.length() > FILENAME_LEN_MAX) {
-      MS_ERROR("Filename is longer than FILENAME_LEN_MAX: %" PRIu16, FILENAME_LEN_MAX);
-  }
-
-  snprintf(buff, sizeof(buff), this->bin_log_name_template.c_str(), this->current_bin_log_name.c_str());
-  this->bin_log_file_path.assign(buff);
+  this->bin_log_file_path =
+          Settings::configuration.logBinStatsPath + BIN_LOG_CURRENT_DIR + this->current_bin_log_name;
 }
 
 
@@ -561,43 +584,68 @@ void StatsBinLog::DeinitLog()
   this->next_day_start_ts = UINT64_UNSET;
   this->log_last_ts       = UINT64_UNSET;
 
-  this->bin_log_name_template.clear();
   this->current_bin_log_name.clear();
   this->bin_log_file_path.clear();
 }
 
 std::string GetUserIdFromAppData(const json& appData) {
-    if (appData.contains("userId") && appData["userId"].is_string()) {
-        const char* userId = appData["userId"].get<std::string>().c_str();
-        char slugifyUserId[512];
-        const char *q;
-        char *p, *end;
+    const char* userId;
+    char        slugifyUserId[512];
+    const char  *q;
+    char        *p, *end;
+    std::string strValue;
+    int         intVal;
 
-        end = slugifyUserId + sizeof(slugifyUserId);
-        for (p = slugifyUserId, q = userId; p < end && *q; p++, q++) {
-            if ( (*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z') || (*q >= '0' && *q <= '9') || (*q == '-')) {
-                *p = *q;
-            } else {
-                *p = '-';
-            }
-        }
+    if (!appData.contains("userId")) return "";
 
-        return std::string(slugifyUserId, p - slugifyUserId);
+    if (appData["userId"].is_string())
+    {
+        strValue = appData["userId"].get<std::string>();
+        userId = strValue.c_str();
     }
-    return "";
+    else if (appData["userId"].is_number())
+    {
+        intVal = appData["userId"].get<int>();
+        strValue = std::to_string(intVal);
+        userId = strValue.c_str();
+    }
+    else
+    {
+        return "";
+    }
+
+
+    end = slugifyUserId + sizeof(slugifyUserId);
+    for (p = slugifyUserId, q = userId; p < end && *q; p++, q++) {
+        if ( (*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z') || (*q >= '0' && *q <= '9') || (*q == '-')) {
+            *p = *q;
+        } else {
+            *p = '-';
+        }
+    }
+
+    return std::string(slugifyUserId, p - slugifyUserId);
 }
 
 std::string ProducerFileName(
         const std::string &callId,
         const std::string &producerId,
         const std::string &userId,
+        const std::string &clientReferrer,
         uint64_t timestamp,
         const std::string &version
 ) {
+    if (!clientReferrer.empty()) {
+        return clientReferrer + "/ms_p_" + userId + "_" + callId + "_" + producerId + "_" +
+                std::to_string(timestamp) + "." + version + ".bin";
+    }
     return "ms_p_" + userId + "_" + callId + "_" + producerId + "_" + std::to_string(timestamp) + "." + version + ".bin";
 }
 
-std::string ConsumerFileName(const std::string& callId, uint64_t timestamp, const std::string& version) {
+std::string ConsumerFileName(const std::string &clientReferrer, const std::string& callId, uint64_t timestamp, const std::string& version) {
+    if (!clientReferrer.empty()) {
+        return clientReferrer + "/ms_c_" + callId + "_" + std::to_string(timestamp) + "." + version + ".bin";
+    }
     return "ms_c_" + callId + "_" + std::to_string(timestamp) + "." + version + ".bin";
 }
 } //Lively
