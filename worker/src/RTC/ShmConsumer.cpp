@@ -633,6 +633,9 @@ namespace RTC
 
 							offset += 2; // skip over NALU size
 							uint8_t subnal = *(data + offset) & 0x1F; // actual NAL type
+							// Sometimes packet->IsKeyFrame() may be 0 even if actually we have a key frame, so if (subnal == 5 (i.e. IDR) and startBit == 128) then this is a key frame
+							if (subnal == 5)
+								keyframe = true;
 							uint16_t chunksize = naluSize;
 
 							MS_DEBUG_DEV("shm[%s] STAP-A: nal=%" PRIu8 " seq=%" PRIu64 " payloadlen=%" PRIu64 " nalulen=%" PRIu16 " chunklen=%" PRIu32 " ts=%" PRIu64 " lastTs=%" PRIu64 " keyframe=%d beginpicture=%d endpicture=%d",
