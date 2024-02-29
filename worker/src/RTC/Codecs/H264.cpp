@@ -9,6 +9,192 @@ namespace RTC
 {
 	namespace Codecs
 	{
+	/**********************************************************************
+	 *                Added by Amir Pauker 02/27/2024 RND-568
+	 * this code is based on ngx_rtmp_bitop.c and ngx_rtmp_codec_module.c
+	 *********************************************************************/
+
+	uint64_t H264SPSParser::Read(uint64_t n)
+	{
+	    uint64_t    v;
+	    uint64_t    d;
+
+	    v = 0;
+
+	    while (n) {
+	        if (this->pos >= this->last) {
+	            this->err = 1;
+	            return 0;
+	        }
+
+	        d = (this->offs + n > 8 ? (uint64_t) (8 - this->offs) : n);
+
+	        v <<= d;
+	        v += (*this->pos >> (8 - this->offs - d)) & ((u_char) 0xff >> (8 - d));
+
+	        this->offs += d;
+	        n -= d;
+
+	        if (this->offs == 8) {
+	            this->pos++;
+	            this->offs = 0;
+	        }
+	    }
+
+	    return v;
+	}
+
+
+	uint64_t H264SPSParser::ReadGolomb()
+	{
+	    uint64_t  n;
+
+	    for (n = 0; Read(1) == 0 && !err; n++);
+
+	    return ((uint64_t) 1 << n) + Read(n) - 1;
+	}
+
+
+	void H264SPSParser::ParseSPS(uint16_t &widthOut, uint16_t &heightOut)
+	{
+	    uint64_t   profile_idc, width, height, crop_left, crop_right,
+	               crop_top, crop_bottom, frame_mbs_only, n, cf_idc,
+	               num_ref_frames;
+
+	    // profile idc
+	    profile_idc = (uint64_t) Read(8);
+
+	    // flags
+	    Read(8);
+
+	    // level idc
+	    Read(8);
+
+	    /* SPS id */
+	    ReadGolomb();
+
+	    if (profile_idc == 100 || profile_idc == 110 ||
+	        profile_idc == 122 || profile_idc == 244 || profile_idc == 44 ||
+	        profile_idc == 83 || profile_idc == 86 || profile_idc == 118)
+	    {
+	        /* chroma format idc */
+	        cf_idc = ReadGolomb();
+
+	        if (cf_idc == 3) {
+
+	            /* separate color plane */
+	            Read(1);
+	        }
+
+	        /* bit depth luma - 8 */
+	        ReadGolomb();
+
+	        /* bit depth chroma - 8 */
+	        ReadGolomb();
+
+	        /* qpprime y zero transform bypass */
+	        Read(1);
+
+	        /* seq scaling matrix present */
+	        if (Read(1)) {
+
+	            for (n = 0; n < (cf_idc != 3 ? 8u : 12u); n++) {
+
+	                /* seq scaling list present */
+	                if (Read(1)) {
+
+	                    /* TODO: scaling_list()
+	                    if (n < 6) {
+	                    } else {
+	                    }
+	                    */
+	                }
+	            }
+	        }
+	    }
+
+	    /* log2 max frame num */
+	    ReadGolomb();
+
+	    /* pic order cnt type */
+	    switch (ReadGolomb()) {
+	    case 0:
+
+	        /* max pic order cnt */
+	        ReadGolomb();
+	        break;
+
+	    case 1:
+
+	        /* delta pic order alwys zero */
+	        Read(1);
+
+	        /* offset for non-ref pic */
+	        ReadGolomb();
+
+	        /* offset for top to bottom field */
+	        ReadGolomb();
+
+	        /* num ref frames in pic order */
+	        num_ref_frames = ReadGolomb();
+
+	        for (n = 0; n < num_ref_frames; n++) {
+
+	            /* offset for ref frame */
+	            ReadGolomb();
+	        }
+	    }
+
+	    /* num ref frames */
+	    ReadGolomb();
+
+	    /* gaps in frame num allowed */
+	    Read(1);
+
+	    /* pic width in mbs - 1 */
+	    width = ReadGolomb();
+
+	    /* pic height in map units - 1 */
+	    height = ReadGolomb();
+
+	    /* frame mbs only flag */
+	    frame_mbs_only = Read(1);
+
+	    if (!frame_mbs_only) {
+
+	        /* mbs adaprive frame field */
+	        Read(1);
+	    }
+
+	    /* direct 8x8 inference flag */
+	    Read(1);
+
+	    /* frame cropping */
+	    if (Read(1)) {
+
+	        crop_left   = ReadGolomb();
+	        crop_right  = ReadGolomb();
+	        crop_top    = ReadGolomb();
+	        crop_bottom = ReadGolomb();
+
+	    } else {
+
+	        crop_left = 0;
+	        crop_right = 0;
+	        crop_top = 0;
+	        crop_bottom = 0;
+	    }
+
+	    if (!err) {
+	        widthOut = (width + 1) * 16 - (crop_left + crop_right) * 2;
+	        heightOut = (2 - frame_mbs_only) * (height + 1) * 16 -
+	                      (crop_top + crop_bottom) * 2;
+	    }
+	}
+
+	    /**********************************************************************
+        **********************************************************************/
+
 		/* Class methods. */
 
 		H264::PayloadDescriptor* H264::Parse(
@@ -61,7 +247,10 @@ namespace RTC
 			//
 			// As a temporal workaround, always do payload parsing to detect keyframes if
 			// there is no frame-marking or if there is but keyframe was not detected above.
-			if (!frameMarking || !payloadDescriptor->isKeyFrame)
+
+			// Modified by Amir Pauker 02/27/2024 RND-568
+			//original: if (!frameMarking || !payloadDescriptor->isKeyFrame)
+			if (true)
 			{
 				const uint8_t nal = *data & 0x1F;
 
@@ -72,6 +261,10 @@ namespace RTC
 					case 7:
 					{
 						payloadDescriptor->isKeyFrame = true;
+
+		                // Added by Amir Pauker 02/27/2024 RND-568
+		                H264SPSParser spsParser(data + 1, data + len);
+		                spsParser.ParseSPS(payloadDescriptor->width, payloadDescriptor->height);
 
 						break;
 					}
@@ -93,6 +286,10 @@ namespace RTC
 							if (subnal == 7)
 							{
 								payloadDescriptor->isKeyFrame = true;
+
+				                // Added by Amir Pauker 02/27/2024 RND-568
+				                H264SPSParser spsParser((data + offset + sizeof(naluSize)) + 1, (data + offset + sizeof(naluSize)) + len);
+				                spsParser.ParseSPS(payloadDescriptor->width, payloadDescriptor->height);
 
 								break;
 							}
@@ -121,6 +318,10 @@ namespace RTC
 						if (subnal == 7 && startBit == 128)
 						{
 							payloadDescriptor->isKeyFrame = true;
+
+			                // Added by Amir Pauker 02/27/2024 RND-568
+			                H264SPSParser spsParser(data + 1, data + len);
+			                spsParser.ParseSPS(payloadDescriptor->width, payloadDescriptor->height);
 						}
 
 						break;

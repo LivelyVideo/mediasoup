@@ -9,6 +9,31 @@ namespace RTC
 {
 	namespace Codecs
 	{
+	    /**********************************************************************
+	     *                Added by Amir Pauker 02/27/2024 RND-568
+	     *********************************************************************/
+
+	class H264SPSParser {
+	private:
+	    const uint8_t     *pos;
+	    const uint8_t     *last;
+	    uint64_t          offs;
+	    uint64_t          err;
+	public:
+	    H264SPSParser(const uint8_t *pos, const uint8_t *last)
+	    {
+	        this->pos = pos;
+	        this->last = last;
+	        offs = err = 0;
+	    }
+	    uint64_t Read(uint64_t n);
+	    uint64_t ReadGolomb();
+	    void ParseSPS(uint16_t &widthOut, uint16_t &heightOut);
+	};
+
+        /**********************************************************************
+         *********************************************************************/
+
 		class H264
 		{
 		public:
@@ -33,6 +58,10 @@ namespace RTC
 				bool hasTid{ false };
 				bool hasTl0picidx{ false };
 				bool isKeyFrame{ false };
+
+				// Added by Amir Pauker 02/27/2024 RND-568
+				uint16_t width {0};
+				uint16_t height {0};
 			};
 
 		public:
@@ -86,6 +115,16 @@ namespace RTC
 				{
 					return this->payloadDescriptor->isKeyFrame;
 				}
+
+				// Added by Amir Pauker 02/27/2024 RND-568
+				uint16_t GetWidth() const override
+				{
+				    return this->payloadDescriptor->width;
+				}
+                uint16_t GetHeight() const override
+                {
+                    return this->payloadDescriptor->height;
+                }
 
 			private:
 				std::unique_ptr<PayloadDescriptor> payloadDescriptor;

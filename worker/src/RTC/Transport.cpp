@@ -109,6 +109,20 @@ namespace RTC
                     clientReferrer = jsonClientReferrerIt->get<std::string>();
                 }
             }
+
+            // Added by Amir Pauker 02/27/2024 RND-568
+            auto jsonProducerStatsIt = jsonAppDataIt->find("producerStats");
+            if (jsonProducerStatsIt != jsonAppDataIt->end())
+            {
+                if (!jsonProducerStatsIt->is_boolean()) {
+                    MS_THROW_TYPE_ERROR("producerStats in transport appData is not a boolean");
+                } else {
+                    if(jsonProducerStatsIt->get<bool>()) {
+                        // this will enable periodic delivery of producer stats event
+                        this->lastProducerStatsReport = DepLibUV::GetTimeMs();
+                    }
+                }
+            }
 		}
 
 		lively.id = id;
@@ -3394,6 +3408,16 @@ namespace RTC
 			interval *= static_cast<float>(Utils::Crypto::GetRandomUInt(10, 15)) / 10;
 
 			this->rtcpTimer->Start(interval);
+
+			// Added by Amir Pauker 02/27/2024 RND-568
+			if (this->lastProducerStatsReport + 10000 >  nowMs) {
+	            for (auto& kv : this->mapProducers)
+	            {
+	                auto* producer = kv.second;
+	                producer->EmitProducerStats();
+	            }
+	            this->lastProducerStatsReport = nowMs;
+			}
 		}
 
 		//Binary log timer

@@ -845,9 +845,13 @@ namespace RTC
 		{
 			MS_DEBUG_TAG(
 			  rtp,
-			  "key frame received [ssrc:%" PRIu32 ", seq:%" PRIu16 "]",
+			  "key frame received [ssrc:%" PRIu32 ", seq:%" PRIu16 ", w:%" PRIu16 ", h:%" PRIu16 "]",
 			  packet->GetSsrc(),
-			  packet->GetSequenceNumber());
+			  packet->GetSequenceNumber(),
+			  packet->GetWidth(),
+			  packet->GetHeight());
+
+			rtpStream->SetWidthAndHeight(packet->GetWidth(), packet->GetHeight());
 
 			// Tell the keyFrameRequestManager.
 			if (this->keyFrameRequestManager)
@@ -1655,6 +1659,40 @@ namespace RTC
 
 		this->shared->channelNotifier->Emit(this->id, "score", data);
 	}
+
+	// Added by Amir Pauker 02/27/2024 RND-568
+    void Producer::EmitProducerStats() const
+    {
+        MS_TRACE();
+
+        json data = json::array();
+        auto nowMs = DepLibUV::GetTimeMs();
+
+        for (auto* rtpStream : this->rtpStreamByEncodingIdx)
+        {
+            if (!rtpStream)
+                continue;
+
+            data.emplace_back(json::value_t::object);
+
+            auto& jsonEntry = data[data.size() - 1];
+
+            jsonEntry["nowMs"]    = nowMs;
+            jsonEntry["ssrc"]    = rtpStream->GetSsrc();
+            jsonEntry["bitrate"] = rtpStream->GetBitrate(nowMs);
+            if (rtpStream->GetMimeType().type == RTC::RtpCodecMimeType::Type::VIDEO) {
+                jsonEntry["width"] = rtpStream->GetWidth();
+                jsonEntry["height"] = rtpStream->GetHeight();
+                jsonEntry["frames"] = rtpStream->GetFrameCount();
+            }
+        }
+
+        MS_DEBUG_TAG(rtp, "emitting producerstats. id: %s data: %s",
+                this->id.c_str(),
+                data.dump().c_str());
+
+        this->shared->channelNotifier->Emit(this->id, "producerstats", data);
+    }
 
 	inline void Producer::EmitTraceEventRtpAndKeyFrameTypes(RTC::RtpPacket* packet, bool isRtx) const
 	{

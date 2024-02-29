@@ -108,6 +108,9 @@ namespace RTC
 			virtual uint8_t GetSpatialLayer() const                                                  = 0;
 			virtual uint8_t GetTemporalLayer() const                                                 = 0;
 			virtual bool IsKeyFrame() const                                                          = 0;
+			// Added by Amir Pauker 02/27/2024 RND-568
+			virtual uint16_t GetWidth() const                                                        = 0;
+            virtual uint16_t GetHeight() const                                                       = 0;
 		};
 	} // namespace Codecs
 } // namespace RTC
