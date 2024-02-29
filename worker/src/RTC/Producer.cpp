@@ -1665,8 +1665,8 @@ namespace RTC
     {
         MS_TRACE();
 
-        json data = json::array();
-        auto nowMs = DepLibUV::GetTimeMs();
+        json data      = json::array();
+        uint64_t nowMs = DepLibUV::GetTimeMs();
 
         for (auto* rtpStream : this->rtpStreamByEncodingIdx)
         {
@@ -1677,7 +1677,7 @@ namespace RTC
 
             auto& jsonEntry = data[data.size() - 1];
 
-            jsonEntry["nowMs"]    = nowMs;
+            jsonEntry["nowMs"]   = nowMs;
             jsonEntry["ssrc"]    = rtpStream->GetSsrc();
             jsonEntry["bitrate"] = rtpStream->GetBitrate(nowMs);
             if (rtpStream->GetMimeType().type == RTC::RtpCodecMimeType::Type::VIDEO) {
@@ -1687,7 +1687,8 @@ namespace RTC
             }
         }
 
-        MS_DEBUG_TAG(rtp, "emitting producerstats. id: %s data: %s",
+        MS_DEBUG_TAG(rtp, "emitting producerstats. now: %" PRIu64 " id: %s data: %s",
+                nowMs,
                 this->id.c_str(),
                 data.dump().c_str());
 

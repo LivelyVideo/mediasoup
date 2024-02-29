@@ -3410,7 +3410,7 @@ namespace RTC
 			this->rtcpTimer->Start(interval);
 
 			// Added by Amir Pauker 02/27/2024 RND-568
-			if (this->lastProducerStatsReport + 10000 >  nowMs) {
+			if (this->lastProducerStatsReport && (this->lastProducerStatsReport + 10000 <  nowMs)) {
 	            for (auto& kv : this->mapProducers)
 	            {
 	                auto* producer = kv.second;
