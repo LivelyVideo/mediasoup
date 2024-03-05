@@ -37,7 +37,7 @@ namespace RTC
 			  this->newestItemIndex != this->oldestItemIndex || this->oldestItemIndex == -1 || this->newestItemIndex,
 			  "newest index overlaps with the oldest one");
 
-			if (!this->oldestItemIndex && this->oldestItemIndex == this->newestItemIndex) {
+			if (this->oldestItemIndex == this->newestItemIndex) {
 			    MS_WARN_TAG(rtp, "please update versatica issue 1316. "
 			            "oldestItemIndex=%d nowMs=%" PRIu64 " "
 			            "newestItemStartTime=%" PRIu64 " itemSizeMs=%zu windowItems=%" PRIu16,
