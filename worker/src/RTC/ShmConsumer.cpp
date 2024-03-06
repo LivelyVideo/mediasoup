@@ -647,7 +647,7 @@ namespace RTC
 																							true, // is first fragment? n/a
 																							true, // is end fragment? n/a
 																							beginpicture,
-																							(marker != 0),
+																							(marker && (offset + chunksize + 3 >= len)),
 																							keyframe);
 							offset += chunksize;
 							beginpicture = 0; // all NALUs in aggregated pkt have same rtp ts, first one may be pic beginning, the rest certainly will not be
