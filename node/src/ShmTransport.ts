@@ -114,7 +114,7 @@ export type ShmTransportObserverEvents = TransportObserverEvents;
 
 export type ShmTransportData = 
 {
-	shm?: string;
+	name?: string;
 
 	log?: string;
 };
@@ -148,7 +148,7 @@ export class ShmTransport<ShmTransportAppData extends AppData = AppData>
 
 		this.#data =
 		{
-			shm : data.shm,
+			name : data.name,
 			log: data.log
 		}
 	}
@@ -364,7 +364,7 @@ export class ShmTransport<ShmTransportAppData extends AppData = AppData>
 
 		const reqData = {
 			meta,
-			shm: this.#data.shm?.name,
+			shm: this.#data.name,
 			log: this.#data.log,
 		};
 
