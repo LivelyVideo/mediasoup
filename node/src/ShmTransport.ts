@@ -364,7 +364,7 @@ export class ShmTransport<ShmTransportAppData extends AppData = AppData>
 
 		const reqData = {
 			meta,
-			shm: this.#data.shm,
+			shm: this.#data.shm?.name,
 			log: this.#data.log,
 		};
 
