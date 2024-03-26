@@ -114,9 +114,10 @@ export type ShmTransportObserverEvents = TransportObserverEvents;
 
 export type ShmTransportData = 
 {
-	name?: string;
-
-	log?: string;
+	shm: {
+		name?: string;
+		log?: string;
+	}
 };
 
 type ShmTransportConstructorOptions<ShmTransportAppData> =
@@ -146,11 +147,7 @@ export class ShmTransport<ShmTransportAppData extends AppData = AppData>
 
 		const { data } = options;
 
-		this.#data =
-		{
-			name : data.name,
-			log: data.log
-		}
+		this.#data = data;
 	}
 
 
@@ -364,8 +361,8 @@ export class ShmTransport<ShmTransportAppData extends AppData = AppData>
 
 		const reqData = {
 			meta,
-			shm: this.#data.name,
-			log: this.#data.log,
+			shm: this.#data.shm.name,
+			log: this.#data.shm.log,
 		};
 
 		await this.channel.request('transport.consumeStreamMeta', this.internal.transportId, reqData);
