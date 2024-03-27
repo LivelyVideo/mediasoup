@@ -89,6 +89,41 @@ export type ProducerScore =
 	score: number;
 };
 
+// Added by Amir Pauker 02/27/2024 RND-568
+export type ProducerStatEvent = {
+
+	/**
+	 * timestamp in milliseconds when the sample was taken
+	 */
+	nowMs: number;
+
+	/**
+	 * RtpStream SSRC
+	 */
+	ssrc: number;
+
+	/**
+	 * received bits/sec
+	 */
+	bitrate: number;
+
+	/**
+	 * frames incremental counter
+	 */
+	frames?: number; // Optional
+
+	/**
+	 * for video, it is the image height
+	 */
+	height?: number; // Optional
+
+	/**
+	 * for video, it is the image width
+	 */
+	width?: number; // Optional
+};
+
+
 export type ProducerVideoOrientation =
 {
 	/**
@@ -142,10 +177,12 @@ export type ProducerStat =
  */
 export type ProducerType = 'simple' | 'simulcast' | 'svc';
 
+// producerstats was added by Amir Pauker 02/27/2024 RND-568
 export type ProducerEvents =
 {
 	transportclose: [];
 	score: [ProducerScore[]];
+	producerstats: [ProducerStatEvent[]];
 	videoorientationchange: [ProducerVideoOrientation];
 	trace: [ProducerTraceEventData];
 	// Private events.
@@ -500,6 +537,16 @@ export class Producer<ProducerAppData extends AppData = AppData>
 
 					// Emit observer event.
 					this.#observer.safeEmit('score', score);
+
+					break;
+				}
+
+				// Added by Amir Pauker 02/27/2024 RND-568
+				case 'producerstats':
+				{
+					const stats = data as ProducerStatEvent[];
+
+					this.safeEmit('producerstats', stats);
 
 					break;
 				}
