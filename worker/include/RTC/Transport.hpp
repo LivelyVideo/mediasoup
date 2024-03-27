@@ -357,6 +357,9 @@ namespace RTC
 		uint32_t maxOutgoingBitrate{ 0u };
 		uint32_t minOutgoingBitrate{ 0u };
 		struct TraceEventTypes traceEventTypes;
+
+        // Added by Amir Pauker 02/27/2024 RND-568
+        uint64_t lastProducerStatsReport {0};
 	};
 } // namespace RTC
 

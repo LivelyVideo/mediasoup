@@ -104,6 +104,10 @@ namespace RTC
 	public:
 		void FillJson(json& jsonObject) const;
 		void FillJsonStats(json& jsonArray) const;
+
+        // Added by Amir Pauker 02/27/2024 RND-568
+        void EmitProducerStats() const;
+
 		RTC::Media::Kind GetKind() const
 		{
 			return this->kind;

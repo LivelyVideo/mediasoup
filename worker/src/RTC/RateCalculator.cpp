@@ -37,6 +37,14 @@ namespace RTC
 			  this->newestItemIndex != this->oldestItemIndex || this->oldestItemIndex == -1 || this->newestItemIndex,
 			  "newest index overlaps with the oldest one");
 
+			if (this->oldestItemIndex == this->newestItemIndex) {
+			    MS_WARN_TAG(rtp, "please update versatica issue 1316. "
+			            "oldestItemIndex=%d nowMs=%" PRIu64 " "
+			            "newestItemStartTime=%" PRIu64 " itemSizeMs=%zu windowItems=%" PRIu16,
+			            this->oldestItemIndex, nowMs, this->newestItemStartTime, this->itemSizeMs,
+			            this->windowItems);
+			}
+
 			// Set the newest item.
 			BufferItem& item = this->buffer[this->newestItemIndex];
 			item.count       = size;

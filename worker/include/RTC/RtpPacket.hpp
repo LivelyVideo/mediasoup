@@ -590,6 +590,22 @@ namespace RTC
 			return this->payloadDescriptorHandler->IsKeyFrame();
 		}
 
+		// Added by Amir Pauker 02/27/2024 RND-568
+		uint16_t GetWidth() const
+		{
+            if (!this->payloadDescriptorHandler)
+                return 0;
+
+            return this->payloadDescriptorHandler->GetWidth();
+		}
+		uint16_t GetHeight() const
+		{
+            if (!this->payloadDescriptorHandler)
+                return 0;
+
+            return this->payloadDescriptorHandler->GetHeight();
+		}
+
 		RtpPacket* Clone() const;
 
 		void RtxEncode(uint8_t payloadType, uint32_t ssrc, uint16_t seq);

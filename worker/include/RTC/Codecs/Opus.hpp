@@ -79,6 +79,16 @@ namespace RTC
 					return false;
 				}
 
+				// Added by Amir Pauker 02/27/2024 RND-568
+				uint16_t GetWidth() const override
+				{
+				    return 0;
+				}
+				uint16_t GetHeight() const override
+				{
+				    return 0;
+				}
+
 			private:
 				std::unique_ptr<PayloadDescriptor> payloadDescriptor;
 			};

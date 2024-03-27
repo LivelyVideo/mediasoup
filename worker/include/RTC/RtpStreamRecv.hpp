@@ -114,6 +114,16 @@ namespace RTC
 		{
 			return this->jitter;
 		}
+
+		// Added by Amir Pauker 02/27/2024 RND-568
+        void SetWidthAndHeight(uint16_t width, uint16_t height) {
+            this->width = width;
+            this->height = height;
+        }
+		uint16_t GetWidth() const {return this->width;}
+		uint16_t GetHeight() const {return this->height;}
+		size_t GetFrameCount() {return this->mediaTransmissionCounter.GetFrameCount();}
+
 	private:
 		void CalculateJitter(uint32_t rtpTimestamp);
 		void UpdateScore();
@@ -163,6 +173,11 @@ namespace RTC
 		TransmissionCounter transmissionCounter;
 		// Just valid media.
 		RTC::RtpDataCounter mediaTransmissionCounter;
+
+		// Added by Amir Pauker 02/27/2024 RND-568
+		uint16_t width{0};
+		uint16_t height{0};
+
 	};
 } // namespace RTC
 

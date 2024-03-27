@@ -68,6 +68,10 @@ namespace RTC
 				bool hasTwoBytesPictureId{ false };
 				bool hasTl0PictureIndex{ false };
 				bool hasTlIndex{ false };
+
+                // Added by Amir Pauker 02/27/2024 RND-568
+                uint16_t width {0};
+                uint16_t height {0};
 			};
 
 		public:
@@ -126,6 +130,16 @@ namespace RTC
 				bool IsKeyFrame() const override
 				{
 					return this->payloadDescriptor->isKeyFrame;
+				}
+
+				// Added by Amir Pauker 02/27/2024 RND-568
+				uint16_t GetWidth() const override
+				{
+				    return this->payloadDescriptor->width;
+				}
+				uint16_t GetHeight() const override
+				{
+				    return this->payloadDescriptor->height;
 				}
 
 			private:
