@@ -60,10 +60,10 @@ typedef struct {
 
 typedef struct {
   uint64_t       start_tm;                    // the record start timestamp in milliseconds
-  uint32_t        ssrc;                     // ssrc as in original RTP stream
-  uint16_t        filled;                   // number of filled records in the array below
-  uint8_t         payload;                             // payload id as in original RTP stream
-  uint8_t         content;                                 // 'a' or 'v'
+  uint32_t       ssrc;                        // ssrc as in original RTP stream
+  uint16_t       filled;                      // number of filled records in the array below
+  uint8_t        payload;                     // payload id as in original RTP stream
+  uint8_t        content;                     // 'a' or 'v'
   char           consumer_id [UUID_BYTE_LEN]; // 
   char           producer_id [UUID_BYTE_LEN]; // 
 } stats_consumer_record_header_t;
