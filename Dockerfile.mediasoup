@@ -1,0 +1,35 @@
+ARG BASE_URL=golang:1.18-buster
+FROM $BASE_URL AS base
+
+ARG XCODE2_BUILD=false
+RUN if [ "$XCODE2_BUILD" = "false" ]; then \
+    apt update && \
+    apt -y upgrade && \
+    apt install -y build-essential autoconf vim wget curl libtool libtool-bin gpp less libpcre3-dev libz-dev&& \
+    apt -y upgrade python3 && \
+    apt install -y python3-pip supervisor && \
+    ln -s /usr/bin/python3 /usr/local/bin/python3 && \
+    pip3 install ninja meson && \
+    curl -sL https://deb.nodesource.com/setup_16.x | bash - && \
+    apt install -y nodejs; \
+  fi
+
+RUN mkdir -p /root/build/mediasoup /mediasoup/build
+ENV BUILD_DIR /root/build/mediasoup
+ENV MS_BUILD /mediasoup/build
+
+COPY worker ${MS_BUILD}/worker
+COPY node ${MS_BUILD}/node
+COPY package.json ${MS_BUILD}/package.json
+COPY npm-scripts.mjs ${MS_BUILD}/npm-scripts.mjs
+
+RUN if [ "$XCODE2_BUILD" = "true" ]; then \
+    mv ${MS_BUILD}/worker/meson.build.transcode ${MS_BUILD}/worker/meson.build; \
+  else \
+    mv ${MS_BUILD}/worker/meson.build.notranscode ${MS_BUILD}/worker/meson.build; \
+  fi
+
+#RUN \
+#  cd ${MS_BUILD} && \
+#  npm install && \
+#  npm run typescript:build
