@@ -20,7 +20,8 @@ namespace RTC
 			{ 
 				"listenIp": '127.0.0.1',
 				"shm": {
-					"name": "...",
+				    "clientReferrer": <the namespace (also called clientReferrer or project id)>,
+					"name": <public key>,
 					"queueAge": 100,
 					"testNack": 0,
 					"reverseIt": 0,
@@ -47,8 +48,24 @@ namespace RTC
 		else if (!jsonShmIt->is_object())
 			MS_THROW_TYPE_ERROR("wrong shm (not an object) in [%s]", data.dump().c_str());
 
-		// Read shm.name
+        // NOTE: RND-6440 in order to support true multi-tenant environment
+        // we use namespace in shm. not ideal but we use three different
+        // terms for the same thing )-: namespace, clientReferrer and
+        // project id
+
+		// Read shm.clientReferrer, shm.name
+		std::string clientReferrer;
 		std::string shm;
+
+        auto jsonClientReferrerIt = jsonShmIt->find("clientReferrer");
+        if (jsonClientReferrerIt == jsonShmIt->end())
+            MS_THROW_TYPE_ERROR("missing shm.clientReferrer in [%s]", data.dump().c_str());
+        else if (!jsonClientReferrerIt->is_string())
+            MS_THROW_TYPE_ERROR("wrong shm.clientReferrer (not a string) in [%s]", data.dump().c_str());
+
+        clientReferrer.assign(jsonClientReferrerIt->get<std::string>());
+
+
 		auto jsonShmNameIt = jsonShmIt->find("name");
 		if (jsonShmNameIt == jsonShmIt->end())
 			MS_THROW_TYPE_ERROR("missing shm.name in [%s]", data.dump().c_str());
@@ -155,7 +172,15 @@ namespace RTC
 		  /*payloadChannelRequestHandler*/ this,
 		  /*payloadChannelNotificationHandler*/ this);
 
-		this->shmCtx.InitializeShmWriterCtx(shm, queueAge, useReverse, testNack, logname /* + "." + shm + "." + this->id */, loglevel, shmAppData);
+		this->shmCtx.InitializeShmWriterCtx(
+		        clientReferrer,
+		        shm,
+		        queueAge,
+		        useReverse,
+		        testNack,
+		        logname /* + "." + shm + "." + this->id */,
+		        loglevel,
+		        shmAppData);
 
 		this->shmNoConsumeTimer = new Timer(this);
 		this->shmNoConsumeTimer->Start(60000);

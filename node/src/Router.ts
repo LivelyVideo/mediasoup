@@ -23,118 +23,117 @@ import { ShmTransport, ShmTransportOptions } from './ShmTransport';
 import { AppData } from './types';
 
 export type RouterOptions<RouterAppData extends AppData = AppData> =
-{
-	/**
-	 * Router media codecs.
-	 */
-	mediaCodecs?: RtpCodecCapability[];
+	{
+		/**
+		 * Router media codecs.
+		 */
+		mediaCodecs?: RtpCodecCapability[];
 
-	/**
-	 * Custom application data.
-	 */
-	appData?: RouterAppData;
-};
+		/**
+		 * Custom application data.
+		 */
+		appData?: RouterAppData;
+	};
 
 export type PipeToRouterOptions =
-{
-	/**
-	 * The id of the Producer to consume.
-	 */
-	producerId?: string;
+	{
+		/**
+		 * The id of the Producer to consume.
+		 */
+		producerId?: string;
 
-	/**
-	 * The id of the DataProducer to consume.
-	 */
-	dataProducerId?: string;
+		/**
+		 * The id of the DataProducer to consume.
+		 */
+		dataProducerId?: string;
 
-	/**
-	 * Target Router instance.
-	 */
-	router: Router;
+		/**
+		 * Target Router instance.
+		 */
+		router: Router;
 
-	/**
-	 * IP used in the PipeTransport pair. Default '127.0.0.1'.
-	 */
-	listenIp?: TransportListenIp | string;
+		/**
+		 * IP used in the PipeTransport pair. Default '127.0.0.1'.
+		 */
+		listenIp?: TransportListenIp | string;
 
-	/**
-	 * Create a SCTP association. Default true.
-	 */
-	enableSctp?: boolean;
+		/**
+		 * Create a SCTP association. Default true.
+		 */
+		enableSctp?: boolean;
 
-	/**
-	 * SCTP streams number.
-	 */
-	numSctpStreams?: NumSctpStreams;
+		/**
+		 * SCTP streams number.
+		 */
+		numSctpStreams?: NumSctpStreams;
 
-	/**
-	 * Enable RTX and NACK for RTP retransmission.
-	 */
-	enableRtx?: boolean;
+		/**
+		 * Enable RTX and NACK for RTP retransmission.
+		 */
+		enableRtx?: boolean;
 
-	/**
-	 * Enable SRTP.
-	 */
-	enableSrtp?: boolean;
-};
+		/**
+		 * Enable SRTP.
+		 */
+		enableSrtp?: boolean;
+	};
 
 export type PipeToRouterResult =
-{
-	/**
-	 * The Consumer created in the current Router.
-	 */
-	pipeConsumer?: Consumer;
+	{
+		/**
+		 * The Consumer created in the current Router.
+		 */
+		pipeConsumer?: Consumer;
 
-	/**
-	 * The Producer created in the target Router.
-	 */
-	pipeProducer?: Producer;
+		/**
+		 * The Producer created in the target Router.
+		 */
+		pipeProducer?: Producer;
 
-	/**
-	 * The DataConsumer created in the current Router.
-	 */
-	pipeDataConsumer?: DataConsumer;
+		/**
+		 * The DataConsumer created in the current Router.
+		 */
+		pipeDataConsumer?: DataConsumer;
 
-	/**
-	 * The DataProducer created in the target Router.
-	 */
-	pipeDataProducer?: DataProducer;
-};
+		/**
+		 * The DataProducer created in the target Router.
+		 */
+		pipeDataProducer?: DataProducer;
+	};
 
 type PipeTransportPair =
-{
-	[key: string]: PipeTransport;
-};
+	{
+		[key: string]: PipeTransport;
+	};
 
 export type RouterEvents =
-{
-	workerclose: [];
-	// Private events.
-	'@close': [];
-};
+	{
+		workerclose: [];
+		// Private events.
+		'@close': [];
+	};
 
 export type RouterObserverEvents =
-{
-	close: [];
-	newtransport: [Transport];
-	newrtpobserver: [RtpObserver];
-};
+	{
+		close: [];
+		newtransport: [Transport];
+		newrtpobserver: [RtpObserver];
+	};
 
 export type RouterInternal =
-{
-	routerId: string;
-};
+	{
+		routerId: string;
+	};
 
 type RouterData =
-{
-	rtpCapabilities: RtpCapabilities;
-};
+	{
+		rtpCapabilities: RtpCapabilities;
+	};
 
 const logger = new Logger('Router');
 
 export class Router<RouterAppData extends AppData = AppData>
-	extends EnhancedEventEmitter<RouterEvents>
-{
+	extends EnhancedEventEmitter<RouterEvents> {
 	// Internal data.
 	readonly #internal: RouterInternal;
 
@@ -184,15 +183,14 @@ export class Router<RouterAppData extends AppData = AppData>
 			payloadChannel,
 			appData
 		}:
-		{
-			internal: RouterInternal;
-			data: RouterData;
-			channel: Channel;
-			payloadChannel: PayloadChannel;
-			appData?: RouterAppData;
-		}
-	)
-	{
+			{
+				internal: RouterInternal;
+				data: RouterData;
+				channel: Channel;
+				payloadChannel: PayloadChannel;
+				appData?: RouterAppData;
+			}
+	) {
 		super();
 
 		logger.debug('constructor()');
@@ -207,48 +205,42 @@ export class Router<RouterAppData extends AppData = AppData>
 	/**
 	 * Router id.
 	 */
-	get id(): string
-	{
+	get id(): string {
 		return this.#internal.routerId;
 	}
 
 	/**
 	 * Whether the Router is closed.
 	 */
-	get closed(): boolean
-	{
+	get closed(): boolean {
 		return this.#closed;
 	}
 
 	/**
 	 * RTP capabilities of the Router.
 	 */
-	get rtpCapabilities(): RtpCapabilities
-	{
+	get rtpCapabilities(): RtpCapabilities {
 		return this.#data.rtpCapabilities;
 	}
 
 	/**
 	 * App custom data.
 	 */
-	get appData(): RouterAppData
-	{
+	get appData(): RouterAppData {
 		return this.#appData;
 	}
 
 	/**
 	 * App custom data setter.
 	 */
-	set appData(appData: RouterAppData)
-	{
+	set appData(appData: RouterAppData) {
 		this.#appData = appData;
 	}
 
 	/**
 	 * Observer.
 	 */
-	get observer(): EnhancedEventEmitter<RouterObserverEvents>
-	{
+	get observer(): EnhancedEventEmitter<RouterObserverEvents> {
 		return this.#observer;
 	}
 
@@ -256,18 +248,15 @@ export class Router<RouterAppData extends AppData = AppData>
 	 * @private
 	 * Just for testing purposes.
 	 */
-	get transportsForTesting(): Map<string, Transport>
-	{
+	get transportsForTesting(): Map<string, Transport> {
 		return this.#transports;
 	}
 
 	/**
 	 * Close the Router.
 	 */
-	close(): void
-	{
-		if (this.#closed)
-		{
+	close(): void {
+		if (this.#closed) {
 			return;
 		}
 
@@ -278,11 +267,10 @@ export class Router<RouterAppData extends AppData = AppData>
 		const reqData = { routerId: this.#internal.routerId };
 
 		this.#channel.request('worker.closeRouter', undefined, reqData)
-			.catch(() => {});
+			.catch(() => { });
 
 		// Close every Transport.
-		for (const transport of this.#transports.values())
-		{
+		for (const transport of this.#transports.values()) {
 			transport.routerClosed();
 		}
 		this.#transports.clear();
@@ -291,8 +279,7 @@ export class Router<RouterAppData extends AppData = AppData>
 		this.#producers.clear();
 
 		// Close every RtpObserver.
-		for (const rtpObserver of this.#rtpObservers.values())
-		{
+		for (const rtpObserver of this.#rtpObservers.values()) {
 			rtpObserver.routerClosed();
 		}
 		this.#rtpObservers.clear();
@@ -311,10 +298,8 @@ export class Router<RouterAppData extends AppData = AppData>
 	 *
 	 * @private
 	 */
-	workerClosed(): void
-	{
-		if (this.#closed)
-		{
+	workerClosed(): void {
+		if (this.#closed) {
 			return;
 		}
 
@@ -323,8 +308,7 @@ export class Router<RouterAppData extends AppData = AppData>
 		this.#closed = true;
 
 		// Close every Transport.
-		for (const transport of this.#transports.values())
-		{
+		for (const transport of this.#transports.values()) {
 			transport.routerClosed();
 		}
 		this.#transports.clear();
@@ -333,8 +317,7 @@ export class Router<RouterAppData extends AppData = AppData>
 		this.#producers.clear();
 
 		// Close every RtpObserver.
-		for (const rtpObserver of this.#rtpObservers.values())
-		{
+		for (const rtpObserver of this.#rtpObservers.values()) {
 			rtpObserver.routerClosed();
 		}
 		this.#rtpObservers.clear();
@@ -351,8 +334,7 @@ export class Router<RouterAppData extends AppData = AppData>
 	/**
 	 * Dump Router.
 	 */
-	async dump(): Promise<any>
-	{
+	async dump(): Promise<any> {
 		logger.debug('dump()');
 
 		return this.#channel.request('router.dump', this.#internal.routerId);
@@ -377,36 +359,28 @@ export class Router<RouterAppData extends AppData = AppData>
 			sctpSendBufferSize = 262144,
 			appData
 		}: WebRtcTransportOptions<WebRtcTransportAppData>
-	): Promise<WebRtcTransport<WebRtcTransportAppData>>
-	{
+	): Promise<WebRtcTransport<WebRtcTransportAppData>> {
 		logger.debug('createWebRtcTransport()');
 
-		if (!webRtcServer && !Array.isArray(listenIps))
-		{
+		if (!webRtcServer && !Array.isArray(listenIps)) {
 			throw new TypeError('missing webRtcServer and listenIps (one of them is mandatory)');
 		}
-		else if (appData && typeof appData !== 'object')
-		{
+		else if (appData && typeof appData !== 'object') {
 			throw new TypeError('if given, appData must be an object');
 		}
 
-		if (listenIps)
-		{
-			listenIps = listenIps.map((listenIp) =>
-			{
-				if (typeof listenIp === 'string' && listenIp)
-				{
+		if (listenIps) {
+			listenIps = listenIps.map((listenIp) => {
+				if (typeof listenIp === 'string' && listenIp) {
 					return { ip: listenIp };
 				}
-				else if (typeof listenIp === 'object')
-				{
+				else if (typeof listenIp === 'object') {
 					return {
-						ip          : listenIp.ip,
-						announcedIp : listenIp.announcedIp || undefined
+						ip: listenIp.ip,
+						announcedIp: listenIp.announcedIp || undefined
 					};
 				}
-				else
-				{
+				else {
 					throw new TypeError('wrong listenIp');
 				}
 			});
@@ -414,8 +388,8 @@ export class Router<RouterAppData extends AppData = AppData>
 
 		const reqData =
 		{
-			transportId    : uuidv4(),
-			webRtcServerId : webRtcServer ? webRtcServer.id : undefined,
+			transportId: uuidv4(),
+			webRtcServerId: webRtcServer ? webRtcServer.id : undefined,
 			listenIps,
 			port,
 			enableUdp,
@@ -428,7 +402,7 @@ export class Router<RouterAppData extends AppData = AppData>
 			maxSctpMessageSize,
 			sctpSendBufferSize,
 			appData,
-			isDataChannel  : true
+			isDataChannel: true
 		};
 
 		const data = webRtcServer
@@ -437,20 +411,20 @@ export class Router<RouterAppData extends AppData = AppData>
 
 		const transport = new WebRtcTransport<WebRtcTransportAppData>(
 			{
-				internal :
+				internal:
 				{
 					...this.#internal,
-					transportId : reqData.transportId
+					transportId: reqData.transportId
 				},
 				data,
-				channel                  : this.#channel,
-				payloadChannel           : this.#payloadChannel,
+				channel: this.#channel,
+				payloadChannel: this.#payloadChannel,
 				appData,
-				getRouterRtpCapabilities : (): RtpCapabilities => this.#data.rtpCapabilities,
-				getProducerById          : (producerId: string): Producer | undefined => (
+				getRouterRtpCapabilities: (): RtpCapabilities => this.#data.rtpCapabilities,
+				getProducerById: (producerId: string): Producer | undefined => (
 					this.#producers.get(producerId)
 				),
-				getDataProducerById : (dataProducerId: string): DataProducer | undefined => (
+				getDataProducerById: (dataProducerId: string): DataProducer | undefined => (
 					this.#dataProducers.get(dataProducerId)
 				)
 			});
@@ -470,8 +444,7 @@ export class Router<RouterAppData extends AppData = AppData>
 		// Emit observer event.
 		this.#observer.safeEmit('newtransport', transport);
 
-		if (webRtcServer)
-		{
+		if (webRtcServer) {
 			webRtcServer.handleWebRtcTransport(transport);
 		}
 
@@ -496,39 +469,33 @@ export class Router<RouterAppData extends AppData = AppData>
 			srtpCryptoSuite = 'AES_CM_128_HMAC_SHA1_80',
 			appData
 		}: PlainTransportOptions<PlainTransportAppData>
-	): Promise<PlainTransport<PlainTransportAppData>>
-	{
+	): Promise<PlainTransport<PlainTransportAppData>> {
 		logger.debug('createPlainTransport()');
 
-		if (!listenIp)
-		{
+		if (!listenIp) {
 			throw new TypeError('missing listenIp');
 		}
-		else if (appData && typeof appData !== 'object')
-		{
+		else if (appData && typeof appData !== 'object') {
 			throw new TypeError('if given, appData must be an object');
 		}
 
-		if (typeof listenIp === 'string' && listenIp)
-		{
+		if (typeof listenIp === 'string' && listenIp) {
 			listenIp = { ip: listenIp };
 		}
-		else if (typeof listenIp === 'object')
-		{
+		else if (typeof listenIp === 'object') {
 			listenIp =
 			{
-				ip          : listenIp.ip,
-				announcedIp : listenIp.announcedIp || undefined
+				ip: listenIp.ip,
+				announcedIp: listenIp.announcedIp || undefined
 			};
 		}
-		else
-		{
+		else {
 			throw new TypeError('wrong listenIp');
 		}
 
 		const reqData =
 		{
-			transportId   : uuidv4(),
+			transportId: uuidv4(),
 			listenIp,
 			port,
 			rtcpMux,
@@ -538,7 +505,7 @@ export class Router<RouterAppData extends AppData = AppData>
 			numSctpStreams,
 			maxSctpMessageSize,
 			sctpSendBufferSize,
-			isDataChannel : false,
+			isDataChannel: false,
 			enableSrtp,
 			srtpCryptoSuite,
 			appData,
@@ -549,20 +516,20 @@ export class Router<RouterAppData extends AppData = AppData>
 
 		const transport = new PlainTransport<PlainTransportAppData>(
 			{
-				internal :
+				internal:
 				{
 					...this.#internal,
-					transportId : reqData.transportId
+					transportId: reqData.transportId
 				},
 				data,
-				channel                  : this.#channel,
-				payloadChannel           : this.#payloadChannel,
+				channel: this.#channel,
+				payloadChannel: this.#payloadChannel,
 				appData,
-				getRouterRtpCapabilities : (): RtpCapabilities => this.#data.rtpCapabilities,
-				getProducerById          : (producerId: string): Producer | undefined => (
+				getRouterRtpCapabilities: (): RtpCapabilities => this.#data.rtpCapabilities,
+				getProducerById: (producerId: string): Producer | undefined => (
 					this.#producers.get(producerId)
 				),
-				getDataProducerById : (dataProducerId: string): DataProducer | undefined => (
+				getDataProducerById: (dataProducerId: string): DataProducer | undefined => (
 					this.#dataProducers.get(dataProducerId)
 				)
 			});
@@ -601,39 +568,33 @@ export class Router<RouterAppData extends AppData = AppData>
 			enableSrtp = false,
 			appData
 		}: PipeTransportOptions<PipeTransportAppData>
-	): Promise<PipeTransport<PipeTransportAppData>>
-	{
+	): Promise<PipeTransport<PipeTransportAppData>> {
 		logger.debug('createPipeTransport() listenIp:[%o] enableRtx:[%o] appData:[%o]', listenIp, enableRtx, appData);
 
-		if (!listenIp)
-		{
+		if (!listenIp) {
 			throw new TypeError('missing listenIp');
 		}
-		else if (appData && typeof appData !== 'object')
-		{
+		else if (appData && typeof appData !== 'object') {
 			throw new TypeError('if given, appData must be an object');
 		}
 
-		if (typeof listenIp === 'string' && listenIp)
-		{
+		if (typeof listenIp === 'string' && listenIp) {
 			listenIp = { ip: listenIp };
 		}
-		else if (typeof listenIp === 'object')
-		{
+		else if (typeof listenIp === 'object') {
 			listenIp =
 			{
-				ip          : listenIp.ip,
-				announcedIp : listenIp.announcedIp || undefined
+				ip: listenIp.ip,
+				announcedIp: listenIp.announcedIp || undefined
 			};
 		}
-		else
-		{
+		else {
 			throw new TypeError('wrong listenIp');
 		}
 
 		const reqData =
 		{
-			transportId   : uuidv4(),
+			transportId: uuidv4(),
 			listenIp,
 			disableOriginCheck,
 			port,
@@ -641,7 +602,7 @@ export class Router<RouterAppData extends AppData = AppData>
 			numSctpStreams,
 			maxSctpMessageSize,
 			sctpSendBufferSize,
-			isDataChannel : false,
+			isDataChannel: false,
 			enableRtx,
 			enableSrtp,
 			appData,
@@ -652,20 +613,20 @@ export class Router<RouterAppData extends AppData = AppData>
 
 		const transport = new PipeTransport<PipeTransportAppData>(
 			{
-				internal :
+				internal:
 				{
 					...this.#internal,
-					transportId : reqData.transportId
+					transportId: reqData.transportId
 				},
 				data,
-				channel                  : this.#channel,
-				payloadChannel           : this.#payloadChannel,
+				channel: this.#channel,
+				payloadChannel: this.#payloadChannel,
 				appData,
-				getRouterRtpCapabilities : (): RtpCapabilities => this.#data.rtpCapabilities,
-				getProducerById          : (producerId: string): Producer | undefined => (
+				getRouterRtpCapabilities: (): RtpCapabilities => this.#data.rtpCapabilities,
+				getProducerById: (producerId: string): Producer | undefined => (
 					this.#producers.get(producerId)
 				),
-				getDataProducerById : (dataProducerId: string): DataProducer | undefined => (
+				getDataProducerById: (dataProducerId: string): DataProducer | undefined => (
 					this.#dataProducers.get(dataProducerId)
 				)
 			});
@@ -696,18 +657,17 @@ export class Router<RouterAppData extends AppData = AppData>
 			maxMessageSize = 262144,
 			appData
 		}: DirectTransportOptions<DirectTransportAppData> =
-		{
-			maxMessageSize : 262144
-		}
-	): Promise<DirectTransport<DirectTransportAppData>>
-	{
+			{
+				maxMessageSize: 262144
+			}
+	): Promise<DirectTransport<DirectTransportAppData>> {
 		logger.debug('createDirectTransport()');
 
 		const internal = { ...this.#internal, transportId: uuidv4() };
 		const reqData =
 		{
-			transportId : uuidv4(),
-			direct      : true,
+			transportId: uuidv4(),
+			direct: true,
 			maxMessageSize,
 			appData,
 		};
@@ -717,20 +677,20 @@ export class Router<RouterAppData extends AppData = AppData>
 
 		const transport = new DirectTransport<DirectTransportAppData>(
 			{
-				internal :
+				internal:
 				{
 					...this.#internal,
-					transportId : reqData.transportId
+					transportId: reqData.transportId
 				},
 				data,
-				channel                  : this.#channel,
-				payloadChannel           : this.#payloadChannel,
+				channel: this.#channel,
+				payloadChannel: this.#payloadChannel,
 				appData,
-				getRouterRtpCapabilities : (): RtpCapabilities => this.#data.rtpCapabilities,
-				getProducerById          : (producerId: string): Producer | undefined => (
+				getRouterRtpCapabilities: (): RtpCapabilities => this.#data.rtpCapabilities,
+				getProducerById: (producerId: string): Producer | undefined => (
 					this.#producers.get(producerId)
 				),
-				getDataProducerById : (dataProducerId: string): DataProducer | undefined => (
+				getDataProducerById: (dataProducerId: string): DataProducer | undefined => (
 					this.#dataProducers.get(dataProducerId)
 				)
 			});
@@ -770,9 +730,8 @@ export class Router<RouterAppData extends AppData = AppData>
 			shm,
 			log,
 			appData,
-		} : ShmTransportOptions
-	): Promise<ShmTransport>
-	{
+		}: ShmTransportOptions
+	): Promise<ShmTransport> {
 		logger.debug('createShmTransport() [shm:%o]', shm);
 
 		if (!listenIp)
@@ -780,27 +739,24 @@ export class Router<RouterAppData extends AppData = AppData>
 		else if (appData && typeof appData !== 'object')
 			throw new TypeError('if given, appData must be an object');
 
-		if (typeof listenIp === 'string')
-		{
+		if (typeof listenIp === 'string') {
 			listenIp = { ip: listenIp };
 		}
-		else if (typeof listenIp === 'object')
-		{
+		else if (typeof listenIp === 'object') {
 			listenIp =
 			{
-				ip          : listenIp.ip,
-				announcedIp : listenIp.announcedIp || undefined
+				ip: listenIp.ip,
+				announcedIp: listenIp.announcedIp || undefined
 			};
 		}
-		else
-		{
+		else {
 			throw new TypeError('wrong listenIp');
 		}
 
 		const transportId = uuidv4()
 		const internal = { ...this.#internal, transportId: transportId };
 		const reqData = {
-			transportId : transportId,
+			transportId: transportId,
 			listenIp,
 			shm,
 			log,
@@ -811,6 +767,7 @@ export class Router<RouterAppData extends AppData = AppData>
 		data = {
 			...,
 			shm: {
+				clientReferrer: "...",
 				name: "...",
 				queueAge: ...,
 				...
@@ -821,30 +778,28 @@ export class Router<RouterAppData extends AppData = AppData>
 		const data =
 			await this.#channel.request('router.createShmTransport', this.#internal.routerId, reqData);
 
-		if (data.shm === undefined || typeof data.shm !== 'object' 
-				|| data.shm.name === undefined || typeof data.shm.name !== 'string')
-		{
+		if (data.shm === undefined || typeof data.shm !== 'object'
+			|| data.shm.name === undefined || typeof data.shm.name !== 'string') {
 			logger.error('cannot create ShmTransport object with data:%o', data);
 			throw new Error('cannot create ShmTransport object');
 		}
-		else
-		{
+		else {
 			logger.debug('router.createShmTransport returned data: %o', data);
 		}
-			
+
 		const transport = new ShmTransport(
-				{
-					internal,
-					data,
-					channel                  : this.#channel,
-					payloadChannel           : this.#payloadChannel,
-					appData,
-					getRouterRtpCapabilities : () => this.#data.rtpCapabilities,
-					getProducerById          : (producerId: string) => this.#producers.get(producerId),
-					getDataProducerById      : (dataProducerId: string) => (
-						this.#dataProducers.get(dataProducerId)
-					)
-				});
+			{
+				internal,
+				data,
+				channel: this.#channel,
+				payloadChannel: this.#payloadChannel,
+				appData,
+				getRouterRtpCapabilities: () => this.#data.rtpCapabilities,
+				getProducerById: (producerId: string) => this.#producers.get(producerId),
+				getDataProducerById: (dataProducerId: string) => (
+					this.#dataProducers.get(dataProducerId)
+				)
+			});
 
 
 		this.#transports.set(transport.id, transport);
@@ -878,45 +833,36 @@ export class Router<RouterAppData extends AppData = AppData>
 			enableRtx = false,
 			enableSrtp = false
 		}: PipeToRouterOptions
-	): Promise<PipeToRouterResult>
-	{
+	): Promise<PipeToRouterResult> {
 		logger.debug('pipeToRouter()');
 
-		if (!producerId && !dataProducerId)
-		{
+		if (!producerId && !dataProducerId) {
 			throw new TypeError('missing producerId or dataProducerId');
 		}
-		else if (producerId && dataProducerId)
-		{
+		else if (producerId && dataProducerId) {
 			throw new TypeError('just producerId or dataProducerId can be given');
 		}
-		else if (!router)
-		{
+		else if (!router) {
 			throw new TypeError('Router not found');
 		}
-		else if (router === this)
-		{
+		else if (router === this) {
 			throw new TypeError('cannot use this Router as destination');
 		}
 
 		let producer: Producer | undefined;
 		let dataProducer: DataProducer | undefined;
 
-		if (producerId)
-		{
+		if (producerId) {
 			producer = this.#producers.get(producerId);
 
-			if (!producer)
-			{
+			if (!producer) {
 				throw new TypeError('Producer not found');
 			}
 		}
-		else if (dataProducerId)
-		{
+		else if (dataProducerId) {
 			dataProducer = this.#dataProducers.get(dataProducerId);
 
-			if (!dataProducer)
-			{
+			if (!dataProducer) {
 				throw new TypeError('DataProducer not found');
 			}
 		}
@@ -928,16 +874,13 @@ export class Router<RouterAppData extends AppData = AppData>
 		let localPipeTransport: PipeTransport;
 		let remotePipeTransport: PipeTransport;
 
-		if (pipeTransportPairPromise)
-		{
+		if (pipeTransportPairPromise) {
 			pipeTransportPair = await pipeTransportPairPromise;
 			localPipeTransport = pipeTransportPair[this.id];
 			remotePipeTransport = pipeTransportPair[router.id];
 		}
-		else
-		{
-			pipeTransportPairPromise = new Promise((resolve, reject) =>
-			{
+		else {
+			pipeTransportPairPromise = new Promise((resolve, reject) => {
 				Promise.all(
 					[
 						this.createPipeTransport(
@@ -945,40 +888,35 @@ export class Router<RouterAppData extends AppData = AppData>
 						router.createPipeTransport(
 							{ listenIp, enableSctp, numSctpStreams, enableRtx, enableSrtp })
 					])
-					.then((pipeTransports) =>
-					{
+					.then((pipeTransports) => {
 						localPipeTransport = pipeTransports[0];
 						remotePipeTransport = pipeTransports[1];
 					})
-					.then(() =>
-					{
+					.then(() => {
 						return Promise.all(
 							[
 								localPipeTransport.connect(
 									{
-										ip             : remotePipeTransport.tuple.localIp,
-										port           : remotePipeTransport.tuple.localPort,
-										srtpParameters : remotePipeTransport.srtpParameters
+										ip: remotePipeTransport.tuple.localIp,
+										port: remotePipeTransport.tuple.localPort,
+										srtpParameters: remotePipeTransport.srtpParameters
 									}),
 								remotePipeTransport.connect(
 									{
-										ip             : localPipeTransport.tuple.localIp,
-										port           : localPipeTransport.tuple.localPort,
-										srtpParameters : localPipeTransport.srtpParameters
+										ip: localPipeTransport.tuple.localIp,
+										port: localPipeTransport.tuple.localPort,
+										srtpParameters: localPipeTransport.srtpParameters
 									})
 							]);
 					})
-					.then(() =>
-					{
-						localPipeTransport.observer.on('close', () =>
-						{
+					.then(() => {
+						localPipeTransport.observer.on('close', () => {
 							remotePipeTransport.close();
 							this.#mapRouterPairPipeTransportPairPromise.delete(
 								pipeTransportPairKey);
 						});
 
-						remotePipeTransport.observer.on('close', () =>
-						{
+						remotePipeTransport.observer.on('close', () => {
 							localPipeTransport.close();
 							this.#mapRouterPairPipeTransportPairPromise.delete(
 								pipeTransportPairKey);
@@ -986,23 +924,20 @@ export class Router<RouterAppData extends AppData = AppData>
 
 						resolve(
 							{
-								[this.id]   : localPipeTransport,
-								[router.id] : remotePipeTransport
+								[this.id]: localPipeTransport,
+								[router.id]: remotePipeTransport
 							});
 					})
-					.catch((error) =>
-					{
+					.catch((error) => {
 						logger.error(
 							'pipeToRouter() | error creating PipeTransport pair:%o',
 							error);
 
-						if (localPipeTransport)
-						{
+						if (localPipeTransport) {
 							localPipeTransport.close();
 						}
 
-						if (remotePipeTransport)
-						{
+						if (remotePipeTransport) {
 							remotePipeTransport.close();
 						}
 
@@ -1018,43 +953,37 @@ export class Router<RouterAppData extends AppData = AppData>
 			await pipeTransportPairPromise;
 		}
 
-		if (producer)
-		{
+		if (producer) {
 			let pipeConsumer: Consumer | undefined;
 			let pipeProducer: Producer | undefined;
 
-			try
-			{
+			try {
 				pipeConsumer = await localPipeTransport!.consume(
 					{
-						producerId : producerId!
+						producerId: producerId!
 					});
 
 				pipeProducer = await remotePipeTransport!.produce(
 					{
-						id            : producer.id,
-						kind          : pipeConsumer!.kind,
-						rtpParameters : pipeConsumer!.rtpParameters,
-						paused        : pipeConsumer!.producerPaused,
-						appData       : producer.appData
+						id: producer.id,
+						kind: pipeConsumer!.kind,
+						rtpParameters: pipeConsumer!.rtpParameters,
+						paused: pipeConsumer!.producerPaused,
+						appData: producer.appData
 					});
 
 				// Ensure that the producer has not been closed in the meanwhile.
-				if (producer.closed)
-				{
+				if (producer.closed) {
 					throw new InvalidStateError('original Producer closed');
 				}
 
 				// Ensure that producer.paused has not changed in the meanwhile and, if
 				// so, sync the pipeProducer.
-				if (pipeProducer.paused !== producer.paused)
-				{
-					if (producer.paused)
-					{
+				if (pipeProducer.paused !== producer.paused) {
+					if (producer.paused) {
 						await pipeProducer.pause();
 					}
-					else
-					{
+					else {
 						await pipeProducer.resume();
 					}
 				}
@@ -1069,49 +998,43 @@ export class Router<RouterAppData extends AppData = AppData>
 
 				return { pipeConsumer, pipeProducer };
 			}
-			catch (error)
-			{
+			catch (error) {
 				logger.error(
 					'pipeToRouter() | error creating pipe Consumer/Producer pair:%o',
 					error);
 
-				if (pipeConsumer)
-				{
+				if (pipeConsumer) {
 					pipeConsumer.close();
 				}
 
-				if (pipeProducer)
-				{
+				if (pipeProducer) {
 					pipeProducer.close();
 				}
 
 				throw error;
 			}
 		}
-		else if (dataProducer)
-		{
+		else if (dataProducer) {
 			let pipeDataConsumer: DataConsumer | undefined;
 			let pipeDataProducer: DataProducer | undefined;
 
-			try
-			{
+			try {
 				pipeDataConsumer = await localPipeTransport!.consumeData(
 					{
-						dataProducerId : dataProducerId!
+						dataProducerId: dataProducerId!
 					});
 
 				pipeDataProducer = await remotePipeTransport!.produceData(
 					{
-						id                   : dataProducer.id,
-						sctpStreamParameters : pipeDataConsumer!.sctpStreamParameters,
-						label                : pipeDataConsumer!.label,
-						protocol             : pipeDataConsumer!.protocol,
-						appData              : dataProducer.appData
+						id: dataProducer.id,
+						sctpStreamParameters: pipeDataConsumer!.sctpStreamParameters,
+						label: pipeDataConsumer!.label,
+						protocol: pipeDataConsumer!.protocol,
+						appData: dataProducer.appData
 					});
 
 				// Ensure that the dataProducer has not been closed in the meanwhile.
-				if (dataProducer.closed)
-				{
+				if (dataProducer.closed) {
 					throw new InvalidStateError('original DataProducer closed');
 				}
 
@@ -1123,27 +1046,23 @@ export class Router<RouterAppData extends AppData = AppData>
 
 				return { pipeDataConsumer, pipeDataProducer };
 			}
-			catch (error)
-			{
+			catch (error) {
 				logger.error(
 					'pipeToRouter() | error creating pipe DataConsumer/DataProducer pair:%o',
 					error);
 
-				if (pipeDataConsumer)
-				{
+				if (pipeDataConsumer) {
 					pipeDataConsumer.close();
 				}
 
-				if (pipeDataProducer)
-				{
+				if (pipeDataProducer) {
 					pipeDataProducer.close();
 				}
 
 				throw error;
 			}
 		}
-		else
-		{
+		else {
 			throw new Error('internal error');
 		}
 	}
@@ -1154,10 +1073,8 @@ export class Router<RouterAppData extends AppData = AppData>
 	addPipeTransportPair(
 		pipeTransportPairKey: string,
 		pipeTransportPairPromise: Promise<PipeTransportPair>
-	): void
-	{
-		if (this.#mapRouterPairPipeTransportPairPromise.has(pipeTransportPairKey))
-		{
+	): void {
+		if (this.#mapRouterPairPipeTransportPairPromise.has(pipeTransportPairKey)) {
 			throw new Error(
 				'given pipeTransportPairKey already exists in this Router');
 		}
@@ -1166,20 +1083,17 @@ export class Router<RouterAppData extends AppData = AppData>
 			pipeTransportPairKey, pipeTransportPairPromise);
 
 		pipeTransportPairPromise
-			.then((pipeTransportPair) =>
-			{
+			.then((pipeTransportPair) => {
 				const localPipeTransport = pipeTransportPair[this.id];
 
 				// NOTE: No need to do any other cleanup here since that is done by the
 				// Router calling this method on us.
-				localPipeTransport.observer.on('close', () =>
-				{
+				localPipeTransport.observer.on('close', () => {
 					this.#mapRouterPairPipeTransportPairPromise.delete(
 						pipeTransportPairKey);
 				});
 			})
-			.catch(() =>
-			{
+			.catch(() => {
 				this.#mapRouterPairPipeTransportPairPromise.delete(
 					pipeTransportPairKey);
 			});
@@ -1193,18 +1107,16 @@ export class Router<RouterAppData extends AppData = AppData>
 			interval = 300,
 			appData
 		}: ActiveSpeakerObserverOptions<ActiveSpeakerObserverAppData> = {}
-	): Promise<ActiveSpeakerObserver<ActiveSpeakerObserverAppData>>
-	{
+	): Promise<ActiveSpeakerObserver<ActiveSpeakerObserverAppData>> {
 		logger.debug('createActiveSpeakerObserver()');
 
-		if (appData && typeof appData !== 'object')
-		{
+		if (appData && typeof appData !== 'object') {
 			throw new TypeError('if given, appData must be an object');
 		}
 
 		const reqData =
 		{
-			rtpObserverId : uuidv4(),
+			rtpObserverId: uuidv4(),
 			interval
 		};
 
@@ -1212,22 +1124,21 @@ export class Router<RouterAppData extends AppData = AppData>
 
 		const activeSpeakerObserver = new ActiveSpeakerObserver<ActiveSpeakerObserverAppData>(
 			{
-				internal :
+				internal:
 				{
 					...this.#internal,
-					rtpObserverId : reqData.rtpObserverId
+					rtpObserverId: reqData.rtpObserverId
 				},
-				channel         : this.#channel,
-				payloadChannel  : this.#payloadChannel,
+				channel: this.#channel,
+				payloadChannel: this.#payloadChannel,
 				appData,
-				getProducerById : (producerId: string): Producer | undefined => (
+				getProducerById: (producerId: string): Producer | undefined => (
 					this.#producers.get(producerId)
 				)
 			});
 
 		this.#rtpObservers.set(activeSpeakerObserver.id, activeSpeakerObserver);
-		activeSpeakerObserver.on('@close', () =>
-		{
+		activeSpeakerObserver.on('@close', () => {
 			this.#rtpObservers.delete(activeSpeakerObserver.id);
 		});
 
@@ -1247,18 +1158,16 @@ export class Router<RouterAppData extends AppData = AppData>
 			interval = 1000,
 			appData
 		}: AudioLevelObserverOptions<AudioLevelObserverAppData> = {}
-	): Promise<AudioLevelObserver<AudioLevelObserverAppData>>
-	{
+	): Promise<AudioLevelObserver<AudioLevelObserverAppData>> {
 		logger.debug('createAudioLevelObserver()');
 
-		if (appData && typeof appData !== 'object')
-		{
+		if (appData && typeof appData !== 'object') {
 			throw new TypeError('if given, appData must be an object');
 		}
 
 		const reqData =
 		{
-			rtpObserverId : uuidv4(),
+			rtpObserverId: uuidv4(),
 			maxEntries,
 			threshold,
 			interval
@@ -1268,22 +1177,21 @@ export class Router<RouterAppData extends AppData = AppData>
 
 		const audioLevelObserver = new AudioLevelObserver<AudioLevelObserverAppData>(
 			{
-				internal :
+				internal:
 				{
 					...this.#internal,
-					rtpObserverId : reqData.rtpObserverId
+					rtpObserverId: reqData.rtpObserverId
 				},
-				channel         : this.#channel,
-				payloadChannel  : this.#payloadChannel,
+				channel: this.#channel,
+				payloadChannel: this.#payloadChannel,
 				appData,
-				getProducerById : (producerId: string): Producer | undefined => (
+				getProducerById: (producerId: string): Producer | undefined => (
 					this.#producers.get(producerId)
 				)
 			});
 
 		this.#rtpObservers.set(audioLevelObserver.id, audioLevelObserver);
-		audioLevelObserver.on('@close', () =>
-		{
+		audioLevelObserver.on('@close', () => {
 			this.#rtpObservers.delete(audioLevelObserver.id);
 		});
 
@@ -1301,28 +1209,24 @@ export class Router<RouterAppData extends AppData = AppData>
 			producerId,
 			rtpCapabilities
 		}:
-		{
-			producerId: string;
-			rtpCapabilities: RtpCapabilities;
-		}
-	): boolean
-	{
+			{
+				producerId: string;
+				rtpCapabilities: RtpCapabilities;
+			}
+	): boolean {
 		const producer = this.#producers.get(producerId);
 
-		if (!producer)
-		{
+		if (!producer) {
 			logger.error(
 				'canConsume() | Producer with id "%s" not found', producerId);
 
 			return false;
 		}
 
-		try
-		{
+		try {
 			return ortc.canConsume(producer.consumableRtpParameters, rtpCapabilities);
 		}
-		catch (error)
-		{
+		catch (error) {
 			logger.error('canConsume() | unexpected error: %s', String(error));
 
 			return false;
