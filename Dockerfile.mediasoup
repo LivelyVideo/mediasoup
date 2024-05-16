@@ -29,6 +29,9 @@ RUN if [ "$XCODE2_BUILD" = "true" ]; then \
   mv ${MS_BUILD}/worker/meson.build.notranscode ${MS_BUILD}/worker/meson.build; \
   fi
 
+ARG MEDIASOUP_BUILDTYPE_ARG=Release
+ENV MEDIASOUP_BUILDTYPE=${MEDIASOUP_BUILDTYPE_ARG}
+
 RUN \
   cd ${MS_BUILD} && \
   npm install && \
