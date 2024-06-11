@@ -98,26 +98,32 @@ namespace RTC
 	{
 		MS_TRACE();
 		
-		if (Settings::configuration.logBinStatsDisabled)
-			return;
+		// modified by Amir Pauker on 06/11/2024 as part of the
+		// Saas project. The pipe between SFU and transcode should
+		// not generate binary logs since otherwise they are
+		// counted toward the project billing invoice
+		return;
 
-		if (this->rtpStreams.size() != 1)
-		{
-			MS_WARN_TAG_LIVELYAPP(rtp, this->appData, "found %zu streams in %s, skipping bin stats", this->rtpStreams.size(), this->id.c_str());
-			return;
-		}
-
-		for (auto* rtpStream : this->rtpStreams)
-		{
-			if (!rtpStream)
-				continue;
-
-			Lively::CallStatsRecordCtx* ctx = this->rtpStreamBinLogRecords.at(rtpStream);
-			if (!ctx)
-				continue;
-
-			ctx->AddStatsRecord(log, rtpStream, IsActive());
-		}
+//		if (Settings::configuration.logBinStatsDisabled)
+//			return;
+//
+//		if (this->rtpStreams.size() != 1)
+//		{
+//			MS_WARN_TAG_LIVELYAPP(rtp, this->appData, "found %zu streams in %s, skipping bin stats", this->rtpStreams.size(), this->id.c_str());
+//			return;
+//		}
+//
+//		for (auto* rtpStream : this->rtpStreams)
+//		{
+//			if (!rtpStream)
+//				continue;
+//
+//			Lively::CallStatsRecordCtx* ctx = this->rtpStreamBinLogRecords.at(rtpStream);
+//			if (!ctx)
+//				continue;
+//
+//			ctx->AddStatsRecord(log, rtpStream, IsActive());
+//		}
 	}
 
 	void PipeConsumer::FillJsonScore(json& jsonObject) const
