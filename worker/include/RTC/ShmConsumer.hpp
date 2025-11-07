@@ -2,12 +2,14 @@
 #define MS_RTC_SHM_CONSUMER_HPP
 
 #include <nlohmann/json.hpp>
+#include "FBS/transport.h"
 #include "DepLibSfuShm.hpp"
+#include "LivelyBinLogs.hpp"
 #include "RTC/Consumer.hpp"
 #include "RTC/RtpStreamSend.hpp"
 #include "RTC/SeqManager.hpp"
 #include "RTC/RateCalculator.hpp"
-#include "handles/Timer.hpp"
+#include "handles/TimerHandle.hpp"
 
 using json = nlohmann::json;
 
@@ -45,16 +47,14 @@ namespace RTC
 	class ShmConsumer : public RTC::Consumer,
 											public RTC::RtpStreamSend::Listener,
 											public DepLibSfuShm::ShmCtx::Listener,
-											public Timer::Listener
+											public TimerHandle::Listener
 	{
 	public:
-		ShmConsumer(RTC::Shared* shared, const std::string& id, const std::string& producerId, RTC::Consumer::Listener* listener, json& data, DepLibSfuShm::ShmCtx *shmCtx);
+		ShmConsumer(RTC::Shared* shared, const std::string& id, const std::string& producerId, RTC::Consumer::Listener* listener, const FBS::Transport::ConsumeRequest* data, DepLibSfuShm::ShmCtx *shmCtx, Lively::AppData* appData = nullptr);
 		~ShmConsumer() override;
 
 	public:
-		void FillJson(json& jsonObject) const override;
-		void FillJsonStats(json& jsonArray) const override;
-		void FillJsonScore(json& jsonObject) const override;
+		flatbuffers::Offset<FBS::Consumer::GetStatsResponse> FillBufferStats(flatbuffers::FlatBufferBuilder& builder) override;
 		void HandleRequest(Channel::ChannelRequest* request) override;
 		bool IsActive() const override;
 		void ProducerRtpStream(RTC::RtpStreamRecv* rtpStream, uint32_t mappedSsrc) override;
@@ -66,7 +66,7 @@ namespace RTC
 		void ApplyLayers() override;
 		uint32_t GetDesiredBitrate() const override;
 
-		void SendRtpPacket(RTC::RtpPacket* packet, std::shared_ptr<RTC::RtpPacket>& sharedPacket) override;
+		void SendRtpPacket(RTC::RtpPacket* packet, RTC::SharedRtpPacket& sharedPacket) override;
 		bool GetRtcp(RTC::RTCP::CompoundPacket* packet, uint64_t now) override;
         const std::vector<RTC::RtpStreamSend*>& GetRtpStreams() const override
         {
@@ -107,9 +107,9 @@ namespace RTC
 	public:
 		void OnNeedToSync() override;
 
-	/* Pure virtual methods inherited from Timer. */
+	/* Pure virtual methods inherited from TimerHandle. */
 	protected:
-		void OnTimer(Timer* timer) override;
+		void OnTimer(TimerHandle* timer) override;
 
 	private:
 		// Allocated by this.
@@ -124,18 +124,18 @@ namespace RTC
 		DepLibSfuShm::ShmCtx       *shmCtx{ nullptr };         // Handle to shm context which will be received from ShmTransport during transport.consume()
 		uint16_t                   rotation{ 0 };             // Current rotation value for video read from RTP packet's videoOrientationExtensionId
 		bool                       rotationDetected{ false }; // Whether video rotation data was ever picked in this stream, then we only write it into shm if there was a change
-		RTC::RtpDataCounter        shmWriterCounter;          // Use to collect and report shm writing stats, for RTP only (RTCP is not handled by ShmConsumer) TODO: move into ShmCtx
+		RTC::RtpDataCounter        shmWriterCounter{ false }; // Use to collect and report shm writing stats, for RTP only (RTCP is not handled by ShmConsumer) TODO: move into ShmCtx
 		RTC::RtpLostPktRateCounter lostPktRateCounter;
 
 	private:
 		void   OnIdleShmConsumer();          // Call from OnTimer() to notify nodejs Consumer
-		Timer* shmIdleCheckTimer{ nullptr }; // Check for incoming RTP packets, declare idle after 20 seconds
+		TimerHandle* shmIdleCheckTimer{ nullptr }; // Check for incoming RTP packets, declare idle after 20 seconds
 		bool 	 idle{ false };                // Idle if inactivityCheckTime is not reset within 20 seconds
 	public:
 		std::string appData;
 
 	public:
-		void FillBinLogStats(Lively::StatsBinLog* log) override {}
+		void FillBinLogStats(Lively::StatsBinLog* log) {}
 	};
 
 	/* Inline methods. */

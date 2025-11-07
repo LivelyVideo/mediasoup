@@ -3,7 +3,7 @@
 #include "RTC/Codecs/PayloadDescriptorHandler.hpp"
 #include "RTC/NackGenerator.hpp"
 #include "RTC/RtpPacket.hpp"
-#include <catch2/catch.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include <vector>
 
 using namespace RTC;
@@ -38,30 +38,38 @@ class TestPayloadDescriptorHandler : public Codecs::PayloadDescriptorHandler
 public:
 	explicit TestPayloadDescriptorHandler(bool isKeyFrame) : isKeyFrame(isKeyFrame){};
 	~TestPayloadDescriptorHandler() override = default;
-	void Dump() const override
+	void Dump(int indentation = 0) const override
 	{
-		return;
-	};
-	bool Process(Codecs::EncodingContext* /*context*/, uint8_t* /*data*/, bool& /*marker*/) override
+	}
+	bool Process(Codecs::EncodingContext* /*context*/, RTC::RtpPacket* /*packet*/, bool& /*marker*/) override
 	{
 		return true;
-	};
-	void Restore(uint8_t* /*data*/) override
+	}
+	void RtpPacketCloned(RTC::RtpPacket* packet) override
 	{
-		return;
-	};
+	}
+	std::unique_ptr<RTC::Codecs::PayloadDescriptor::Encoder> GetEncoder() const override
+	{
+		return nullptr;
+	}
+	void Encode(RtpPacket* /*packet*/, RTC::Codecs::PayloadDescriptor::Encoder* /*encoder*/) override
+	{
+	}
+	void Restore(RtpPacket* /*packet*/) override
+	{
+	}
 	uint8_t GetSpatialLayer() const override
 	{
 		return 0;
-	};
+	}
 	uint8_t GetTemporalLayer() const override
 	{
 		return 0;
-	};
+	}
 	bool IsKeyFrame() const override
 	{
 		return this->isKeyFrame;
-	};
+	}
 
 private:
 	bool isKeyFrame{ false };
@@ -118,7 +126,7 @@ uint8_t rtpBuffer[] =
 // clang-format on
 
 // [pt:123, seq:21006, timestamp:1533790901]
-RtpPacket* packet = RtpPacket::Parse(rtpBuffer, sizeof(rtpBuffer));
+std::unique_ptr<RtpPacket> packet(RtpPacket::Parse(rtpBuffer, sizeof(rtpBuffer)));
 
 void validate(std::vector<TestNackGeneratorInput>& inputs)
 {
@@ -133,7 +141,7 @@ void validate(std::vector<TestNackGeneratorInput>& inputs)
 
 		packet->SetPayloadDescriptorHandler(tpdh);
 		packet->SetSequenceNumber(input.seq);
-		nackGenerator.ReceivePacket(packet, /*isRecovered*/ false);
+		nackGenerator.ReceivePacket(packet.get(), /*isRecovered*/ false);
 
 		listener.Check(nackGenerator);
 	}

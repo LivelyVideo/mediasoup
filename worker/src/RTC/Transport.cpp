@@ -1,16 +1,21 @@
+#include "flatbuffers/stl_emulation.h"
 #define MS_CLASS "RTC::Transport"
 // #define MS_LOG_DEV_LEVEL 3
 
 #include "RTC/Transport.hpp"
+#ifdef MS_LIBURING_SUPPORTED
+#include "DepLibUring.hpp"
+#endif
 #include "Logger.hpp"
 #include "MediaSoupErrors.hpp"
 #include "Utils.hpp"
+#include "FBS/transport.h"
 #include "RTC/BweType.hpp"
+#include "RTC/Consts.hpp"
 #include "RTC/PipeConsumer.hpp"
 #include "RTC/RTCP/FeedbackPs.hpp"
 #include "RTC/RTCP/FeedbackPsAfb.hpp"
 #include "RTC/RTCP/FeedbackPsRemb.hpp"
-#include "RTC/RTCP/FeedbackRtp.hpp"
 #include "RTC/RTCP/FeedbackRtpNack.hpp"
 #include "RTC/RTCP/FeedbackRtpTransport.hpp"
 #include "RTC/RTCP/XrDelaySinceLastRr.hpp"
@@ -19,16 +24,15 @@
 #include "RTC/SimulcastConsumer.hpp"
 #include "RTC/SvcConsumer.hpp"
 #ifdef TRANSCODE
-#include "RTC/ShmTransport.hpp"
 #include "RTC/ShmConsumer.hpp"
+#include "RTC/ShmTransport.hpp"
+#endif
+#ifdef MS_RTC_LOGGER_RTP
+#include "RTC/RtcLogger.hpp"
 #endif
 #include <libwebrtc/modules/rtp_rtcp/include/rtp_rtcp_defines.h> // webrtc::RtpPacketSendInfo
 #include <iterator>                                              // std::ostream_iterator
 #include <map>                                                   // std::multimap
-#include <sstream>                                               // std::ostringstream
-
-#include "Lively.hpp"
-#include "LivelyAppDataToJson.hpp"
 
 namespace RTC
 {
@@ -37,232 +41,110 @@ namespace RTC
 
 	/* Instance methods. */
 
-	Transport::Transport(RTC::Shared* shared, const std::string& id, Listener* listener, json& data)
-	  : id(id), shared(shared), listener(listener), recvRtxTransmission(1000u),
-	    sendRtxTransmission(1000u), sendProbationTransmission(100u)
+	Transport::Transport(
+	  RTC::Shared* shared,
+	  const std::string& id,
+	  RTC::Transport::Listener* listener,
+	  const FBS::Transport::Options* options)
+	  : id(id), shared(shared), listener(listener),
+	    recvRtpTransmission(/*ignorePaddingOnlyPackets*/ false),
+	    sendRtpTransmission(/*ignorePaddingOnlyPackets*/ false),
+	    recvRtxTransmission(/*ignorePaddingOnlyPackets*/ false, 1000u),
+	    sendRtxTransmission(/*ignorePaddingOnlyPackets*/ false, 1000u),
+	    sendProbationTransmission(/*ignorePaddingOnlyPackets*/ false, 100u)
 	{
 		MS_TRACE();
 
-		auto jsonDirectIt = data.find("direct");
-
-		// clang-format off
-		if (
-			jsonDirectIt != data.end() &&
-			jsonDirectIt->is_boolean() &&
-			jsonDirectIt->get<bool>()
-		)
-		// clang-format on
+		if (options->direct())
 		{
 			this->direct = true;
 
-			auto jsonMaxMessageSizeIt = data.find("maxMessageSize");
-
-			// maxMessageSize is mandatory for direct Transports.
-			// clang-format off
-			if (
-				jsonMaxMessageSizeIt == data.end() ||
-				!Utils::Json::IsPositiveInteger(*jsonMaxMessageSizeIt)
-			)
-			// clang-format on
+			if (options->maxMessageSize().has_value())
 			{
-				MS_THROW_TYPE_ERROR("wrong maxMessageSize (not a number)");
+				this->maxMessageSize = options->maxMessageSize().value();
 			}
-
-			this->maxMessageSize = jsonMaxMessageSizeIt->get<size_t>();
 		}
-		
-        // PM-2288 adding client referrer to bin logs for Saas
-        std::string clientReferrer; //default ""
 
-		auto jsonAppDataIt = data.find("appData");
-		bool hasCallId = false;
-		if (jsonAppDataIt != data.end() && jsonAppDataIt->is_object())
+		if (options->initialAvailableOutgoingBitrate().has_value())
 		{
-			auto jsonCallIdIt = jsonAppDataIt->find("callId");
-			if (jsonCallIdIt != jsonAppDataIt->end() && jsonCallIdIt->is_string())
-			{
-				lively.callId.assign(jsonCallIdIt->get<std::string>());
-				hasCallId = true;
-			}
-			auto jsonPeerIdIt = jsonAppDataIt->find("peerId");
-			if (jsonPeerIdIt != jsonAppDataIt->end() && jsonPeerIdIt->is_string())
-			{
-				lively.peerId.assign(jsonPeerIdIt->get<std::string>());
-			}
-			auto jsonMirrorIdIt = jsonAppDataIt->find("mirrorId");
-			if (jsonMirrorIdIt != jsonAppDataIt->end() && jsonMirrorIdIt->is_string())
-			{
-				lively.mirrorId.assign(jsonMirrorIdIt->get<std::string>());
-			}
-			auto jsonStreamNameIt = jsonAppDataIt->find("streamName");
-			if (jsonStreamNameIt != jsonAppDataIt->end() && jsonStreamNameIt->is_string())
-			{
-				lively.streamName.assign(jsonStreamNameIt->get<std::string>());
-			}
-
-            auto jsonClientReferrerIt = jsonAppDataIt->find("clientReferrer");
-            if (jsonClientReferrerIt != jsonAppDataIt->end())
-            {
-                if (!jsonClientReferrerIt->is_string()) {
-                    MS_THROW_TYPE_ERROR("clientReferrer in transport appData is not a string");
-                } else {
-                    clientReferrer = jsonClientReferrerIt->get<std::string>();
-                }
-            }
-
-            // Added by Amir Pauker 02/27/2024 RND-568
-            auto jsonProducerStatsIt = jsonAppDataIt->find("producerStats");
-            if (jsonProducerStatsIt != jsonAppDataIt->end())
-            {
-                if (!jsonProducerStatsIt->is_boolean()) {
-                    MS_THROW_TYPE_ERROR("producerStats in transport appData is not a boolean");
-                } else {
-                    if(jsonProducerStatsIt->get<bool>()) {
-                        // this will enable periodic delivery of producer stats event
-                        this->lastProducerStatsReport = DepLibUV::GetTimeMs();
-                    }
-                }
-            }
+			this->initialAvailableOutgoingBitrate = options->initialAvailableOutgoingBitrate().value();
 		}
 
-		lively.id = id;
-		this->appData = lively.ToStr();
-		MS_DEBUG_TAG(rtp, "Transport ctor [transportId: %s] [data: %s]", lively.id.c_str(), data.dump().c_str());
-
-		if (hasCallId) {
-
-		    if (clientReferrer.empty()) {
-		        MS_WARN_TAG(rtp, "transport create missing appdata or clientReferrer info");
-		    }
-
-			MS_DEBUG_TAG(rtp, "creating consumer bin log. lively=%s", lively.ToStr().c_str());
-
-            // initialize consumers bin log here, it is shared btw all consumers
-            std::string const callId = lively.callId;
-            this->consumersBinLog.InitLog([clientReferrer, callId](uint64_t timestamp) -> std::string {
-                return Lively::ConsumerFileName(clientReferrer, callId, timestamp, BINLOG_FORMAT_VERSION);
-            });
-		}
-		else
-			MS_WARN_TAG(rtp, "Missing callId, cannot init consumers binlog [transportId: %s] [data: %s]", lively.id.c_str(), data.dump().c_str());
-
-		auto jsonInitialAvailableOutgoingBitrateIt = data.find("initialAvailableOutgoingBitrate");
-
-		if (jsonInitialAvailableOutgoingBitrateIt != data.end())
-		{
-			if (!Utils::Json::IsPositiveInteger(*jsonInitialAvailableOutgoingBitrateIt))
-			{
-				MS_THROW_TYPE_ERROR("wrong initialAvailableOutgoingBitrate (not a number)");
-			}
-
-			this->initialAvailableOutgoingBitrate = jsonInitialAvailableOutgoingBitrateIt->get<uint32_t>();
-		}
-
-		auto jsonEnableSctpIt = data.find("enableSctp");
-
-		// clang-format off
-		if (
-			jsonEnableSctpIt != data.end() &&
-			jsonEnableSctpIt->is_boolean() &&
-			jsonEnableSctpIt->get<bool>()
-		)
-		// clang-format on
+		if (options->enableSctp())
 		{
 			if (this->direct)
 			{
 				MS_THROW_TYPE_ERROR("cannot enable SCTP in a direct Transport");
 			}
 
-			auto jsonNumSctpStreamsIt     = data.find("numSctpStreams");
-			auto jsonMaxSctpMessageSizeIt = data.find("maxSctpMessageSize");
-			auto jsonSctpSendBufferSizeIt = data.find("sctpSendBufferSize");
-			auto jsonIsDataChannelIt      = data.find("isDataChannel");
-
 			// numSctpStreams is mandatory.
-			// clang-format off
-			if (
-				jsonNumSctpStreamsIt == data.end() ||
-				!jsonNumSctpStreamsIt->is_object()
-			)
-			// clang-format on
+			if (!flatbuffers::IsFieldPresent(options, FBS::Transport::Options::VT_NUMSCTPSTREAMS))
 			{
-				MS_THROW_TYPE_ERROR("wrong numSctpStreams (not an object)");
+				MS_THROW_TYPE_ERROR("numSctpStreams missing");
 			}
-
-			auto jsonOSIt  = jsonNumSctpStreamsIt->find("OS");
-			auto jsonMISIt = jsonNumSctpStreamsIt->find("MIS");
-
-			// numSctpStreams.OS and numSctpStreams.MIS are mandatory.
-			// clang-format off
-			if (
-				jsonOSIt == jsonNumSctpStreamsIt->end() ||
-				!Utils::Json::IsPositiveInteger(*jsonOSIt) ||
-				jsonMISIt == jsonNumSctpStreamsIt->end() ||
-				!Utils::Json::IsPositiveInteger(*jsonMISIt)
-			)
-			// clang-format on
-			{
-				MS_THROW_TYPE_ERROR("wrong numSctpStreams.OS and/or numSctpStreams.MIS (not a number)");
-			}
-
-			auto os  = jsonOSIt->get<uint16_t>();
-			auto mis = jsonMISIt->get<uint16_t>();
 
 			// maxSctpMessageSize is mandatory.
-			// clang-format off
-			if (
-				jsonMaxSctpMessageSizeIt == data.end() ||
-				!Utils::Json::IsPositiveInteger(*jsonMaxSctpMessageSizeIt)
-			)
-			// clang-format on
+			if (!flatbuffers::IsFieldPresent(options, FBS::Transport::Options::VT_MAXSCTPMESSAGESIZE))
 			{
-				MS_THROW_TYPE_ERROR("wrong maxSctpMessageSize (not a number)");
+				MS_THROW_TYPE_ERROR("maxSctpMessageSize missing");
 			}
 
-			this->maxMessageSize = jsonMaxSctpMessageSizeIt->get<size_t>();
+			this->maxMessageSize = options->maxSctpMessageSize();
 
 			size_t sctpSendBufferSize;
 
 			// sctpSendBufferSize is optional.
-			if (jsonSctpSendBufferSizeIt != data.end())
+			if (flatbuffers::IsFieldPresent(options, FBS::Transport::Options::VT_SCTPSENDBUFFERSIZE))
 			{
-				if (!Utils::Json::IsPositiveInteger(*jsonSctpSendBufferSizeIt))
-				{
-					MS_THROW_TYPE_ERROR("wrong sctpSendBufferSize (not a number)");
-				}
-
-				sctpSendBufferSize = jsonSctpSendBufferSizeIt->get<size_t>();
-
-				if (sctpSendBufferSize > MaxSctpSendBufferSize)
+				if (options->sctpSendBufferSize() > MaxSctpSendBufferSize)
 				{
 					MS_THROW_TYPE_ERROR("wrong sctpSendBufferSize (maximum value exceeded)");
 				}
+
+				sctpSendBufferSize = options->sctpSendBufferSize();
 			}
 			else
 			{
 				sctpSendBufferSize = DefaultSctpSendBufferSize;
 			}
 
-			// isDataChannel is optional.
-			bool isDataChannel{ false };
-
-			if (jsonIsDataChannelIt != data.end() && jsonIsDataChannelIt->is_boolean())
-			{
-				isDataChannel = jsonIsDataChannelIt->get<bool>();
-			}
-
 			// This may throw.
 			this->sctpAssociation = new RTC::SctpAssociation(
-			  this, os, mis, this->maxMessageSize, sctpSendBufferSize, isDataChannel);
+			  this,
+			  options->numSctpStreams()->os(),
+			  options->numSctpStreams()->mis(),
+			  this->maxMessageSize,
+			  sctpSendBufferSize,
+			  options->isDataChannel());
 		}
 
-		// Create the RTCP timer.
-		this->rtcpTimer = new Timer(this);
-				
-		if (!Settings::configuration.logBinStatsDisabled)
-			this->binLogTimer = new Timer(this);
-	}
+		// Lively-specific: Extract appData from options
+		if (options->callId())
+		{
+			this->lively.callId.assign(options->callId()->str());
+		}
+		if (options->peerId())
+		{
+			this->lively.peerId.assign(options->peerId()->str());
+		}
+		if (options->mirrorId())
+		{
+			this->lively.mirrorId.assign(options->mirrorId()->str());
+		}
+		if (options->streamName())
+		{
+			this->lively.streamName.assign(options->streamName()->str());
+		}
 
+		this->lively.id = id;
+		this->appData   = this->lively.ToStr();
+
+		MS_DEBUG_TAG(
+		  rtp, "Transport ctor [transportId: %s] [appData: %s]", this->lively.id.c_str(), this->appData.c_str());
+
+		// Create the RTCP timer.
+		this->rtcpTimer = new TimerHandle(this);
+	}
 
 	Transport::~Transport()
 	{
@@ -315,13 +197,6 @@ namespace RTC
 		// Delete the RTCP timer.
 		delete this->rtcpTimer;
 		this->rtcpTimer = nullptr;
-
-		if (!Settings::configuration.logBinStatsDisabled)
-		{
-			delete this->binLogTimer;
-			this->binLogTimer = nullptr;
-		}
-		consumersBinLog.DeinitLog();
 	}
 
 	void Transport::CloseProducersAndConsumers()
@@ -393,189 +268,185 @@ namespace RTC
 		this->listener->OnTransportListenServerClosed(this);
 	}
 
-	void Transport::FillJson(json& jsonObject) const
+	flatbuffers::Offset<FBS::Transport::Dump> Transport::FillBuffer(
+	  flatbuffers::FlatBufferBuilder& builder) const
 	{
 		MS_TRACE();
 
-		// Add id.
-		jsonObject["id"] = this->id;
-
-		// Add direct.
-		jsonObject["direct"] = this->direct;
-
 		// Add producerIds.
-		jsonObject["producerIds"] = json::array();
-		auto jsonProducerIdsIt    = jsonObject.find("producerIds");
+		std::vector<flatbuffers::Offset<flatbuffers::String>> producerIds;
 
 		for (const auto& kv : this->mapProducers)
 		{
 			const auto& producerId = kv.first;
 
-			jsonProducerIdsIt->emplace_back(producerId);
+			producerIds.emplace_back(builder.CreateString(producerId));
 		}
 
 		// Add consumerIds.
-		jsonObject["consumerIds"] = json::array();
-		auto jsonConsumerIdsIt    = jsonObject.find("consumerIds");
+		std::vector<flatbuffers::Offset<flatbuffers::String>> consumerIds;
 
 		for (const auto& kv : this->mapConsumers)
 		{
 			const auto& consumerId = kv.first;
 
-			jsonConsumerIdsIt->emplace_back(consumerId);
+			consumerIds.emplace_back(builder.CreateString(consumerId));
 		}
 
 		// Add mapSsrcConsumerId.
-		jsonObject["mapSsrcConsumerId"] = json::object();
-		auto jsonMapSsrcConsumerId      = jsonObject.find("mapSsrcConsumerId");
+		std::vector<flatbuffers::Offset<FBS::Common::Uint32String>> mapSsrcConsumerId;
 
 		for (const auto& kv : this->mapSsrcConsumer)
 		{
 			auto ssrc      = kv.first;
 			auto* consumer = kv.second;
 
-			(*jsonMapSsrcConsumerId)[std::to_string(ssrc)] = consumer->id;
+			mapSsrcConsumerId.emplace_back(
+			  FBS::Common::CreateUint32StringDirect(builder, ssrc, consumer->id.c_str()));
 		}
 
 		// Add mapRtxSsrcConsumerId.
-		jsonObject["mapRtxSsrcConsumerId"] = json::object();
-		auto jsonMapRtxSsrcConsumerId      = jsonObject.find("mapRtxSsrcConsumerId");
+		std::vector<flatbuffers::Offset<FBS::Common::Uint32String>> mapRtxSsrcConsumerId;
 
 		for (const auto& kv : this->mapRtxSsrcConsumer)
 		{
 			auto ssrc      = kv.first;
 			auto* consumer = kv.second;
 
-			(*jsonMapRtxSsrcConsumerId)[std::to_string(ssrc)] = consumer->id;
+			mapRtxSsrcConsumerId.emplace_back(
+			  FBS::Common::CreateUint32StringDirect(builder, ssrc, consumer->id.c_str()));
 		}
 
 		// Add dataProducerIds.
-		jsonObject["dataProducerIds"] = json::array();
-		auto jsonDataProducerIdsIt    = jsonObject.find("dataProducerIds");
+		std::vector<flatbuffers::Offset<flatbuffers::String>> dataProducerIds;
 
 		for (const auto& kv : this->mapDataProducers)
 		{
 			const auto& dataProducerId = kv.first;
 
-			jsonDataProducerIdsIt->emplace_back(dataProducerId);
+			dataProducerIds.emplace_back(builder.CreateString(dataProducerId));
 		}
 
 		// Add dataConsumerIds.
-		jsonObject["dataConsumerIds"] = json::array();
-		auto jsonDataConsumerIdsIt    = jsonObject.find("dataConsumerIds");
+		std::vector<flatbuffers::Offset<flatbuffers::String>> dataConsumerIds;
 
 		for (const auto& kv : this->mapDataConsumers)
 		{
 			const auto& dataConsumerId = kv.first;
 
-			jsonDataConsumerIdsIt->emplace_back(dataConsumerId);
+			dataConsumerIds.emplace_back(builder.CreateString(dataConsumerId));
 		}
 
 		// Add headerExtensionIds.
-		jsonObject["recvRtpHeaderExtensions"] = json::object();
-		auto jsonRtpHeaderExtensionsIt        = jsonObject.find("recvRtpHeaderExtensions");
+		auto recvRtpHeaderExtensions = FBS::Transport::CreateRecvRtpHeaderExtensions(
+		  builder,
+		  this->recvRtpHeaderExtensionIds.mid != 0u
+		    ? flatbuffers::Optional<uint8_t>(this->recvRtpHeaderExtensionIds.mid)
+		    : flatbuffers::nullopt,
+		  this->recvRtpHeaderExtensionIds.rid != 0u
+		    ? flatbuffers::Optional<uint8_t>(this->recvRtpHeaderExtensionIds.rid)
+		    : flatbuffers::nullopt,
+		  this->recvRtpHeaderExtensionIds.rrid != 0u
+		    ? flatbuffers::Optional<uint8_t>(this->recvRtpHeaderExtensionIds.rrid)
+		    : flatbuffers::nullopt,
+		  this->recvRtpHeaderExtensionIds.absSendTime != 0u
+		    ? flatbuffers::Optional<uint8_t>(this->recvRtpHeaderExtensionIds.absSendTime)
+		    : flatbuffers::nullopt,
+		  this->recvRtpHeaderExtensionIds.transportWideCc01 != 0u
+		    ? flatbuffers::Optional<uint8_t>(this->recvRtpHeaderExtensionIds.transportWideCc01)
+		    : flatbuffers::nullopt);
 
-		if (this->recvRtpHeaderExtensionIds.mid != 0u)
-		{
-			(*jsonRtpHeaderExtensionsIt)["mid"] = this->recvRtpHeaderExtensionIds.mid;
-		}
+		auto rtpListenerOffset = this->rtpListener.FillBuffer(builder);
 
-		if (this->recvRtpHeaderExtensionIds.rid != 0u)
-		{
-			(*jsonRtpHeaderExtensionsIt)["rid"] = this->recvRtpHeaderExtensionIds.rid;
-		}
-
-		if (this->recvRtpHeaderExtensionIds.rrid != 0u)
-		{
-			(*jsonRtpHeaderExtensionsIt)["rrid"] = this->recvRtpHeaderExtensionIds.rrid;
-		}
-
-		if (this->recvRtpHeaderExtensionIds.absSendTime != 0u)
-		{
-			(*jsonRtpHeaderExtensionsIt)["absSendTime"] = this->recvRtpHeaderExtensionIds.absSendTime;
-		}
-
-		if (this->recvRtpHeaderExtensionIds.transportWideCc01 != 0u)
-		{
-			(*jsonRtpHeaderExtensionsIt)["transportWideCc01"] =
-			  this->recvRtpHeaderExtensionIds.transportWideCc01;
-		}
-
-		// Add rtpListener.
-		this->rtpListener.FillJson(jsonObject["rtpListener"]);
-
-		// Add maxMessageSize.
-		jsonObject["maxMessageSize"] = this->maxMessageSize;
+		// Add sctpParameters.
+		flatbuffers::Offset<FBS::SctpParameters::SctpParameters> sctpParameters;
+		// Add sctpState.
+		FBS::SctpAssociation::SctpState sctpState{ FBS::SctpAssociation::SctpState::NEW };
+		// Add sctpListener.
+		flatbuffers::Offset<FBS::Transport::SctpListener> sctpListener;
 
 		if (this->sctpAssociation)
 		{
 			// Add sctpParameters.
-			this->sctpAssociation->FillJson(jsonObject["sctpParameters"]);
+			sctpParameters = this->sctpAssociation->FillBuffer(builder);
 
-			// Add sctpState.
 			switch (this->sctpAssociation->GetState())
 			{
 				case RTC::SctpAssociation::SctpState::NEW:
-					jsonObject["sctpState"] = "new";
+				{
+					sctpState = FBS::SctpAssociation::SctpState::NEW;
 					break;
+				}
+
 				case RTC::SctpAssociation::SctpState::CONNECTING:
-					jsonObject["sctpState"] = "connecting";
+				{
+					sctpState = FBS::SctpAssociation::SctpState::CONNECTING;
 					break;
+				}
+
 				case RTC::SctpAssociation::SctpState::CONNECTED:
-					jsonObject["sctpState"] = "connected";
+				{
+					sctpState = FBS::SctpAssociation::SctpState::CONNECTED;
 					break;
+				}
+
 				case RTC::SctpAssociation::SctpState::FAILED:
-					jsonObject["sctpState"] = "failed";
+				{
+					sctpState = FBS::SctpAssociation::SctpState::FAILED;
 					break;
+				}
+
 				case RTC::SctpAssociation::SctpState::CLOSED:
-					jsonObject["sctpState"] = "closed";
+				{
+					sctpState = FBS::SctpAssociation::SctpState::CLOSED;
 					break;
+				}
 			}
 
-			// Add sctpListener.
-			this->sctpListener.FillJson(jsonObject["sctpListener"]);
+			sctpListener = this->sctpListener.FillBuffer(builder);
 		}
 
 		// Add traceEventTypes.
-		std::vector<std::string> traceEventTypes;
-		std::ostringstream traceEventTypesStream;
+		std::vector<FBS::Transport::TraceEventType> traceEventTypes;
 
 		if (this->traceEventTypes.probation)
 		{
-			traceEventTypes.emplace_back("probation");
+			traceEventTypes.emplace_back(FBS::Transport::TraceEventType::PROBATION);
 		}
-
 		if (this->traceEventTypes.bwe)
 		{
-			traceEventTypes.emplace_back("bwe");
+			traceEventTypes.emplace_back(FBS::Transport::TraceEventType::BWE);
 		}
 
-		if (!traceEventTypes.empty())
-		{
-			std::copy(
-			  traceEventTypes.begin(),
-			  traceEventTypes.end() - 1,
-			  std::ostream_iterator<std::string>(traceEventTypesStream, ","));
-			traceEventTypesStream << traceEventTypes.back();
-		}
-
-		jsonObject["traceEventTypes"] = traceEventTypesStream.str();
+		return FBS::Transport::CreateDumpDirect(
+		  builder,
+		  this->id.c_str(),
+		  this->direct,
+		  &producerIds,
+		  &consumerIds,
+		  &mapSsrcConsumerId,
+		  &mapRtxSsrcConsumerId,
+		  &dataProducerIds,
+		  &dataConsumerIds,
+		  recvRtpHeaderExtensions,
+		  rtpListenerOffset,
+		  this->maxMessageSize,
+		  sctpParameters,
+		  this->sctpAssociation ? flatbuffers::Optional<FBS::SctpAssociation::SctpState>(sctpState)
+		                        : flatbuffers::nullopt,
+		  sctpListener,
+		  &traceEventTypes);
 	}
 
-	void Transport::FillJsonStats(json& jsonArray)
+	flatbuffers::Offset<FBS::Transport::Stats> Transport::FillBufferStats(
+	  flatbuffers::FlatBufferBuilder& builder)
 	{
 		MS_TRACE();
 
 		auto nowMs = DepLibUV::GetTimeMs();
 
-		jsonArray.emplace_back(json::value_t::object);
-		auto& jsonObject = jsonArray[0];
-
-		// Add transportId.
-		jsonObject["transportId"] = this->id;
-
-		// Add timestamp.
-		jsonObject["timestamp"] = nowMs;
+		// Add sctpState.
+		FBS::SctpAssociation::SctpState sctpState{ FBS::SctpAssociation::SctpState::NEW };
 
 		if (this->sctpAssociation)
 		{
@@ -583,142 +454,110 @@ namespace RTC
 			switch (this->sctpAssociation->GetState())
 			{
 				case RTC::SctpAssociation::SctpState::NEW:
-					jsonObject["sctpState"] = "new";
+				{
+					sctpState = FBS::SctpAssociation::SctpState::NEW;
 					break;
+				}
+
 				case RTC::SctpAssociation::SctpState::CONNECTING:
-					jsonObject["sctpState"] = "connecting";
+				{
+					sctpState = FBS::SctpAssociation::SctpState::CONNECTING;
 					break;
+				}
+
 				case RTC::SctpAssociation::SctpState::CONNECTED:
-					jsonObject["sctpState"] = "connected";
+				{
+					sctpState = FBS::SctpAssociation::SctpState::CONNECTED;
 					break;
+				}
+
 				case RTC::SctpAssociation::SctpState::FAILED:
-					jsonObject["sctpState"] = "failed";
+				{
+					sctpState = FBS::SctpAssociation::SctpState::FAILED;
 					break;
+				}
+
 				case RTC::SctpAssociation::SctpState::CLOSED:
-					jsonObject["sctpState"] = "closed";
+				{
+					sctpState = FBS::SctpAssociation::SctpState::CLOSED;
 					break;
+				}
 			}
 		}
 
-		// Add bytesReceived.
-		jsonObject["bytesReceived"] = this->recvTransmission.GetBytes();
-
-		// Add recvBitrate.
-		jsonObject["recvBitrate"] = this->recvTransmission.GetRate(nowMs);
-
-		// Add bytesSent.
-		jsonObject["bytesSent"] = this->sendTransmission.GetBytes();
-
-		// Add sendBitrate.
-		jsonObject["sendBitrate"] = this->sendTransmission.GetRate(nowMs);
-
-		// Add rtpBytesReceived.
-		jsonObject["rtpBytesReceived"] = this->recvRtpTransmission.GetBytes();
-
-		// Add rtpRecvBitrate.
-		jsonObject["rtpRecvBitrate"] = this->recvRtpTransmission.GetBitrate(nowMs);
-
-		// Add rtpBytesSent.
-		jsonObject["rtpBytesSent"] = this->sendRtpTransmission.GetBytes();
-
-		// Add rtpSendBitrate.
-		jsonObject["rtpSendBitrate"] = this->sendRtpTransmission.GetBitrate(nowMs);
-
-		// Add rtxBytesReceived.
-		jsonObject["rtxBytesReceived"] = this->recvRtxTransmission.GetBytes();
-
-		// Add rtxRecvBitrate.
-		jsonObject["rtxRecvBitrate"] = this->recvRtxTransmission.GetBitrate(nowMs);
-
-		// Add rtxBytesSent.
-		jsonObject["rtxBytesSent"] = this->sendRtxTransmission.GetBytes();
-
-		// Add rtxSendBitrate.
-		jsonObject["rtxSendBitrate"] = this->sendRtxTransmission.GetBitrate(nowMs);
-
-		// Add probationBytesSent.
-		jsonObject["probationBytesSent"] = this->sendProbationTransmission.GetBytes();
-
-		// Add probationSendBitrate.
-		jsonObject["probationSendBitrate"] = this->sendProbationTransmission.GetBitrate(nowMs);
-
-		// Add availableOutgoingBitrate.
-		if (this->tccClient)
-		{
-			jsonObject["availableOutgoingBitrate"] = this->tccClient->GetAvailableBitrate();
-		}
-
-		// Add availableIncomingBitrate.
-		if (this->tccServer && this->tccServer->GetAvailableBitrate() != 0u)
-		{
-			jsonObject["availableIncomingBitrate"] = this->tccServer->GetAvailableBitrate();
-		}
-
-		// Add maxIncomingBitrate.
-		if (this->maxIncomingBitrate != 0u)
-		{
-			jsonObject["maxIncomingBitrate"] = this->maxIncomingBitrate;
-		}
-
-		// Add packetLossReceived.
-		if (this->tccServer)
-		{
-			jsonObject["rtpPacketLossReceived"] = this->tccServer->GetPacketLoss();
-		}
-
-		// Add packetLossSent.
-		if (this->tccClient)
-		{
-			jsonObject["rtpPacketLossSent"] = this->tccClient->GetPacketLoss();
-		}
+		return FBS::Transport::CreateStatsDirect(
+		  builder,
+		  // transportId.
+		  this->id.c_str(),
+		  // timestamp.
+		  nowMs,
+		  // sctpState.
+		  this->sctpAssociation ? flatbuffers::Optional<FBS::SctpAssociation::SctpState>(sctpState)
+		                        : flatbuffers::nullopt,
+		  // bytesReceived.
+		  this->recvTransmission.GetBytes(),
+		  // recvBitrate.
+		  this->recvTransmission.GetRate(nowMs),
+		  // bytesSent.
+		  this->sendTransmission.GetBytes(),
+		  // sendBitrate.
+		  this->sendTransmission.GetRate(nowMs),
+		  // rtpBytesReceived.
+		  this->recvRtpTransmission.GetBytes(),
+		  // rtpRecvBitrate.
+		  this->recvRtpTransmission.GetBitrate(nowMs),
+		  // rtpBytesSent.
+		  this->sendRtpTransmission.GetBytes(),
+		  // rtpSendBitrate.
+		  this->sendRtpTransmission.GetBitrate(nowMs),
+		  // rtxBytesReceived.
+		  this->recvRtxTransmission.GetBytes(),
+		  // rtxRecvBitrate.
+		  this->recvRtxTransmission.GetBitrate(nowMs),
+		  // rtxBytesSent.
+		  this->sendRtxTransmission.GetBytes(),
+		  // rtxSendBitrate.
+		  this->sendRtxTransmission.GetBitrate(nowMs),
+		  // probationBytesSent.
+		  this->sendProbationTransmission.GetBytes(),
+		  // probationSendBitrate.
+		  this->sendProbationTransmission.GetBitrate(nowMs),
+		  // availableOutgoingBitrate.
+		  this->tccClient ? flatbuffers::Optional<uint32_t>(this->tccClient->GetAvailableBitrate())
+		                  : flatbuffers::nullopt,
+		  // availableIncomingBitrate.
+		  this->tccServer ? flatbuffers::Optional<uint32_t>(this->tccServer->GetAvailableBitrate())
+		                  : flatbuffers::nullopt,
+		  // maxIncomingBitrate.
+		  this->maxIncomingBitrate ? flatbuffers::Optional<uint32_t>(this->maxIncomingBitrate)
+		                           : flatbuffers::nullopt,
+		  // maxOutgoingBitrate.
+		  this->maxOutgoingBitrate ? flatbuffers::Optional<uint32_t>(this->maxOutgoingBitrate)
+		                           : flatbuffers::nullopt,
+		  // minOutgoingBitrate.
+		  this->minOutgoingBitrate ? flatbuffers::Optional<uint32_t>(this->minOutgoingBitrate)
+		                           : flatbuffers::nullopt,
+		  // rtpPacketLossReceived.
+		  this->tccServer ? flatbuffers::Optional<double>(this->tccServer->GetPacketLoss())
+		                  : flatbuffers::nullopt,
+		  // rtpPacketLossSent.
+		  this->tccClient ? flatbuffers::Optional<double>(this->tccClient->GetPacketLoss())
+		                  : flatbuffers::nullopt);
 	}
 
 	void Transport::HandleRequest(Channel::ChannelRequest* request)
 	{
 		MS_TRACE();
 
-		switch (request->methodId)
+		switch (request->method)
 		{
-			case Channel::ChannelRequest::MethodId::TRANSPORT_DUMP:
+			case Channel::ChannelRequest::Method::TRANSPORT_SET_MAX_INCOMING_BITRATE:
 			{
-				json data = json::object();
+				const auto* body = request->data->body_as<FBS::Transport::SetMaxIncomingBitrateRequest>();
 
-				FillJson(data);
+				this->maxIncomingBitrate = body->maxIncomingBitrate();
 
-				request->Accept(data);
-
-				break;
-			}
-
-			case Channel::ChannelRequest::MethodId::TRANSPORT_GET_STATS:
-			{
-				json data = json::array();
-
-				FillJsonStats(data);
-
-				request->Accept(data);
-
-				break;
-			}
-
-			case Channel::ChannelRequest::MethodId::TRANSPORT_SET_MAX_INCOMING_BITRATE:
-			{
-				auto jsonBitrateIt = request->data.find("bitrate");
-
-				// clang-format off
-				if (
-					jsonBitrateIt == request->data.end() ||
-					!Utils::Json::IsPositiveInteger(*jsonBitrateIt)
-				)
-				// clang-format on
-				{
-					MS_THROW_TYPE_ERROR("missing bitrate");
-				}
-
-				this->maxIncomingBitrate = jsonBitrateIt->get<uint32_t>();
-
-				MS_DEBUG_TAG_LIVELYAPP(bwe, this->appData,
-					"maximum incoming bitrate set to %" PRIu32, this->maxIncomingBitrate);
+				MS_DEBUG_TAG(bwe, "maximum incoming bitrate set to %" PRIu32, this->maxIncomingBitrate);
 
 				request->Accept();
 
@@ -730,21 +569,10 @@ namespace RTC
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::TRANSPORT_SET_MAX_OUTGOING_BITRATE:
+			case Channel::ChannelRequest::Method::TRANSPORT_SET_MAX_OUTGOING_BITRATE:
 			{
-				auto jsonBitrateIt = request->data.find("bitrate");
-
-				// clang-format off
-				if (
-					jsonBitrateIt == request->data.end() ||
-					!Utils::Json::IsPositiveInteger(*jsonBitrateIt)
-				)
-				// clang-format on
-				{
-					MS_THROW_TYPE_ERROR("missing bitrate");
-				}
-
-				const uint32_t bitrate = jsonBitrateIt->get<uint32_t>();
+				const auto* body = request->data->body_as<FBS::Transport::SetMaxOutgoingBitrateRequest>();
+				const uint32_t bitrate = body->maxOutgoingBitrate();
 
 				if (bitrate > 0u && bitrate < RTC::TransportCongestionControlMinOutgoingBitrate)
 				{
@@ -766,8 +594,7 @@ namespace RTC
 					this->tccClient->SetMaxOutgoingBitrate(bitrate);
 					this->maxOutgoingBitrate = bitrate;
 
-					MS_DEBUG_TAG_LIVELYAPP(bwe, this->appData, 
-						"maximum outgoing bitrate set to %" PRIu32, this->maxOutgoingBitrate);
+					MS_DEBUG_TAG(bwe, "maximum outgoing bitrate set to %" PRIu32, this->maxOutgoingBitrate);
 
 					ComputeOutgoingDesiredBitrate();
 				}
@@ -781,21 +608,10 @@ namespace RTC
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::TRANSPORT_SET_MIN_OUTGOING_BITRATE:
+			case Channel::ChannelRequest::Method::TRANSPORT_SET_MIN_OUTGOING_BITRATE:
 			{
-				auto jsonBitrateIt = request->data.find("bitrate");
-
-				// clang-format off
-							if (
-								jsonBitrateIt == request->data.end() ||
-								!Utils::Json::IsPositiveInteger(*jsonBitrateIt)
-							)
-				// clang-format on
-				{
-					MS_THROW_TYPE_ERROR("missing bitrate");
-				}
-
-				const uint32_t bitrate = jsonBitrateIt->get<uint32_t>();
+				const auto* body = request->data->body_as<FBS::Transport::SetMinOutgoingBitrateRequest>();
+				const uint32_t bitrate = body->minOutgoingBitrate();
 
 				if (bitrate > 0u && bitrate < RTC::TransportCongestionControlMinOutgoingBitrate)
 				{
@@ -831,15 +647,18 @@ namespace RTC
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::TRANSPORT_PRODUCE:
+			case Channel::ChannelRequest::Method::TRANSPORT_PRODUCE:
 			{
-				std::string producerId;
+				const auto* body = request->data->body_as<FBS::Transport::ProduceRequest>();
+				auto producerId  = body->producerId()->str();
+
+				if (this->mapProducers.find(producerId) != this->mapProducers.end())
+				{
+					MS_THROW_ERROR("a Producer with same producerId already exists");
+				}
 
 				// This may throw.
-				SetNewProducerIdFromData(request->data, producerId);
-
-				// This may throw.
-				auto* producer = new RTC::Producer(this->shared, producerId, this, request->data, this->producerBinLogEnabled, &lively);
+				auto* producer = new RTC::Producer(this->shared, producerId, this, body, &this->lively);
 
 				// Insert the Producer into the RtpListener.
 				// This may throw. If so, delete the Producer and throw.
@@ -849,8 +668,6 @@ namespace RTC
 				}
 				catch (const MediaSoupError& error)
 				{
-					MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData,
-						"Failed to add producer, error: %s", error.what());
 					delete producer;
 
 					throw;
@@ -864,8 +681,6 @@ namespace RTC
 				}
 				catch (const MediaSoupError& error)
 				{
-					MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData,
-						"Failed OnTransportNewProducer() call, error: %s", error.what());
 					this->rtpListener.RemoveProducer(producer);
 
 					delete producer;
@@ -876,7 +691,7 @@ namespace RTC
 				// Insert into the map.
 				this->mapProducers[producerId] = producer;
 
-				MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData, "Producer created [producerId:%s, transportId:%s]", producerId.c_str(), lively.id.c_str());
+				MS_DEBUG_DEV("Producer created [producerId:%s]", producerId.c_str());
 
 				// Take the transport related RTP header extensions of the Producer and
 				// add them to the Transport.
@@ -910,12 +725,17 @@ namespace RTC
 					  producerRtpHeaderExtensionIds.transportWideCc01;
 				}
 
+				if (producerRtpHeaderExtensionIds.absCaptureTime != 0u)
+				{
+					this->recvRtpHeaderExtensionIds.absCaptureTime =
+					  producerRtpHeaderExtensionIds.absCaptureTime;
+				}
+
 				// Create status response.
-				json data = json::object();
+				auto responseOffset = FBS::Transport::CreateProduceResponse(
+				  request->GetBufferBuilder(), FBS::RtpParameters::Type(producer->GetType()));
 
-				data["type"] = RTC::RtpParameters::GetTypeString(producer->GetType());
-
-				request->Accept(data);
+				request->Accept(FBS::Response::Body::Transport_ProduceResponse, responseOffset);
 
 				// Check if TransportCongestionControlServer or REMB server must be
 				// created.
@@ -947,7 +767,7 @@ namespace RTC
 					)
 					// clang-format on
 					{
-						MS_DEBUG_TAG_LIVELYAPP(bwe, this->appData, "enabling TransportCongestionControlServer with transport-cc");
+						MS_DEBUG_TAG(bwe, "enabling TransportCongestionControlServer with transport-cc");
 
 						createTccServer = true;
 						bweType         = RTC::BweType::TRANSPORT_CC;
@@ -971,7 +791,7 @@ namespace RTC
 					)
 					// clang-format on
 					{
-						MS_DEBUG_TAG_LIVELYAPP(bwe, this->appData, "enabling TransportCongestionControlServer with REMB");
+						MS_DEBUG_TAG(bwe, "enabling TransportCongestionControlServer with REMB");
 
 						createTccServer = true;
 						bweType         = RTC::BweType::REMB;
@@ -979,8 +799,8 @@ namespace RTC
 
 					if (createTccServer)
 					{
-						this->tccServer =
-						  std::make_shared<RTC::TransportCongestionControlServer>(this, bweType, RTC::MtuSize);
+						this->tccServer = std::make_shared<RTC::TransportCongestionControlServer>(
+						  this, bweType, RTC::Consts::RtcpPacketMaxSize);
 
 						if (this->maxIncomingBitrate != 0u)
 						{
@@ -997,48 +817,27 @@ namespace RTC
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::TRANSPORT_CONSUME:
+			case Channel::ChannelRequest::Method::TRANSPORT_CONSUME:
 			{
-				auto jsonProducerIdIt = request->data.find("producerId");
+				const auto* body             = request->data->body_as<FBS::Transport::ConsumeRequest>();
+				const std::string producerId = body->producerId()->str();
+				const std::string consumerId = body->consumerId()->str();
 
-				if (jsonProducerIdIt == request->data.end() || !jsonProducerIdIt->is_string())
+				if (this->mapConsumers.find(consumerId) != this->mapConsumers.end())
 				{
-					MS_THROW_TYPE_ERROR("missing producerId");
+					MS_THROW_ERROR("a Consumer with same consumerId already exists");
 				}
 
-				std::string producerId = jsonProducerIdIt->get<std::string>();
-				std::string consumerId;
-
-				// This may throw.
-				SetNewConsumerIdFromData(request->data, consumerId);
-
-				// Get type.
-				auto jsonTypeIt = request->data.find("type");
-
-				if (jsonTypeIt == request->data.end() || !jsonTypeIt->is_string())
-				{
-					MS_THROW_TYPE_ERROR("missing type");
-				}
-
-				// This may throw.
-				auto type = RTC::RtpParameters::GetType(jsonTypeIt->get<std::string>());
+				auto type = RTC::RtpParameters::Type(body->type());
 
 				RTC::Consumer* consumer{ nullptr };
 
 				switch (type)
 				{
-					case RTC::RtpParameters::Type::NONE:
-					{
-						MS_THROW_TYPE_ERROR("invalid type 'none'");
-
-						break;
-					}
-
 					case RTC::RtpParameters::Type::SIMPLE:
 					{
 						// This may throw.
-						consumer =
-						  new RTC::SimpleConsumer(this->shared, consumerId, producerId, this, request->data, &lively);
+						consumer = new RTC::SimpleConsumer(this->shared, consumerId, producerId, this, body, &this->lively);
 
 						break;
 					}
@@ -1046,8 +845,7 @@ namespace RTC
 					case RTC::RtpParameters::Type::SIMULCAST:
 					{
 						// This may throw.
-						consumer =
-						  new RTC::SimulcastConsumer(this->shared, consumerId, producerId, this, request->data, &lively);
+						consumer = new RTC::SimulcastConsumer(this->shared, consumerId, producerId, this, body, &this->lively);
 
 						break;
 					}
@@ -1055,8 +853,7 @@ namespace RTC
 					case RTC::RtpParameters::Type::SVC:
 					{
 						// This may throw.
-						consumer =
-						  new RTC::SvcConsumer(this->shared, consumerId, producerId, this, request->data, &lively);
+						consumer = new RTC::SvcConsumer(this->shared, consumerId, producerId, this, body, &this->lively);
 
 						break;
 					}
@@ -1064,19 +861,23 @@ namespace RTC
 					case RTC::RtpParameters::Type::PIPE:
 					{
 						// This may throw.
-						consumer =
-						  new RTC::PipeConsumer(this->shared, consumerId, producerId, this, request->data, &lively);
+						consumer = new RTC::PipeConsumer(this->shared, consumerId, producerId, this, body, &this->lively);
+
 						break;
 					}
+
 					case RTC::RtpParameters::Type::SHM:
 					{
 #ifdef TRANSCODE
-						MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData, "ShmConsumer will be created with data [%s]", request->data.dump().c_str());
+						MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData, "ShmConsumer will be created");
 						// This may throw.
-            consumer = new RTC::ShmConsumer(this->shared, consumerId, producerId, this, request->data, dynamic_cast<RTC::ShmTransport*>(this)->ShmCtx());
+						consumer = new RTC::ShmConsumer(this->shared, consumerId, producerId, this, body, dynamic_cast<RTC::ShmTransport*>(this)->ShmCtx(), &this->lively);
 						dynamic_cast<RTC::ShmTransport*>(this)->StopNoConsumeTimer();
-#endif
+
 						break;
+#else
+						MS_THROW_TYPE_ERROR("SHM consumer requires TRANSCODE build");
+#endif
 					}
 				}
 
@@ -1107,25 +908,27 @@ namespace RTC
 				}
 
 				MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData,
-				  "Consumer created [consumerId:%s, producerId:%s, transportId: %s]", consumerId.c_str(), producerId.c_str(), lively.id.c_str());
+				  "Consumer created [consumerId:%s, producerId:%s, transportId: %s]", consumerId.c_str(), producerId.c_str(), this->lively.id.c_str());
 
-				// Create status response.
-				json data = json::object();
-
-				data["paused"]         = consumer->IsPaused();
-				data["producerPaused"] = consumer->IsProducerPaused();
-
-				consumer->FillJsonScore(data["score"]);
-
+				flatbuffers::Offset<FBS::Consumer::ConsumerLayers> preferredLayersOffset;
 				auto preferredLayers = consumer->GetPreferredLayers();
 
 				if (preferredLayers.spatial > -1 && preferredLayers.temporal > -1)
 				{
-					data["preferredLayers"]["spatialLayer"]  = preferredLayers.spatial;
-					data["preferredLayers"]["temporalLayer"] = preferredLayers.temporal;
+					const flatbuffers::Optional<int16_t> preferredTemporalLayer{ preferredLayers.temporal };
+					preferredLayersOffset = FBS::Consumer::CreateConsumerLayers(
+					  request->GetBufferBuilder(), preferredLayers.spatial, preferredTemporalLayer);
 				}
 
-				request->Accept(data);
+				auto scoreOffset    = consumer->FillBufferScore(request->GetBufferBuilder());
+				auto responseOffset = FBS::Transport::CreateConsumeResponse(
+				  request->GetBufferBuilder(),
+				  consumer->IsPaused(),
+				  consumer->IsProducerPaused(),
+				  scoreOffset,
+				  preferredLayersOffset);
+
+				request->Accept(FBS::Response::Body::Transport_ConsumeResponse, responseOffset);
 
 				// Check if Transport Congestion Control client must be created.
 				const auto& rtpHeaderExtensionIds = consumer->GetRtpHeaderExtensionIds();
@@ -1143,22 +946,22 @@ namespace RTC
 					// - there is "transport-cc" in codecs RTCP feedback.
 					//
 					// clang-format off
-					if (
-						consumer->GetKind() == RTC::Media::Kind::VIDEO &&
-						rtpHeaderExtensionIds.transportWideCc01 != 0u &&
-						std::any_of(
-							codecs.begin(), codecs.end(), [](const RTC::RtpCodecParameters& codec)
-							{
-								return std::any_of(
-									codec.rtcpFeedback.begin(), codec.rtcpFeedback.end(), [](const RTC::RtcpFeedback& fb)
+						if (
+								consumer->GetKind() == RTC::Media::Kind::VIDEO &&
+								rtpHeaderExtensionIds.transportWideCc01 != 0u &&
+								std::any_of(
+									codecs.begin(), codecs.end(), [](const RTC::RtpCodecParameters& codec)
 									{
-										return fb.type == "transport-cc";
-									});
-							})
-					)
+									return std::any_of(
+											codec.rtcpFeedback.begin(), codec.rtcpFeedback.end(), [](const RTC::RtcpFeedback& fb)
+											{
+											return fb.type == "transport-cc";
+											});
+									})
+							 )
 					// clang-format on
 					{
-						MS_DEBUG_TAG_LIVELYAPP(bwe, this->appData, "enabling TransportCongestionControlClient with transport-cc");
+						MS_DEBUG_TAG(bwe, "enabling TransportCongestionControlClient with transport-cc");
 
 						createTccClient = true;
 						bweType         = RTC::BweType::TRANSPORT_CC;
@@ -1169,22 +972,22 @@ namespace RTC
 					// - there is "remb" in codecs RTCP feedback.
 					//
 					// clang-format off
-					else if (
-						consumer->GetKind() == RTC::Media::Kind::VIDEO &&
-						rtpHeaderExtensionIds.absSendTime != 0u &&
-						std::any_of(
-							codecs.begin(), codecs.end(), [](const RTC::RtpCodecParameters& codec)
-							{
-								return std::any_of(
-									codec.rtcpFeedback.begin(), codec.rtcpFeedback.end(), [](const RTC::RtcpFeedback& fb)
+						else if (
+								consumer->GetKind() == RTC::Media::Kind::VIDEO &&
+								rtpHeaderExtensionIds.absSendTime != 0u &&
+								std::any_of(
+									codecs.begin(), codecs.end(), [](const RTC::RtpCodecParameters& codec)
 									{
-										return fb.type == "goog-remb";
-									});
-							})
-					)
+									return std::any_of(
+											codec.rtcpFeedback.begin(), codec.rtcpFeedback.end(), [](const RTC::RtcpFeedback& fb)
+											{
+											return fb.type == "goog-remb";
+											});
+									})
+								)
 					// clang-format on
 					{
-						MS_DEBUG_TAG_LIVELYAPP(bwe, this->appData, "enabling TransportCongestionControlClient with REMB");
+						MS_DEBUG_TAG(bwe, "enabling TransportCongestionControlClient with REMB");
 
 						createTccClient = true;
 						bweType         = RTC::BweType::REMB;
@@ -1229,23 +1032,23 @@ namespace RTC
 				// - there is "transport-cc" in codecs RTCP feedback.
 				//
 				// clang-format off
-				if (
-					!this->senderBwe &&
-					consumer->GetKind() == RTC::Media::Kind::VIDEO &&
-					rtpHeaderExtensionIds.transportWideCc01 != 0u &&
-					std::any_of(
-						codecs.begin(), codecs.end(), [](const RTC::RtpCodecParameters& codec)
-						{
-							return std::any_of(
-								codec.rtcpFeedback.begin(), codec.rtcpFeedback.end(), [](const RTC::RtcpFeedback& fb)
+					if (
+							!this->senderBwe &&
+							consumer->GetKind() == RTC::Media::Kind::VIDEO &&
+							rtpHeaderExtensionIds.transportWideCc01 != 0u &&
+							std::any_of(
+								codecs.begin(), codecs.end(), [](const RTC::RtpCodecParameters& codec)
 								{
-									return fb.type == "transport-cc";
-								});
-						})
-				)
+								return std::any_of(
+										codec.rtcpFeedback.begin(), codec.rtcpFeedback.end(), [](const RTC::RtcpFeedback& fb)
+										{
+										return fb.type == "transport-cc";
+										});
+								})
+						 )
 				// clang-format on
 				{
-					MS_DEBUG_TAG_LIVELYAPP(bwe, this->appData, "enabling SenderBandwidthEstimator");
+					MS_DEBUG_TAG(bwe, "enabling SenderBandwidthEstimator");
 
 					// Tell all the Consumers that we are gonna manage their bitrate.
 					for (auto& kv : this->mapConsumers)
@@ -1276,14 +1079,11 @@ namespace RTC
 				{
 					consumer->TransportConnected();
 				}
-				else {
-					MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData, "Channel::Request::MethodId::TRANSPORT_CONSUME received but Transport::IsConnected() == false");
-				}
 
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::TRANSPORT_PRODUCE_DATA:
+			case Channel::ChannelRequest::Method::TRANSPORT_PRODUCE_DATA:
 			{
 				// Early check. The Transport must support SCTP or be direct.
 				if (!this->sctpAssociation && !this->direct)
@@ -1291,14 +1091,16 @@ namespace RTC
 					MS_THROW_ERROR("SCTP not enabled and not a direct Transport");
 				}
 
-				std::string dataProducerId;
+				const auto* body = request->data->body_as<FBS::Transport::ProduceDataRequest>();
+
+				auto dataProducerId = body->dataProducerId()->str();
 
 				// This may throw.
-				SetNewDataProducerIdFromData(request->data, dataProducerId);
+				CheckNoDataProducer(dataProducerId);
 
 				// This may throw.
-				auto* dataProducer = new RTC::DataProducer(
-				  this->shared, dataProducerId, this->maxMessageSize, this, request->data);
+				auto* dataProducer =
+				  new RTC::DataProducer(this->shared, dataProducerId, this->maxMessageSize, this, body);
 
 				// Verify the type of the DataProducer.
 				switch (dataProducer->GetType())
@@ -1371,16 +1173,14 @@ namespace RTC
 
 				MS_DEBUG_DEV("DataProducer created [dataProducerId:%s]", dataProducerId.c_str());
 
-				json data = json::object();
+				auto dumpOffset = dataProducer->FillBuffer(request->GetBufferBuilder());
 
-				dataProducer->FillJson(data);
-
-				request->Accept(data);
+				request->Accept(FBS::Response::Body::DataProducer_DumpResponse, dumpOffset);
 
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::TRANSPORT_CONSUME_DATA:
+			case Channel::ChannelRequest::Method::TRANSPORT_CONSUME_DATA:
 			{
 				// Early check. The Transport must support SCTP or be direct.
 				if (!this->sctpAssociation && !this->direct)
@@ -1388,18 +1188,13 @@ namespace RTC
 					MS_THROW_ERROR("SCTP not enabled and not a direct Transport");
 				}
 
-				auto jsonDataProducerIdIt = request->data.find("dataProducerId");
+				const auto* body = request->data->body_as<FBS::Transport::ConsumeDataRequest>();
 
-				if (jsonDataProducerIdIt == request->data.end() || !jsonDataProducerIdIt->is_string())
-				{
-					MS_THROW_ERROR("missing dataProducerId");
-				}
-
-				std::string dataProducerId = jsonDataProducerIdIt->get<std::string>();
-				std::string dataConsumerId;
+				auto dataProducerId = body->dataProducerId()->str();
+				auto dataConsumerId = body->dataConsumerId()->str();
 
 				// This may throw.
-				SetNewDataConsumerIdFromData(request->data, dataConsumerId);
+				CheckNoDataConsumer(dataConsumerId);
 
 				// This may throw.
 				auto* dataConsumer = new RTC::DataConsumer(
@@ -1408,7 +1203,7 @@ namespace RTC
 				  dataProducerId,
 				  this->sctpAssociation,
 				  this,
-				  request->data,
+				  body,
 				  this->maxMessageSize);
 
 				// Verify the type of the DataConsumer.
@@ -1464,11 +1259,9 @@ namespace RTC
 				  dataConsumerId.c_str(),
 				  dataProducerId.c_str());
 
-				json data = json::object();
+				auto dumpOffset = dataConsumer->FillBuffer(request->GetBufferBuilder());
 
-				dataConsumer->FillJson(data);
-
-				request->Accept(data);
+				request->Accept(FBS::Response::Body::DataConsumer_DumpResponse, dumpOffset);
 
 				if (IsConnected())
 				{
@@ -1489,35 +1282,30 @@ namespace RTC
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::TRANSPORT_ENABLE_TRACE_EVENT:
+			case Channel::ChannelRequest::Method::TRANSPORT_ENABLE_TRACE_EVENT:
 			{
-				auto jsonTypesIt = request->data.find("types");
-
-				// Disable all if no entries.
-				if (jsonTypesIt == request->data.end() || !jsonTypesIt->is_array())
-				{
-					MS_THROW_TYPE_ERROR("wrong types (not an array)");
-				}
+				const auto* body = request->data->body_as<FBS::Transport::EnableTraceEventRequest>();
 
 				// Reset traceEventTypes.
 				struct TraceEventTypes newTraceEventTypes;
 
-				for (const auto& type : *jsonTypesIt)
+				for (const auto& type : *body->events())
 				{
-					if (!type.is_string())
+					switch (type)
 					{
-						MS_THROW_TYPE_ERROR("wrong type (not a string)");
-					}
+						case FBS::Transport::TraceEventType::PROBATION:
+						{
+							newTraceEventTypes.probation = true;
 
-					const std::string typeStr = type.get<std::string>();
+							break;
+						}
 
-					if (typeStr == "probation")
-					{
-						newTraceEventTypes.probation = true;
-					}
-					if (typeStr == "bwe")
-					{
-						newTraceEventTypes.bwe = true;
+						case FBS::Transport::TraceEventType::BWE:
+						{
+							newTraceEventTypes.bwe = true;
+
+							break;
+						}
 					}
 				}
 
@@ -1528,10 +1316,12 @@ namespace RTC
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::TRANSPORT_CLOSE_PRODUCER:
+			case Channel::ChannelRequest::Method::TRANSPORT_CLOSE_PRODUCER:
 			{
+				const auto* body = request->data->body_as<FBS::Transport::CloseProducerRequest>();
+
 				// This may throw.
-				RTC::Producer* producer = GetProducerFromData(request->data);
+				RTC::Producer* producer = GetProducerById(body->producerId()->str());
 
 				// Remove it from the RtpListener.
 				this->rtpListener.RemoveProducer(producer);
@@ -1565,10 +1355,12 @@ namespace RTC
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::TRANSPORT_CLOSE_CONSUMER:
+			case Channel::ChannelRequest::Method::TRANSPORT_CLOSE_CONSUMER:
 			{
+				const auto* body = request->data->body_as<FBS::Transport::CloseConsumerRequest>();
+
 				// This may throw.
-				RTC::Consumer* consumer = GetConsumerFromData(request->data);
+				RTC::Consumer* consumer = GetConsumerById(body->consumerId()->str());
 
 				// Remove it from the maps.
 				this->mapConsumers.erase(consumer->id);
@@ -1609,10 +1401,12 @@ namespace RTC
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::TRANSPORT_CLOSE_DATA_PRODUCER:
+			case Channel::ChannelRequest::Method::TRANSPORT_CLOSE_DATAPRODUCER:
 			{
+				const auto* body = request->data->body_as<FBS::Transport::CloseDataProducerRequest>();
+
 				// This may throw.
-				RTC::DataProducer* dataProducer = GetDataProducerFromData(request->data);
+				RTC::DataProducer* dataProducer = GetDataProducerById(body->dataProducerId()->str());
 
 				if (dataProducer->GetType() == RTC::DataProducer::Type::SCTP)
 				{
@@ -1642,10 +1436,12 @@ namespace RTC
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::TRANSPORT_CLOSE_DATA_CONSUMER:
+			case Channel::ChannelRequest::Method::TRANSPORT_CLOSE_DATACONSUMER:
 			{
+				const auto* body = request->data->body_as<FBS::Transport::CloseDataConsumerRequest>();
+
 				// This may throw.
-				RTC::DataConsumer* dataConsumer = GetDataConsumerFromData(request->data);
+				RTC::DataConsumer* dataConsumer = GetDataConsumerById(body->dataConsumerId()->str());
 
 				// Remove it from the maps.
 				this->mapDataConsumers.erase(dataConsumer->id);
@@ -1671,33 +1467,30 @@ namespace RTC
 
 			default:
 			{
-				MS_THROW_ERROR("unknown method '%s'", request->method.c_str());
+				MS_THROW_ERROR("unknown method '%s'", request->methodCStr);
+			}
+		}
+
+		return;
+
+		switch (request->method)
+		{
+			default:
+			{
+				MS_ERROR("unknown method");
 			}
 		}
 	}
 
-	void Transport::HandleRequest(PayloadChannel::PayloadChannelRequest* request)
+	void Transport::HandleNotification(Channel::ChannelNotification* notification)
 	{
 		MS_TRACE();
 
-		switch (request->methodId)
+		switch (notification->event)
 		{
 			default:
 			{
-				MS_THROW_ERROR("unknown method '%s'", request->method.c_str());
-			}
-		}
-	}
-
-	void Transport::HandleNotification(PayloadChannel::PayloadChannelNotification* notification)
-	{
-		MS_TRACE();
-
-		switch (notification->eventId)
-		{
-			default:
-			{
-				MS_ERROR("unknown event '%s'", notification->event.c_str());
+				MS_ERROR("unknown event '%s'", notification->eventCStr);
 			}
 		}
 	}
@@ -1737,10 +1530,6 @@ namespace RTC
 
 		// Start the RTCP timer.
 		this->rtcpTimer->Start(static_cast<uint64_t>(RTC::RTCP::MaxVideoIntervalMs / 2));
-
-		// Bin log timer
-		if (!Settings::configuration.logBinStatsDisabled)
-			this->binLogTimer->Start(CALL_STATS_BIN_LOG_SAMPLING);
 
 		// Tell the TransportCongestionControlClient.
 		if (this->tccClient)
@@ -1785,9 +1574,6 @@ namespace RTC
 
 		// Stop the RTCP timer.
 		this->rtcpTimer->Stop();
-		
-		if (!Settings::configuration.logBinStatsDisabled)
-			this->binLogTimer->Stop();
 
 		// Tell the TransportCongestionControlClient.
 		if (this->tccClient)
@@ -1814,7 +1600,9 @@ namespace RTC
 	{
 		MS_TRACE();
 
+#ifdef MS_RTC_LOGGER_RTP
 		packet->logger.recvTransportId = this->id;
+#endif
 
 		// Apply the Transport RTP header extension ids so the RTP listener can use them.
 		packet->SetMidExtensionId(this->recvRtpHeaderExtensionIds.mid);
@@ -1822,6 +1610,7 @@ namespace RTC
 		packet->SetRepairedRidExtensionId(this->recvRtpHeaderExtensionIds.rrid);
 		packet->SetAbsSendTimeExtensionId(this->recvRtpHeaderExtensionIds.absSendTime);
 		packet->SetTransportWideCc01ExtensionId(this->recvRtpHeaderExtensionIds.transportWideCc01);
+		packet->SetAbsCaptureTimeExtensionId(this->recvRtpHeaderExtensionIds.absCaptureTime);
 
 		auto nowMs = DepLibUV::GetTimeMs();
 
@@ -1836,7 +1625,9 @@ namespace RTC
 
 		if (!producer)
 		{
-			packet->logger.Dropped(RtcLogger::RtpPacket::DropReason::PRODUCER_NOT_FOUND);
+#ifdef MS_RTC_LOGGER_RTP
+			packet->logger.Discarded(RtcLogger::RtpPacket::DiscardReason::PRODUCER_NOT_FOUND);
+#endif
 
 			MS_WARN_TAG(
 			  rtp,
@@ -1868,7 +1659,6 @@ namespace RTC
 				break;
 			case RTC::Producer::ReceiveRtpPacketResult::RETRANSMISSION:
 				this->recvRtxTransmission.Update(packet);
-			    MS_DEBUG_DEV("recvRtxTransmission.GetPacketCount()=%zu", this->recvRtxTransmission.GetPacketCount());
 				break;
 			case RTC::Producer::ReceiveRtpPacketResult::DISCARDED:
 				// Tell the child class to remove this SSRC.
@@ -1903,8 +1693,7 @@ namespace RTC
 
 		if (!this->sctpAssociation)
 		{
-			MS_DEBUG_TAG_LIVELYAPP(sctp, this->appData,
-				"ignoring SCTP packet (SCTP not enabled)");
+			MS_DEBUG_TAG(sctp, "ignoring SCTP packet (SCTP not enabled)");
 
 			return;
 		}
@@ -1913,88 +1702,50 @@ namespace RTC
 		this->sctpAssociation->ProcessSctpData(data, len);
 	}
 
-	void Transport::SetNewProducerIdFromData(json& data, std::string& producerId) const
+	void Transport::CheckNoDataProducer(const std::string& dataProducerId) const
 	{
-		MS_TRACE();
-
-		auto jsonProducerIdIt = data.find("producerId");
-
-		if (jsonProducerIdIt == data.end() || !jsonProducerIdIt->is_string())
+		if (this->mapDataProducers.find(dataProducerId) != this->mapDataProducers.end())
 		{
-			MS_THROW_TYPE_ERROR("missing producerId");
-		}
-
-		producerId.assign(jsonProducerIdIt->get<std::string>());
-
-		if (this->mapProducers.find(producerId) != this->mapProducers.end())
-		{
-			MS_THROW_ERROR("a Producer with same producerId already exists");
+			MS_THROW_ERROR("a DataProducer with same dataProducerId already exists");
 		}
 	}
 
-	RTC::Producer* Transport::GetProducerFromData(json& data) const
+	void Transport::CheckNoDataConsumer(const std::string& dataConsumerId) const
 	{
 		MS_TRACE();
 
-		auto jsonProducerIdIt = data.find("producerId");
-
-		if (jsonProducerIdIt == data.end() || !jsonProducerIdIt->is_string())
+		if (this->mapDataConsumers.find(dataConsumerId) != this->mapDataConsumers.end())
 		{
-			MS_THROW_TYPE_ERROR("missing producerId");
+			MS_THROW_ERROR("a DataConsumer with same dataConsumerId already exists");
 		}
+	}
 
-		auto it = this->mapProducers.find(jsonProducerIdIt->get<std::string>());
+	RTC::Producer* Transport::GetProducerById(const std::string& producerId) const
+	{
+		MS_TRACE();
+
+		auto it = this->mapProducers.find(producerId);
 
 		if (it == this->mapProducers.end())
 		{
 			MS_THROW_ERROR("Producer not found");
 		}
 
-		RTC::Producer* producer = it->second;
-
-		return producer;
+		return it->second;
 	}
 
-	void Transport::SetNewConsumerIdFromData(json& data, std::string& consumerId) const
+	RTC::Consumer* Transport::GetConsumerById(const std::string& consumerId) const
 	{
 		MS_TRACE();
 
-		auto jsonConsumerIdIt = data.find("consumerId");
-
-		if (jsonConsumerIdIt == data.end() || !jsonConsumerIdIt->is_string())
-		{
-			MS_THROW_TYPE_ERROR("missing consumerId");
-		}
-
-		consumerId.assign(jsonConsumerIdIt->get<std::string>());
-
-		if (this->mapConsumers.find(consumerId) != this->mapConsumers.end())
-		{
-			MS_THROW_ERROR("a Consumer with same consumerId already exists");
-		}
-	}
-
-	RTC::Consumer* Transport::GetConsumerFromData(json& data) const
-	{
-		MS_TRACE();
-
-		auto jsonConsumerIdIt = data.find("consumerId");
-
-		if (jsonConsumerIdIt == data.end() || !jsonConsumerIdIt->is_string())
-		{
-			MS_THROW_TYPE_ERROR("missing consumerId");
-		}
-
-		auto it = this->mapConsumers.find(jsonConsumerIdIt->get<std::string>());
+		auto it = this->mapConsumers.find(consumerId);
 
 		if (it == this->mapConsumers.end())
 		{
 			MS_THROW_ERROR("Consumer not found");
 		}
 
-		RTC::Consumer* consumer = it->second;
-
-		return consumer;
+		return it->second;
 	}
 
 	inline RTC::Consumer* Transport::GetConsumerByMediaSsrc(uint32_t ssrc) const
@@ -2029,88 +1780,32 @@ namespace RTC
 		return consumer;
 	}
 
-	void Transport::SetNewDataProducerIdFromData(json& data, std::string& dataProducerId) const
+	RTC::DataProducer* Transport::GetDataProducerById(const std::string& dataProducerId) const
 	{
 		MS_TRACE();
 
-		auto jsonDataProducerIdIt = data.find("dataProducerId");
-
-		if (jsonDataProducerIdIt == data.end() || !jsonDataProducerIdIt->is_string())
-		{
-			MS_THROW_TYPE_ERROR("missing dataProducerId");
-		}
-
-		dataProducerId.assign(jsonDataProducerIdIt->get<std::string>());
-
-		if (this->mapDataProducers.find(dataProducerId) != this->mapDataProducers.end())
-		{
-			MS_THROW_ERROR("a DataProducer with same dataProducerId already exists");
-		}
-	}
-
-	RTC::DataProducer* Transport::GetDataProducerFromData(json& data) const
-	{
-		MS_TRACE();
-
-		auto jsonDataProducerIdIt = data.find("dataProducerId");
-
-		if (jsonDataProducerIdIt == data.end() || !jsonDataProducerIdIt->is_string())
-		{
-			MS_THROW_TYPE_ERROR("missing dataProducerId");
-		}
-
-		auto it = this->mapDataProducers.find(jsonDataProducerIdIt->get<std::string>());
+		auto it = this->mapDataProducers.find(dataProducerId);
 
 		if (it == this->mapDataProducers.end())
 		{
 			MS_THROW_ERROR("DataProducer not found");
 		}
 
-		RTC::DataProducer* dataProducer = it->second;
-
-		return dataProducer;
+		return it->second;
 	}
 
-	void Transport::SetNewDataConsumerIdFromData(json& data, std::string& dataConsumerId) const
+	RTC::DataConsumer* Transport::GetDataConsumerById(const std::string& dataConsumerId) const
 	{
 		MS_TRACE();
 
-		auto jsonDataConsumerIdIt = data.find("dataConsumerId");
-
-		if (jsonDataConsumerIdIt == data.end() || !jsonDataConsumerIdIt->is_string())
-		{
-			MS_THROW_TYPE_ERROR("missing dataConsumerId");
-		}
-
-		dataConsumerId.assign(jsonDataConsumerIdIt->get<std::string>());
-
-		if (this->mapDataConsumers.find(dataConsumerId) != this->mapDataConsumers.end())
-		{
-			MS_THROW_ERROR("a DataConsumer with same dataConsumerId already exists");
-		}
-	}
-
-	RTC::DataConsumer* Transport::GetDataConsumerFromData(json& data) const
-	{
-		MS_TRACE();
-
-		auto jsonDataConsumerIdIt = data.find("dataConsumerId");
-
-		if (jsonDataConsumerIdIt == data.end() || !jsonDataConsumerIdIt->is_string())
-		{
-			MS_THROW_TYPE_ERROR("missing dataConsumerId");
-		}
-
-		auto it = this->mapDataConsumers.find(jsonDataConsumerIdIt->get<std::string>());
+		auto it = this->mapDataConsumers.find(dataConsumerId);
 
 		if (it == this->mapDataConsumers.end())
 		{
 			MS_THROW_ERROR("DataConsumer not found");
 		}
 
-		RTC::DataConsumer* dataConsumer = it->second;
-
-		return dataConsumer;
+		return it->second;
 	}
 
 	void Transport::HandleRtcpPacket(RTC::RTCP::Packet* packet)
@@ -2142,9 +1837,8 @@ namespace RTC
 							continue;
 						}
 
-
-						MS_DEBUG_TAG_LIVELYAPP(
-						  rtcp, this->appData,
+						MS_DEBUG_TAG(
+						  rtcp,
 						  "no Consumer found for received Receiver Report [ssrc:%" PRIu32 "]",
 						  report->GetSsrc());
 
@@ -2193,8 +1887,8 @@ namespace RTC
 						}
 						else if (!consumer)
 						{
-							MS_DEBUG_TAG_LIVELYAPP(
-							  rtcp, this->appData,
+							MS_DEBUG_TAG(
+							  rtcp,
 							  "no Consumer found for received PLI Feedback packet "
 							  "[sender ssrc:%" PRIu32 ", media ssrc:%" PRIu32 "]",
 							  feedback->GetSenderSsrc(),
@@ -2203,8 +1897,8 @@ namespace RTC
 							break;
 						}
 
-						MS_DEBUG_TAG_LIVELYAPP(
-						  rtcp, this->appData,
+						MS_DEBUG_TAG(
+						  rtcp,
 						  "PLI received, requesting key frame for Consumer "
 						  "[sender ssrc:%" PRIu32 ", media ssrc:%" PRIu32 "]",
 						  feedback->GetSenderSsrc(),
@@ -2232,8 +1926,8 @@ namespace RTC
 							}
 							else if (!consumer)
 							{
-								MS_DEBUG_TAG_LIVELYAPP(
-								  rtcp, this->appData,
+								MS_DEBUG_TAG(
+								  rtcp,
 								  "no Consumer found for received FIR Feedback packet "
 								  "[sender ssrc:%" PRIu32 ", media ssrc:%" PRIu32 ", item ssrc:%" PRIu32 "]",
 								  feedback->GetSenderSsrc(),
@@ -2243,8 +1937,8 @@ namespace RTC
 								continue;
 							}
 
-							MS_DEBUG_TAG_LIVELYAPP(
-							  rtcp, this->appData,
+							MS_DEBUG_TAG(
+							  rtcp,
 							  "FIR received, requesting key frame for Consumer "
 							  "[sender ssrc:%" PRIu32 ", media ssrc:%" PRIu32 ", item ssrc:%" PRIu32 "]",
 							  feedback->GetSenderSsrc(),
@@ -2281,8 +1975,8 @@ namespace RTC
 						}
 						else
 						{
-							MS_DEBUG_TAG_LIVELYAPP(
-							  rtcp, this->appData,
+							MS_DEBUG_TAG(
+							  rtcp,
 							  "ignoring unsupported %s Feedback PS AFB packet "
 							  "[sender ssrc:%" PRIu32 ", media ssrc:%" PRIu32 "]",
 							  RTC::RTCP::FeedbackPsPacket::MessageType2String(feedback->GetMessageType()).c_str(),
@@ -2295,8 +1989,8 @@ namespace RTC
 
 					default:
 					{
-						MS_DEBUG_TAG_LIVELYAPP(
-						  rtcp, this->appData,
+						MS_DEBUG_TAG(
+						  rtcp,
 						  "ignoring unsupported %s Feedback packet "
 						  "[sender ssrc:%" PRIu32 ", media ssrc:%" PRIu32 "]",
 						  RTC::RTCP::FeedbackPsPacket::MessageType2String(feedback->GetMessageType()).c_str(),
@@ -2327,8 +2021,8 @@ namespace RTC
 				)
 				// clang-format on
 				{
-					MS_DEBUG_TAG_LIVELYAPP(
-					  rtcp, this->appData,
+					MS_DEBUG_TAG(
+					  rtcp,
 					  "no Consumer found for received Feedback packet "
 					  "[sender ssrc:%" PRIu32 ", media ssrc:%" PRIu32 "]",
 					  feedback->GetSenderSsrc(),
@@ -2343,8 +2037,8 @@ namespace RTC
 					{
 						if (!consumer)
 						{
-							MS_DEBUG_TAG_LIVELYAPP(
-							  rtcp, this->appData,
+							MS_DEBUG_TAG(
+							  rtcp,
 							  "no Consumer found for received NACK Feedback packet "
 							  "[sender ssrc:%" PRIu32 ", media ssrc:%" PRIu32 "]",
 							  feedback->GetSenderSsrc(),
@@ -2382,8 +2076,8 @@ namespace RTC
 
 					default:
 					{
-						MS_DEBUG_TAG_LIVELYAPP(
-						  rtcp, this->appData,
+						MS_DEBUG_TAG(
+						  rtcp,
 						  "ignoring unsupported %s Feedback packet "
 						  "[sender ssrc:%" PRIu32 ", media ssrc:%" PRIu32 "]",
 						  RTC::RTCP::FeedbackRtpPacket::MessageType2String(feedback->GetMessageType()).c_str(),
@@ -2407,8 +2101,8 @@ namespace RTC
 
 					if (!producer)
 					{
-						MS_DEBUG_TAG_LIVELYAPP(
-						  rtcp, this->appData,
+						MS_DEBUG_TAG(
+						  rtcp,
 						  "no Producer found for received Sender Report [ssrc:%" PRIu32 "]",
 						  report->GetSsrc());
 
@@ -2435,7 +2129,7 @@ namespace RTC
 
 			case RTC::RTCP::Type::BYE:
 			{
-				MS_DEBUG_TAG_LIVELYAPP(rtcp,  this->appData, "ignoring received RTCP BYE");
+				MS_DEBUG_TAG(rtcp, "ignoring received RTCP BYE");
 
 				break;
 			}
@@ -2468,8 +2162,8 @@ namespace RTC
 
 								if (!producer)
 								{
-									MS_DEBUG_TAG_LIVELYAPP(
-									  rtcp, this->appData,
+									MS_DEBUG_TAG(
+									  rtcp,
 									  "no Producer found for received Sender Extended Report [ssrc:%" PRIu32 "]",
 									  ssrcInfo->GetSsrc());
 
@@ -2505,8 +2199,8 @@ namespace RTC
 
 			default:
 			{
-				MS_DEBUG_TAG_LIVELYAPP(
-				  rtcp, this->appData,
+				MS_DEBUG_TAG(
+				  rtcp,
 				  "unhandled RTCP type received [type:%" PRIu8 "]",
 				  static_cast<uint8_t>(packet->GetType()));
 			}
@@ -2518,6 +2212,14 @@ namespace RTC
 		MS_TRACE();
 
 		std::unique_ptr<RTC::RTCP::CompoundPacket> packet{ new RTC::RTCP::CompoundPacket() };
+
+#ifdef MS_LIBURING_SUPPORTED
+		if (DepLibUring::IsEnabled())
+		{
+			// Activate liburing usage.
+			DepLibUring::SetActive();
+		}
+#endif
 
 		for (auto& kv : this->mapConsumers)
 		{
@@ -2562,6 +2264,14 @@ namespace RTC
 		{
 			SendRtcpCompoundPacket(packet.get());
 		}
+
+#ifdef MS_LIBURING_SUPPORTED
+		if (DepLibUring::IsEnabled())
+		{
+			// Submit all prepared submission entries.
+			DepLibUring::Submit();
+		}
+#endif
 	}
 
 	void Transport::DistributeAvailableOutgoingBitrate()
@@ -2595,7 +2305,7 @@ namespace RTC
 
 		this->tccClient->RescheduleNextAvailableBitrateEvent();
 
-		MS_DEBUG_TAG_LIVELYAPP(bwe, this->appData, "before layer-by-layer iterations [availableBitrate:%" PRIu32 "]", availableBitrate);
+		MS_DEBUG_DEV("before layer-by-layer iterations [availableBitrate:%" PRIu32 "]", availableBitrate);
 
 		// Redistribute the available bitrate by allowing Consumers to increase
 		// layer by layer. Initially try to spread the bitrate across all
@@ -2611,6 +2321,7 @@ namespace RTC
 				auto* consumer = it->second;
 				auto bweType   = this->tccClient->GetBweType();
 
+				// NOLINTNEXTLINE(bugprone-too-small-loop-variable)
 				for (uint8_t i{ 1u }; i <= (baseAllocation ? 1u : priority); ++i)
 				{
 					uint32_t usedBitrate{ 0u };
@@ -2639,7 +2350,7 @@ namespace RTC
 			baseAllocation = false;
 		}
 
-		MS_DEBUG_TAG_LIVELYAPP(bwe, this->appData, "after layer-by-layer iterations [availableBitrate:%" PRIu32 "]", availableBitrate);
+		MS_DEBUG_DEV("after layer-by-layer iterations [availableBitrate:%" PRIu32 "]", availableBitrate);
 
 		// Finally instruct Consumers to apply their computed layers.
 		for (auto it = multimapPriorityConsumer.rbegin(); it != multimapPriorityConsumer.rend(); ++it)
@@ -2661,20 +2372,17 @@ namespace RTC
 		for (auto& kv : this->mapConsumers)
 		{
 			auto* consumer      = kv.second;
-			auto desiredBitrate = consumer->GetDesiredBitrate(); 
+			auto desiredBitrate = consumer->GetDesiredBitrate();
 
 			totalDesiredBitrate += desiredBitrate;
 		}
-		
-#ifdef TRANSCODE
-		if (dynamic_cast<RTC::ShmTransport*>(this) == nullptr)
-#endif
-			MS_DEBUG_TAG_LIVELYAPP(bwe, this->appData, "total desired bitrate: %" PRIu32, totalDesiredBitrate);
+
+		MS_DEBUG_DEV("total desired bitrate: %" PRIu32, totalDesiredBitrate);
 
 		this->tccClient->SetDesiredBitrate(totalDesiredBitrate, forceBitrate);
 	}
 
-	inline void Transport::EmitTraceEventProbationType(RTC::RtpPacket* packet) const
+	inline void Transport::EmitTraceEventProbationType(RTC::RtpPacket* /*packet*/) const
 	{
 		MS_TRACE();
 
@@ -2683,15 +2391,18 @@ namespace RTC
 			return;
 		}
 
-		json data = json::object();
+		// TODO: Missing trace info (RTP packet dump).
+		auto notification = FBS::Transport::CreateTraceNotification(
+		  this->shared->channelNotifier->GetBufferBuilder(),
+		  FBS::Transport::TraceEventType::PROBATION,
+		  DepLibUV::GetTimeMs(),
+		  FBS::Common::TraceDirection::DIRECTION_OUT);
 
-		data["type"]      = "probation";
-		data["timestamp"] = DepLibUV::GetTimeMs();
-		data["direction"] = "out";
-
-		packet->FillJson(data["info"]);
-
-		this->shared->channelNotifier->Emit(this->id, "trace", data);
+		this->shared->channelNotifier->Emit(
+		  this->id,
+		  FBS::Notification::Event::TRANSPORT_TRACE,
+		  FBS::Notification::Body::Transport_TraceNotification,
+		  notification);
 	}
 
 	inline void Transport::EmitTraceEventBweType(
@@ -2704,30 +2415,32 @@ namespace RTC
 			return;
 		}
 
-		json data = json::object();
+		auto traceInfo = FBS::Transport::CreateBweTraceInfo(
+		  this->shared->channelNotifier->GetBufferBuilder(),
+		  this->tccClient->GetBweType() == RTC::BweType::TRANSPORT_CC
+		    ? FBS::Transport::BweType::TRANSPORT_CC
+		    : FBS::Transport::BweType::REMB,
+		  bitrates.desiredBitrate,
+		  bitrates.effectiveDesiredBitrate,
+		  bitrates.minBitrate,
+		  bitrates.maxBitrate,
+		  bitrates.startBitrate,
+		  bitrates.maxPaddingBitrate,
+		  bitrates.availableBitrate);
 
-		data["type"]                            = "bwe";
-		data["timestamp"]                       = DepLibUV::GetTimeMs();
-		data["direction"]                       = "out";
-		data["info"]["desiredBitrate"]          = bitrates.desiredBitrate;
-		data["info"]["effectiveDesiredBitrate"] = bitrates.effectiveDesiredBitrate;
-		data["info"]["minBitrate"]              = bitrates.minBitrate;
-		data["info"]["maxBitrate"]              = bitrates.maxBitrate;
-		data["info"]["startBitrate"]            = bitrates.startBitrate;
-		data["info"]["maxPaddingBitrate"]       = bitrates.maxPaddingBitrate;
-		data["info"]["availableBitrate"]        = bitrates.availableBitrate;
+		auto notification = FBS::Transport::CreateTraceNotification(
+		  this->shared->channelNotifier->GetBufferBuilder(),
+		  FBS::Transport::TraceEventType::BWE,
+		  DepLibUV::GetTimeMs(),
+		  FBS::Common::TraceDirection::DIRECTION_OUT,
+		  FBS::Transport::TraceInfo::BweTraceInfo,
+		  traceInfo.Union());
 
-		switch (this->tccClient->GetBweType())
-		{
-			case RTC::BweType::TRANSPORT_CC:
-				data["info"]["type"] = "transport-cc";
-				break;
-			case RTC::BweType::REMB:
-				data["info"]["type"] = "remb";
-				break;
-		}
-
-		this->shared->channelNotifier->Emit(this->id, "trace", data);
+		this->shared->channelNotifier->Emit(
+		  this->id,
+		  FBS::Notification::Event::TRANSPORT_TRACE,
+		  FBS::Notification::Body::Transport_TraceNotification,
+		  notification);
 	}
 
 	inline void Transport::OnProducerPaused(RTC::Producer* producer)
@@ -2795,8 +2508,10 @@ namespace RTC
 	{
 		MS_TRACE();
 
+#ifdef MS_RTC_LOGGER_RTP
 		packet->logger.sendTransportId = this->id;
 		packet->logger.Sent();
+#endif
 
 		// Update abs-send-time if present.
 		packet->UpdateAbsSendTime(DepLibUV::GetTimeMs());
@@ -2840,7 +2555,7 @@ namespace RTC
 			sentInfo.sendingAtMs = DepLibUV::GetTimeMs();
 
 			auto* cb = new onSendCallback(
-			  [tccClientWeakPtr, &packetInfo, senderBweWeakPtr, &sentInfo](bool sent)
+			  [tccClientWeakPtr, packetInfo, senderBweWeakPtr, sentInfo](bool sent)
 			  {
 				  if (sent)
 				  {
@@ -2864,7 +2579,7 @@ namespace RTC
 			SendRtpPacket(consumer, packet, cb);
 #else
 			const auto* cb = new onSendCallback(
-			  [tccClientWeakPtr, &packetInfo](bool sent)
+			  [tccClientWeakPtr, packetInfo](bool sent)
 			  {
 				  if (sent)
 				  {
@@ -2929,7 +2644,7 @@ namespace RTC
 			sentInfo.sendingAtMs = DepLibUV::GetTimeMs();
 
 			auto* cb = new onSendCallback(
-			  [tccClientWeakPtr, &packetInfo, senderBweWeakPtr, &sentInfo](bool sent)
+			  [tccClientWeakPtr, packetInfo, senderBweWeakPtr, sentInfo](bool sent)
 			  {
 				  if (sent)
 				  {
@@ -2953,7 +2668,7 @@ namespace RTC
 			SendRtpPacket(consumer, packet, cb);
 #else
 			const auto* cb = new onSendCallback(
-			  [tccClientWeakPtr, &packetInfo](bool sent)
+			  [tccClientWeakPtr, packetInfo](bool sent)
 			  {
 				  if (sent)
 				  {
@@ -2975,9 +2690,6 @@ namespace RTC
 		}
 
 		this->sendRtxTransmission.Update(packet);
-
-		MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData,
-			"sendRtxTransmission.GetPacketCount()=%zu", this->sendRtxTransmission.GetPacketCount());
 	}
 
 	inline void Transport::OnConsumerKeyFrameRequested(RTC::Consumer* consumer, uint32_t mappedSsrc)
@@ -2986,8 +2698,7 @@ namespace RTC
 
 		if (!IsConnected())
 		{
-			MS_WARN_TAG_LIVELYAPP(rtcp, this->appData, 
-				"ignoring key rame request (transport not connected)");
+			MS_WARN_TAG(rtcp, "ignoring key rame request (transport not connected)");
 
 			return;
 		}
@@ -3054,19 +2765,39 @@ namespace RTC
 	}
 
 	inline void Transport::OnDataProducerMessageReceived(
-	  RTC::DataProducer* dataProducer, uint32_t ppid, const uint8_t* msg, size_t len)
+	  RTC::DataProducer* dataProducer,
+	  const uint8_t* msg,
+	  size_t len,
+	  uint32_t ppid,
+	  std::vector<uint16_t>& subchannels,
+	  std::optional<uint16_t> requiredSubchannel)
 	{
 		MS_TRACE();
 
-		this->listener->OnTransportDataProducerMessageReceived(this, dataProducer, ppid, msg, len);
+		this->listener->OnTransportDataProducerMessageReceived(
+		  this, dataProducer, msg, len, ppid, subchannels, requiredSubchannel);
+	}
+
+	inline void Transport::OnDataProducerPaused(RTC::DataProducer* dataProducer)
+	{
+		MS_TRACE();
+
+		this->listener->OnTransportDataProducerPaused(this, dataProducer);
+	}
+
+	inline void Transport::OnDataProducerResumed(RTC::DataProducer* dataProducer)
+	{
+		MS_TRACE();
+
+		this->listener->OnTransportDataProducerResumed(this, dataProducer);
 	}
 
 	inline void Transport::OnDataConsumerSendMessage(
-	  RTC::DataConsumer* dataConsumer, uint32_t ppid, const uint8_t* msg, size_t len, onQueuedCallback* cb)
+	  RTC::DataConsumer* dataConsumer, const uint8_t* msg, size_t len, uint32_t ppid, onQueuedCallback* cb)
 	{
 		MS_TRACE();
 
-		SendMessage(dataConsumer, ppid, msg, len, cb);
+		SendMessage(dataConsumer, msg, len, ppid, cb);
 	}
 
 	inline void Transport::OnDataConsumerDataProducerClosed(RTC::DataConsumer* dataConsumer)
@@ -3094,11 +2825,14 @@ namespace RTC
 		MS_TRACE();
 
 		// Notify the Node Transport.
-		json data = json::object();
+		auto sctpStateChangeOffset = FBS::Transport::CreateSctpStateChangeNotification(
+		  this->shared->channelNotifier->GetBufferBuilder(), FBS::SctpAssociation::SctpState::CONNECTING);
 
-		data["sctpState"] = "connecting";
-
-		this->shared->channelNotifier->Emit(this->id, "sctpstatechange", data);
+		this->shared->channelNotifier->Emit(
+		  this->id,
+		  FBS::Notification::Event::TRANSPORT_SCTP_STATE_CHANGE,
+		  FBS::Notification::Body::Transport_SctpStateChangeNotification,
+		  sctpStateChangeOffset);
 	}
 
 	inline void Transport::OnSctpAssociationConnected(RTC::SctpAssociation* /*sctpAssociation*/)
@@ -3117,11 +2851,14 @@ namespace RTC
 		}
 
 		// Notify the Node Transport.
-		json data = json::object();
+		auto sctpStateChangeOffset = FBS::Transport::CreateSctpStateChangeNotification(
+		  this->shared->channelNotifier->GetBufferBuilder(), FBS::SctpAssociation::SctpState::CONNECTED);
 
-		data["sctpState"] = "connected";
-
-		this->shared->channelNotifier->Emit(this->id, "sctpstatechange", data);
+		this->shared->channelNotifier->Emit(
+		  this->id,
+		  FBS::Notification::Event::TRANSPORT_SCTP_STATE_CHANGE,
+		  FBS::Notification::Body::Transport_SctpStateChangeNotification,
+		  sctpStateChangeOffset);
 	}
 
 	inline void Transport::OnSctpAssociationFailed(RTC::SctpAssociation* /*sctpAssociation*/)
@@ -3140,11 +2877,14 @@ namespace RTC
 		}
 
 		// Notify the Node Transport.
-		json data = json::object();
+		auto sctpStateChangeOffset = FBS::Transport::CreateSctpStateChangeNotification(
+		  this->shared->channelNotifier->GetBufferBuilder(), FBS::SctpAssociation::SctpState::FAILED);
 
-		data["sctpState"] = "failed";
-
-		this->shared->channelNotifier->Emit(this->id, "sctpstatechange", data);
+		this->shared->channelNotifier->Emit(
+		  this->id,
+		  FBS::Notification::Event::TRANSPORT_SCTP_STATE_CHANGE,
+		  FBS::Notification::Body::Transport_SctpStateChangeNotification,
+		  sctpStateChangeOffset);
 	}
 
 	inline void Transport::OnSctpAssociationClosed(RTC::SctpAssociation* /*sctpAssociation*/)
@@ -3163,11 +2903,14 @@ namespace RTC
 		}
 
 		// Notify the Node Transport.
-		json data = json::object();
+		auto sctpStateChangeOffset = FBS::Transport::CreateSctpStateChangeNotification(
+		  this->shared->channelNotifier->GetBufferBuilder(), FBS::SctpAssociation::SctpState::CLOSED);
 
-		data["sctpState"] = "closed";
-
-		this->shared->channelNotifier->Emit(this->id, "sctpstatechange", data);
+		this->shared->channelNotifier->Emit(
+		  this->id,
+		  FBS::Notification::Event::TRANSPORT_SCTP_STATE_CHANGE,
+		  FBS::Notification::Body::Transport_SctpStateChangeNotification,
+		  sctpStateChangeOffset);
 	}
 
 	inline void Transport::OnSctpAssociationSendData(
@@ -3193,9 +2936,9 @@ namespace RTC
 	inline void Transport::OnSctpAssociationMessageReceived(
 	  RTC::SctpAssociation* /*sctpAssociation*/,
 	  uint16_t streamId,
-	  uint32_t ppid,
 	  const uint8_t* msg,
-	  size_t len)
+	  size_t len,
+	  uint32_t ppid)
 	{
 		MS_TRACE();
 
@@ -3203,8 +2946,8 @@ namespace RTC
 
 		if (!dataProducer)
 		{
-			MS_WARN_TAG_LIVELYAPP(sctp, this->appData,
-				"no suitable DataProducer for received SCTP message [streamId:%" PRIu16 "]", streamId);
+			MS_WARN_TAG(
+			  sctp, "no suitable DataProducer for received SCTP message [streamId:%" PRIu16 "]", streamId);
 
 			return;
 		}
@@ -3212,7 +2955,10 @@ namespace RTC
 		// Pass the SCTP message to the corresponding DataProducer.
 		try
 		{
-			dataProducer->ReceiveMessage(ppid, msg, len);
+			static std::vector<uint16_t> emptySubchannels;
+
+			dataProducer->ReceiveMessage(
+			  msg, len, ppid, emptySubchannels, /*requiredSubchannel*/ std::nullopt);
 		}
 		catch (std::exception& error)
 		{
@@ -3241,11 +2987,8 @@ namespace RTC
 	  RTC::TransportCongestionControlClient::Bitrates& bitrates)
 	{
 		MS_TRACE();
-#ifdef TRANSCODE
-		if (dynamic_cast<RTC::ShmTransport*>(this) == nullptr)
-#endif
-			MS_DEBUG_TAG_LIVELYAPP(bwe, this->appData, 
-				" outgoing available bitrate=\"%" PRIu32, bitrates.availableBitrate);
+
+		MS_DEBUG_DEV("outgoing available bitrate:%" PRIu32, bitrates.availableBitrate);
 
 		DistributeAvailableOutgoingBitrate();
 		ComputeOutgoingDesiredBitrate();
@@ -3255,7 +2998,7 @@ namespace RTC
 	}
 
 	inline void Transport::OnTransportCongestionControlClientSendRtpPacket(
-	  RTC::TransportCongestionControlClient* tccClient,
+	  RTC::TransportCongestionControlClient* /*tccClient*/,
 	  RTC::RtpPacket* packet,
 	  const webrtc::PacedPacketInfo& pacingInfo)
 	{
@@ -3301,7 +3044,7 @@ namespace RTC
 			sentInfo.sendingAtMs = DepLibUV::GetTimeMs();
 
 			auto* cb = new onSendCallback(
-			  [tccClientWeakPtr, &packetInfo, senderBweWeakPtr, &sentInfo](bool sent)
+			  [tccClientWeakPtr, packetInfo, senderBweWeakPtr, sentInfo](bool sent)
 			  {
 				  if (sent)
 				  {
@@ -3325,7 +3068,7 @@ namespace RTC
 			SendRtpPacket(nullptr, packet, cb);
 #else
 			const auto* cb = new onSendCallback(
-			  [tccClientWeakPtr, &packetInfo](bool sent)
+			  [tccClientWeakPtr, packetInfo](bool sent)
 			  {
 				  if (sent)
 				  {
@@ -3377,7 +3120,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		MS_DEBUG_TAG_LIVELYAPP(bwe, this->appData, 
+		MS_DEBUG_DEV(
 		  "outgoing available bitrate [now:%" PRIu32 ", before:%" PRIu32 "]",
 		  availableBitrate,
 		  previousAvailableBitrate);
@@ -3388,7 +3131,7 @@ namespace RTC
 	}
 #endif
 
-	inline void Transport::OnTimer(Timer* timer)
+	inline void Transport::OnTimer(TimerHandle* timer)
 	{
 		MS_TRACE();
 
@@ -3402,47 +3145,12 @@ namespace RTC
 
 			/*
 			 * The interval between RTCP packets is varied randomly over the range
-			 * [1.0,1.5] times the calculated interval to avoid unintended synchronization
-			 * of all participants.
+			 * [1.0, 1.5] times the calculated interval to avoid unintended
+			 * synchronization of all participants.
 			 */
 			interval *= static_cast<float>(Utils::Crypto::GetRandomUInt(10, 15)) / 10;
 
 			this->rtcpTimer->Start(interval);
-
-			// Added by Amir Pauker 02/27/2024 RND-568
-			if (this->lastProducerStatsReport && (this->lastProducerStatsReport + 10000 <  nowMs)) {
-	            for (auto& kv : this->mapProducers)
-	            {
-	                auto* producer = kv.second;
-	                producer->EmitProducerStats();
-	            }
-	            this->lastProducerStatsReport = nowMs;
-			}
-		}
-
-		//Binary log timer
-		else if (!Settings::configuration.logBinStatsDisabled && timer == this->binLogTimer)
-		{
-			for (auto& kv : this->mapProducers)
-			{
-				auto* producer = kv.second;
-				// Tell producer to dump collected log data into file if ready, then collect a new sample
-				if (producer != nullptr)
-				{
-					producer->FillBinLogStats();
-				}
-			}
-			
-			for (auto& kv : this->mapConsumers)
-			{
-				auto* consumer = kv.second;
-				if (consumer != nullptr)
-				{
-					consumer->FillBinLogStats(&this->consumersBinLog);		
-				}
-			}
-			
-			this->binLogTimer->Start(CALL_STATS_BIN_LOG_SAMPLING);
 		}
 	}
 } // namespace RTC

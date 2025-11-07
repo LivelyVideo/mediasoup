@@ -2,32 +2,29 @@
 #define MS_RTC_CONSUMER_HPP
 
 #include "common.hpp"
-#include "Lively.hpp"
-#include "LivelyBinLogs.hpp"
 #include "Channel/ChannelRequest.hpp"
 #include "Channel/ChannelSocket.hpp"
+#include "FBS/consumer.h"
+#include "Lively.hpp"
+#include "RTC/ConsumerTypes.hpp"
 #include "RTC/RTCP/CompoundPacket.hpp"
-#include "RTC/RTCP/FeedbackPs.hpp"
-#include "RTC/RTCP/FeedbackPsFir.hpp"
-#include "RTC/RTCP/FeedbackPsPli.hpp"
 #include "RTC/RTCP/FeedbackRtpNack.hpp"
 #include "RTC/RTCP/ReceiverReport.hpp"
 #include "RTC/RtpDictionaries.hpp"
 #include "RTC/RtpHeaderExtensionIds.hpp"
 #include "RTC/RtpPacket.hpp"
-#include "RTC/RtpStream.hpp"
 #include "RTC/RtpStreamRecv.hpp"
 #include "RTC/RtpStreamSend.hpp"
 #include "RTC/Shared.hpp"
+#include "RTC/SharedRtpPacket.hpp"
 #include <absl/container/flat_hash_set.h>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 
-using json = nlohmann::json;
-
 namespace RTC
 {
+	using namespace ConsumerTypes;
+
 	class Consumer : public Channel::ChannelSocket::RequestHandler
 	{
 	public:
@@ -43,13 +40,6 @@ namespace RTC
 			virtual void OnConsumerNeedBitrateChange(RTC::Consumer* consumer)                      = 0;
 			virtual void OnConsumerNeedZeroBitrate(RTC::Consumer* consumer)                        = 0;
 			virtual void OnConsumerProducerClosed(RTC::Consumer* consumer)                         = 0;
-		};
-
-	public:
-		struct Layers
-		{
-			int16_t spatial{ -1 };
-			int16_t temporal{ -1 };
 		};
 
 	private:
@@ -68,15 +58,21 @@ namespace RTC
 		  const std::string& id,
 		  const std::string& producerId,
 		  RTC::Consumer::Listener* listener,
-		  json& data,
+		  const FBS::Transport::ConsumeRequest* data,
 		  RTC::RtpParameters::Type type,
-			Lively::AppData* appData = nullptr);
-		virtual ~Consumer();
+		  Lively::AppData* appData = nullptr);
+		~Consumer() override;
 
 	public:
-		virtual void FillJson(json& jsonObject) const;
-		virtual void FillJsonStats(json& jsonArray) const  = 0;
-		virtual void FillJsonScore(json& jsonObject) const = 0;
+		flatbuffers::Offset<FBS::Consumer::BaseConsumerDump> FillBuffer(
+		  flatbuffers::FlatBufferBuilder& builder) const;
+		virtual flatbuffers::Offset<FBS::Consumer::GetStatsResponse> FillBufferStats(
+		  flatbuffers::FlatBufferBuilder& builder) = 0;
+		virtual flatbuffers::Offset<FBS::Consumer::ConsumerScore> FillBufferScore(
+		  flatbuffers::FlatBufferBuilder& /*builder*/) const
+		{
+			return 0;
+		};
 		RTC::Media::Kind GetKind() const
 		{
 			return this->kind;
@@ -93,10 +89,10 @@ namespace RTC
 		{
 			return this->type;
 		}
-		virtual Layers GetPreferredLayers() const
+		virtual VideoLayers GetPreferredLayers() const
 		{
 			// By default return 1:1.
-			Consumer::Layers layers;
+			VideoLayers layers;
 
 			return layers;
 		}
@@ -144,13 +140,13 @@ namespace RTC
 		{
 			this->externallyManagedBitrate = true;
 		}
-		virtual uint8_t GetBitratePriority() const                          = 0;
-		virtual uint32_t IncreaseLayer(uint32_t bitrate, bool considerLoss) = 0;
-		virtual void ApplyLayers()                                          = 0;
-		virtual uint32_t GetDesiredBitrate() const                          = 0;
-		virtual void SendRtpPacket(RTC::RtpPacket* packet, std::shared_ptr<RTC::RtpPacket>& sharedPacket) = 0;
-		virtual bool GetRtcp(RTC::RTCP::CompoundPacket* packet, uint64_t nowMs) = 0;
-		virtual const std::vector<RTC::RtpStreamSend*>& GetRtpStreams() const   = 0;
+		virtual uint8_t GetBitratePriority() const                                             = 0;
+		virtual uint32_t IncreaseLayer(uint32_t bitrate, bool considerLoss)                    = 0;
+		virtual void ApplyLayers()                                                             = 0;
+		virtual uint32_t GetDesiredBitrate() const                                             = 0;
+		virtual void SendRtpPacket(RTC::RtpPacket* packet, RTC::SharedRtpPacket& sharedPacket) = 0;
+		virtual bool GetRtcp(RTC::RTCP::CompoundPacket* packet, uint64_t nowMs)                = 0;
+		virtual const std::vector<RTC::RtpStreamSend*>& GetRtpStreams() const                  = 0;
 		virtual void NeedWorstRemoteFractionLost(uint32_t mappedSsrc, uint8_t& worstRemoteFractionLost) = 0;
 		virtual void ReceiveNack(RTC::RTCP::FeedbackRtpNackPacket* nackPacket) = 0;
 		virtual void ReceiveKeyFrameRequest(
@@ -170,6 +166,7 @@ namespace RTC
 		void EmitTraceEventPliType(uint32_t ssrc) const;
 		void EmitTraceEventFirType(uint32_t ssrc) const;
 		void EmitTraceEventNackType() const;
+		void EmitTraceEvent(flatbuffers::Offset<FBS::Consumer::TraceNotification>& notification) const;
 
 	private:
 		virtual void UserOnTransportConnected()    = 0;
@@ -181,15 +178,8 @@ namespace RTC
 		// Passed by argument.
 		const std::string id;
 		const std::string producerId;
-	
-	public:
+		// Lively-specific: appData for logging
 		std::string appData;
-	
-	protected:
-		Lively::AppData lively;
-
-	public:
-		virtual void FillBinLogStats(Lively::StatsBinLog* log) = 0;
 
 	protected:
 		// Passed by argument.
@@ -197,7 +187,7 @@ namespace RTC
 		RTC::Consumer::Listener* listener{ nullptr };
 		RTC::Media::Kind kind;
 		RTC::RtpParameters rtpParameters;
-		RTC::RtpParameters::Type type{ RTC::RtpParameters::Type::NONE };
+		RTC::RtpParameters::Type type;
 		std::vector<RTC::RtpEncodingParameters> consumableRtpEncodings;
 		struct RTC::RtpHeaderExtensionIds rtpHeaderExtensionIds;
 		const std::vector<uint8_t>* producerRtpStreamScores{ nullptr };

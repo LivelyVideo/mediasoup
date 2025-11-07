@@ -1,5 +1,5 @@
 use super::*;
-use crate::rtp_parameters::{MimeTypeAudio, RtpHeaderExtension};
+use mediasoup_types::rtp_parameters::{MimeTypeAudio, RtpHeaderExtension};
 use std::iter;
 
 #[test]
@@ -235,6 +235,7 @@ fn get_producer_rtp_parameters_mapping_get_consumable_rtp_parameters_get_consume
             cname: Some("qwerty1234".to_string()),
             ..RtcpParameters::default()
         },
+        msid: None,
     };
 
     let rtp_mapping =
@@ -255,8 +256,8 @@ fn get_producer_rtp_parameters_mapping_get_consumable_rtp_parameters_get_consume
         ]
     );
 
-    assert_eq!(rtp_mapping.encodings.get(0).unwrap().ssrc, Some(11111111));
-    assert_eq!(rtp_mapping.encodings.get(0).unwrap().rid, None);
+    assert_eq!(rtp_mapping.encodings.first().unwrap().ssrc, Some(11111111));
+    assert_eq!(rtp_mapping.encodings.first().unwrap().rid, None);
     assert_eq!(rtp_mapping.encodings.get(1).unwrap().ssrc, Some(21111111));
     assert_eq!(rtp_mapping.encodings.get(1).unwrap().rid, None);
     assert_eq!(rtp_mapping.encodings.get(2).unwrap().ssrc, None);
@@ -303,13 +304,13 @@ fn get_producer_rtp_parameters_mapping_get_consumable_rtp_parameters_get_consume
     );
 
     assert_eq!(
-        consumable_rtp_parameters.encodings.get(0).unwrap().ssrc,
-        Some(rtp_mapping.encodings.get(0).unwrap().mapped_ssrc),
+        consumable_rtp_parameters.encodings.first().unwrap().ssrc,
+        Some(rtp_mapping.encodings.first().unwrap().mapped_ssrc),
     );
     assert_eq!(
         consumable_rtp_parameters
             .encodings
-            .get(0)
+            .first()
             .unwrap()
             .max_bitrate,
         Some(111111),
@@ -317,7 +318,7 @@ fn get_producer_rtp_parameters_mapping_get_consumable_rtp_parameters_get_consume
     assert_eq!(
         consumable_rtp_parameters
             .encodings
-            .get(0)
+            .first()
             .unwrap()
             .scalability_mode,
         ScalabilityMode::L1T3,
@@ -368,7 +369,6 @@ fn get_producer_rtp_parameters_mapping_get_consumable_rtp_parameters_get_consume
         RtcpParameters {
             cname: rtp_parameters.rtcp.cname.clone(),
             reduced_size: true,
-            mux: Some(true),
         }
     );
 
@@ -429,22 +429,22 @@ fn get_producer_rtp_parameters_mapping_get_consumable_rtp_parameters_get_consume
             },
             RtpHeaderExtension {
                 kind: MediaKind::Audio,
-                uri: RtpHeaderExtensionUri::AudioLevel,
-                preferred_id: 8,
+                uri: RtpHeaderExtensionUri::SsrcAudioLevel,
+                preferred_id: 6,
                 preferred_encrypt: false,
                 direction: RtpHeaderExtensionDirection::SendRecv,
             },
             RtpHeaderExtension {
                 kind: MediaKind::Video,
                 uri: RtpHeaderExtensionUri::VideoOrientation,
-                preferred_id: 11,
+                preferred_id: 8,
                 preferred_encrypt: false,
                 direction: RtpHeaderExtensionDirection::SendRecv,
             },
             RtpHeaderExtension {
                 kind: MediaKind::Video,
                 uri: RtpHeaderExtensionUri::TimeOffset,
-                preferred_id: 12,
+                preferred_id: 9,
                 preferred_encrypt: false,
                 direction: RtpHeaderExtensionDirection::SendRecv,
             },
@@ -490,20 +490,20 @@ fn get_producer_rtp_parameters_mapping_get_consumable_rtp_parameters_get_consume
     assert_eq!(consumer_rtp_parameters.encodings.len(), 1);
     assert!(consumer_rtp_parameters
         .encodings
-        .get(0)
+        .first()
         .unwrap()
         .ssrc
         .is_some());
     assert!(consumer_rtp_parameters
         .encodings
-        .get(0)
+        .first()
         .unwrap()
         .rtx
         .is_some());
     assert_eq!(
         consumer_rtp_parameters
             .encodings
-            .get(0)
+            .first()
             .unwrap()
             .scalability_mode,
         ScalabilityMode::L3T3,
@@ -511,7 +511,7 @@ fn get_producer_rtp_parameters_mapping_get_consumable_rtp_parameters_get_consume
     assert_eq!(
         consumer_rtp_parameters
             .encodings
-            .get(0)
+            .first()
             .unwrap()
             .max_bitrate,
         Some(333333),
@@ -527,12 +527,12 @@ fn get_producer_rtp_parameters_mapping_get_consumable_rtp_parameters_get_consume
             },
             RtpHeaderExtensionParameters {
                 uri: RtpHeaderExtensionUri::VideoOrientation,
-                id: 11,
+                id: 8,
                 encrypt: false,
             },
             RtpHeaderExtensionParameters {
                 uri: RtpHeaderExtensionUri::TimeOffset,
-                id: 12,
+                id: 9,
                 encrypt: false,
             },
         ],
@@ -543,7 +543,6 @@ fn get_producer_rtp_parameters_mapping_get_consumable_rtp_parameters_get_consume
         RtcpParameters {
             cname: rtp_parameters.rtcp.cname.clone(),
             reduced_size: true,
-            mux: Some(true),
         },
     );
 
@@ -568,26 +567,26 @@ fn get_producer_rtp_parameters_mapping_get_consumable_rtp_parameters_get_consume
     assert_eq!(pipe_consumer_rtp_parameters.encodings.len(), 3);
     assert!(pipe_consumer_rtp_parameters
         .encodings
-        .get(0)
+        .first()
         .unwrap()
         .ssrc
         .is_some());
     assert!(pipe_consumer_rtp_parameters
         .encodings
-        .get(0)
+        .first()
         .unwrap()
         .rtx
         .is_none());
     assert!(pipe_consumer_rtp_parameters
         .encodings
-        .get(0)
+        .first()
         .unwrap()
         .max_bitrate
         .is_some());
     assert_eq!(
         pipe_consumer_rtp_parameters
             .encodings
-            .get(0)
+            .first()
             .unwrap()
             .scalability_mode,
         ScalabilityMode::L1T3,
@@ -650,7 +649,6 @@ fn get_producer_rtp_parameters_mapping_get_consumable_rtp_parameters_get_consume
         RtcpParameters {
             cname: rtp_parameters.rtcp.cname,
             reduced_size: true,
-            mux: Some(true),
         },
     );
 }
@@ -699,6 +697,7 @@ fn get_producer_rtp_parameters_mapping_unsupported() {
             cname: Some("qwerty1234".to_string()),
             ..RtcpParameters::default()
         },
+        msid: None,
     };
 
     assert!(matches!(

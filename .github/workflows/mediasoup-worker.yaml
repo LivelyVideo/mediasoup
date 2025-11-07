@@ -1,6 +1,10 @@
 name: mediasoup-worker
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [v3]
+  pull_request:
+  workflow_dispatch:
 
 concurrency:
   # Cancel a currently running workflow from the same PR, branch or tag when a
@@ -11,58 +15,142 @@ concurrency:
 jobs:
   ci:
     strategy:
+      # Here we want to see all errors, not just the first one.
       fail-fast: false
       matrix:
         build:
-          - os: ubuntu-20.04
-            cc: gcc
-            cxx: g++
-          - os: ubuntu-20.04
-            cc: clang
-            cxx: clang++
           - os: ubuntu-22.04
             cc: gcc
             cxx: g++
+            run-lint: true
+            run-test: true
+            run-test-asan-address: false
+            run-test-asan-undefined: false
+            run-test-asan-thread: false
           - os: ubuntu-22.04
             cc: clang
             cxx: clang++
-          - os: macos-12
+            run-lint: true
+            run-test: true
+            run-test-asan-address: false
+            run-test-asan-undefined: false
+            run-test-asan-thread: false
+          - os: ubuntu-22.04-arm
             cc: gcc
             cxx: g++
-          - os: macos-12
+            # No clang-format for ARM.
+            run-lint: false
+            run-test: true
+            run-test-asan-address: false
+            run-test-asan-undefined: false
+            run-test-asan-thread: false
+          - os: ubuntu-24.04
+            cc: gcc
+            cxx: g++
+            pip-break-system-packages: true
+            run-lint: true
+            run-test: true
+            run-test-asan-address: false
+            run-test-asan-undefined: false
+            run-test-asan-thread: false
+            # Let's just compile with all Meson option flags enabled once with gcc.
+            meson_args: '-Dms_log_trace=true -Dms_log_file_line=true -Dms_rtc_logger_rtp=true -Dms_disable_liburing=true -Dms_sctp_stack=true'
+          - os: ubuntu-24.04
             cc: clang
             cxx: clang++
+            pip-break-system-packages: true
+            run-lint: true
+            run-test: true
+            run-test-asan-address: true
+            run-test-asan-undefined: true
+            run-test-asan-thread: true
+            # Let's just compile with all Meson option flags enabled once with clang.
+            meson_args: '-Dms_log_trace=true -Dms_log_file_line=true -Dms_rtc_logger_rtp=true -Dms_disable_liburing=true -Dms_sctp_stack=true'
+          - os: ubuntu-24.04-arm
+            cc: gcc
+            cxx: g++
+            pip-break-system-packages: true
+            # No clang-format for ARM.
+            run-lint: false
+            run-test: true
+            run-test-asan-address: false
+            run-test-asan-undefined: false
+            run-test-asan-thread: false
+          - os: ubuntu-24.04-arm
+            cc: clang
+            cxx: clang++
+            pip-break-system-packages: true
+            # No clang-format for ARM.
+            run-lint: false
+            run-test: true
+            run-test-asan-address: false
+            run-test-asan-undefined: false
+            run-test-asan-thread: false
+          - os: macos-14
+            cc: clang
+            cxx: clang++
+            pip-break-system-packages: true
+            run-lint: true
+            run-test: true
+            run-test-asan-address: false
+            run-test-asan-undefined: false
+            run-test-asan-thread: false
+          - os: macos-15
+            cc: clang
+            cxx: clang++
+            pip-break-system-packages: true
+            run-lint: true
+            run-test: true
+            run-test-asan-address: false
+            run-test-asan-undefined: false
+            run-test-asan-thread: false
           - os: windows-2022
             cc: cl
             cxx: cl
+            # No clang-format for Windows.
+            run-lint: false
+            # Maybe some day we fix this.
+            run-test: false
+            # Address Sanitizer does not work on Windows.
+            run-test-asan-address: false
+            run-test-asan-undefined: false
+            run-test-asan-thread: false
+          - os: windows-2025
+            cc: cl
+            cxx: cl
+            # No clang-format for Windows.
+            run-lint: false
+            # Maybe some day we fix this.
+            run-test: false
+            # Address Sanitizer does not work on Windows.
+            run-test-asan-address: false
+            run-test-asan-undefined: false
+            run-test-asan-thread: false
         # A single Node.js version should be fine for C++.
         node:
-          - 18
+          - 24
+        build-type:
+          - Release
+          - Debug
 
     runs-on: ${{ matrix.build.os }}
 
     env:
       CC: ${{ matrix.build.cc }}
       CXX: ${{ matrix.build.cxx }}
-      MEDIASOUP_SKIP_WORKER_PREBUILT_DOWNLOAD: "true"
+      MEDIASOUP_SKIP_WORKER_PREBUILT_DOWNLOAD: 'true'
+      MEDIASOUP_LOCAL_DEV: 'false'
+      MEDIASOUP_BUILDTYPE: ${{ matrix.build-type }}
+      MESON_ARGS: ${{ matrix.build.meson_args }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-
-      # We need to install some NPM production deps for npm-scripts.mjs to work.
-      - run: npm ci --ignore-scripts --omit=dev
-      - run: npm run install-clang-tools
-        # TODO: Maybe fix this one day.
-        if: runner.os != 'Windows'
-      - run: npm run lint:worker
-        # TODO: Maybe fix this one day.
-        if: runner.os != 'Windows'
 
       - name: Configure cache
         uses: actions/cache@v3
@@ -73,7 +161,43 @@ jobs:
           restore-keys: |
             ${{ matrix.build.os }}-node-${{matrix.build.cc}}-
 
-      - run: npm run worker:build
-      - run: npm run test:worker
-        # TODO: Maybe fix this one day.
-        if: runner.os != 'Windows'
+      # We need to install pip invoke manually.
+      - if: ${{ !matrix.build.pip-break-system-packages }}
+        name: pip3 install invoke
+        run: pip3 install invoke
+
+      # In modern OSs we need to run pip with this option.
+      - if: ${{ matrix.build.pip-break-system-packages }}
+        name: pip3 install --break-system-packages invoke
+        run: pip3 install --break-system-packages invoke
+
+      # We need to install npm deps of worker/scripts/package.json.
+      - if: ${{ matrix.build.run-lint }}
+        name: npm ci --prefix worker/scripts
+        run: npm ci --prefix worker/scripts --foreground-scripts
+
+      - if: ${{ matrix.build.run-lint }}
+        name: invoke -r worker lint
+        run: invoke -r worker lint
+
+      - name: invoke -r worker mediasoup-worker
+        run: invoke -r worker mediasoup-worker
+
+      - if: ${{ matrix.build.run-test }}
+        name: invoke -r worker test
+        run: invoke -r worker test
+
+      # Let's clean everything before rebuilding worker tests with ASAN.
+      - if: ${{ matrix.build.run-test-asan-address }}
+        name: invoke -r worker test-asan-address
+        run: invoke -r worker clean-all && invoke -r worker test-asan-address
+
+      # Let's clean everything before rebuilding worker tests with ASAN.
+      - if: ${{ matrix.build.run-test-asan-undefined }}
+        name: invoke -r worker test-asan-undefined
+        run: invoke -r worker clean-all && invoke -r worker test-asan-undefined
+
+      # Let's clean everything before rebuilding worker tests with ASAN.
+      - if: ${{ matrix.build.run-test-asan-thread }}
+        name: invoke -r worker test-asan-thread
+        run: invoke -r worker clean-all && invoke -r worker test-asan-thread

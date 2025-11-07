@@ -3,6 +3,7 @@
 
 #include "common.hpp"
 #include "DepLibUV.hpp"
+#include "FBS/rtpStream.h"
 #include "RTC/RTCP/FeedbackPsFir.hpp"
 #include "RTC/RTCP/FeedbackPsPli.hpp"
 #include "RTC/RTCP/FeedbackRtpNack.hpp"
@@ -15,16 +16,12 @@
 #include "RTC/RtpDictionaries.hpp"
 #include "RTC/RtpPacket.hpp"
 #include "RTC/RtxStream.hpp"
-#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 
-using json = nlohmann::json;
-
-
 namespace RTC
 {
-	class  RtpStream
+	class RtpStream
 	{
 	protected:
 		class Listener
@@ -39,7 +36,8 @@ namespace RTC
 	public:
 		struct Params
 		{
-			void FillJson(json& jsonObject) const;
+			flatbuffers::Offset<FBS::RtpStream::Params> FillBuffer(
+			  flatbuffers::FlatBufferBuilder& builder) const;
 
 			size_t encodingIdx{ 0u };
 			uint32_t ssrc{ 0u };
@@ -63,12 +61,9 @@ namespace RTC
 		RtpStream(RTC::RtpStream::Listener* listener, RTC::RtpStream::Params& params, uint8_t initialScore);
 		virtual ~RtpStream();
 
-		virtual void FillStats(size_t& packetsCount, size_t& bytesCount, size_t& framesCount, uint32_t& packetsLost, size_t& packetsDiscarded,
-													 size_t& packetsRetransmitted, size_t& packetsRepaired, size_t& nackCount,
-													 size_t& nackPacketCount, size_t& kfCount, float& rtt, uint32_t& maxPacketTs) = 0;
-
-		void FillJson(json& jsonObject) const;
-		virtual void FillJsonStats(json& jsonObject);
+		flatbuffers::Offset<FBS::RtpStream::Dump> FillBuffer(flatbuffers::FlatBufferBuilder& builder) const;
+		virtual flatbuffers::Offset<FBS::RtpStream::Stats> FillBufferStats(
+		  flatbuffers::FlatBufferBuilder& builder);
 		uint32_t GetEncodingIdx() const
 		{
 			return this->params.encodingIdx;
@@ -166,6 +161,11 @@ namespace RTC
 		{
 			return DepLibUV::GetTimeMs() - this->activeSinceMs;
 		}
+		// Lively helper method for stats collection
+		virtual void FillStats(size_t& packetsCount, size_t& bytesCount, size_t& framesCount,
+		                       uint32_t& packetsLost, size_t& packetsDiscarded, size_t& packetsRetransmitted,
+		                       size_t& packetsRepaired, size_t& nackCount, size_t& nackPacketCount,
+		                       size_t& kfCount, float& rtt, uint32_t& maxPacketTs) = 0;
 
 	protected:
 		bool UpdateSeq(RTC::RtpPacket* packet);

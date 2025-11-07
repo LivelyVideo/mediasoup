@@ -5,6 +5,9 @@
 #include <cstring>
 #include "RTC/RtpStream.hpp"
 #include <functional>
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
 
 #define BINLOG_MIN_TIMESPAN   20000
 #define BINLOG_FORMAT_VERSION "223fac"

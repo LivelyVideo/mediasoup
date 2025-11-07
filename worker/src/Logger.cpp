@@ -2,148 +2,125 @@
 // #define MS_LOG_DEV_LEVEL 3
 
 #include "Logger.hpp"
+#include "RTC/Shared.hpp"
 #include <uv.h>
-#include "Channel/ChannelNotifier.hpp"
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
 
 /* Class variables. */
-std::string Logger::levelPrefix;
-const int64_t Logger::pid{ static_cast<int64_t>(uv_os_getpid()) };
-thread_local char Logger::buffer[Logger::bufferSize];
-thread_local std::string Logger::backupBuffer = "";
-thread_local std::string Logger::appdataBuffer = "";
-std::string Logger::logfilename = "";
-std::FILE* Logger::logfd {nullptr};
-bool Logger::openLogFile {false};
-RTC::Shared* Logger::shared {nullptr};
 
+const uint64_t Logger::Pid{ static_cast<uint64_t>(uv_os_getpid()) };
+thread_local Channel::ChannelSocket* Logger::channel{ nullptr };
+thread_local char Logger::buffer[Logger::BufferSize];
+// Lively-specific: for appData logging support
+thread_local std::string Logger::appdataBuffer = "";
+std::string Logger::levelPrefix;
+uint64_t Logger::pid{ static_cast<uint64_t>(uv_os_getpid()) };
+
+// Lively binary logging variables
+static RTC::Shared* shared{ nullptr };
+static bool openLogFile{ false };
+static std::string logfilename;
+static FILE* logfd{ nullptr };
+static std::string backupBuffer;
 
 /* Class methods. */
 
-/*
-  {mslogname: "path_to_mslog"};
-*/
-bool Logger::MSlogopen(json& data, RTC::Shared* shared)
+void Logger::ClassInit(Channel::ChannelSocket* channel)
 {
-	Logger::shared = shared;
+	Logger::channel = channel;
 
-	auto jsonLognameIt = data.find("mslogname");
-	if (jsonLognameIt != data.end() && jsonLognameIt->is_string())
-	{
-		Logger::logfilename = jsonLognameIt->get<std::string>();
-		Logger::logfd = std::fopen(Logger::logfilename.c_str(), "a");
-		if (Logger::logfd)
-		{
-			Logger::openLogFile = true;
-			return true;
-		}
-		// tell nodejs
-		json msg = json::object();
-		msg["source"] = "open";
-		msg["error"] = strerror(errno);
-		msg["file"] = Logger::logfilename;
-		msg["data"] = data.dump();
+	MS_TRACE();
+}
 
-		if (Logger::shared)
-			Logger::shared->channelNotifier->Emit(std::to_string(Logger::pid), "failedlog", msg);
-	}
-	else
+/* Lively binary logging implementations */
+
+bool Logger::MSlogopen(const FBS::Request::Request* request, RTC::Shared* sharedPtr)
+{
+	MS_TRACE();
+
+	shared = sharedPtr;
+
+	// Extract log file name from request body
+	// TODO: Parse FBS request body for log filename when FBS schema is added
+	// For now, use default filename
+	logfilename = "/var/log/sfu/mediasoup.log";
+
+	logfd = std::fopen(logfilename.c_str(), "a");
+	if (logfd)
 	{
-		json msg = json::object();
-		msg["source"] = "open";
-		msg["error"] = "no valid mslogname";
-		msg["file"] = "";
-		msg["data"] = data.dump();
-	
-		if (Logger::shared)
-			Logger::shared->channelNotifier->Emit(std::to_string(Logger::pid), "failedlog", msg);
+		openLogFile = true;
+		return true;
 	}
-	// unsuccessful 
-	Logger::logfd = nullptr;
+
+	// Failed to open
+	MS_WARN_DEV("Failed to open log file: %s, error: %s", logfilename.c_str(), strerror(errno));
+	logfd = nullptr;
 	return false;
 }
 
-
-/*
-* Log rotation: on external signal
-* or in case MSlogwrite() failed.
-*/
 void Logger::MSlogrotate()
 {
 	MS_TRACE_STD();
-	
-	if (Logger::openLogFile)
-	{
-		// close and reopen to refresh fd
-		Logger::MSlogclose();
 
-		Logger::logfd = std::fopen(Logger::logfilename.c_str(), "a");
-		if(Logger::logfd)
+	if (openLogFile)
+	{
+		// Close and reopen to refresh fd
+		MSlogclose();
+
+		logfd = std::fopen(logfilename.c_str(), "a");
+		if (logfd)
 		{
 			return;
 		}
 	}
 
-	// tell nodejs
-	json data = json::object();
-	data["source"] = "rotate";
-	data["error"] = strerror(errno);
-	data["file"] = Logger::logfilename;
-	data["data"] = Logger::openLogFile ? "failed logrotate" : "skip logrotate";
-
-	if (Logger::shared)
-		Logger::shared->channelNotifier->Emit(std::to_string(Logger::pid), "failedlog", data);
+	MS_WARN_DEV("Failed to rotate log file: %s, error: %s", logfilename.c_str(), strerror(errno));
 }
-
 
 void Logger::MSlogwrite(int written)
 {
-	// Write backed up buffer first, the one that we failed to write on a previous attempt.
-	if (!Logger::backupBuffer.empty())
+	// Write backed up buffer first
+	if (!backupBuffer.empty())
 	{
-		if (!Logger::openLogFile
-			|| !Logger::logfd 
-			|| (EOF == std::fputs(Logger::backupBuffer.c_str(), Logger::logfd)) 
-			|| (EOF == std::fputc('\n', Logger::logfd)))
+		if (!openLogFile || !logfd ||
+		    (EOF == std::fputs(backupBuffer.c_str(), logfd)) ||
+		    (EOF == std::fputc('\n', logfd)))
 		{
-			// If failed to write previously saved log msg, send it to nodejs and tell we failed
-			json data = json::object();
-			data["source"] = "write";
-			data["error"] = strerror(errno);
-			data["file"] = Logger::logfilename;
-			data["data"] = Logger::backupBuffer;
+			// Failed to write previously saved log msg
+			MS_WARN_DEV("Failed to write backup log: %s", strerror(errno));
 
-			// Back up a new log msg, try writing it out next time
-			Logger::backupBuffer.assign(Logger::buffer, written);
-
-			if (Logger::shared)
-				Logger::shared->channelNotifier->Emit(std::to_string(Logger::pid), "failedlog", data);
+			// Back up the new log msg
+			backupBuffer.assign(Logger::buffer, written);
 			return;
 		}
 
-		Logger::backupBuffer.erase();
+		backupBuffer.clear();
 	}
-	// Write a new log message. If failed, save it for another time
-	if (!Logger::openLogFile
-		|| !Logger::logfd 
-		|| (EOF == std::fputs(Logger::buffer, Logger::logfd)) 
-		|| (EOF == std::fputs("\"\n", Logger::logfd)))
+
+	// Write the new log message
+	if (!openLogFile || !logfd ||
+	    (EOF == std::fputs(Logger::buffer, logfd)) ||
+	    (EOF == std::fputs("\n", logfd)))
 	{
-	  Logger::backupBuffer.assign(Logger::buffer, written);
-		
-		// Try refreshing file descriptor and hope file write succeeds next time
-		if (!Logger::logfilename.empty())
-			Logger::MSlogrotate();
+		backupBuffer.assign(Logger::buffer, written);
+
+		// Try refreshing file descriptor
+		if (!logfilename.empty())
+		{
+			MSlogrotate();
+		}
 	}
 }
-
 
 void Logger::MSlogclose()
 {
 	MS_TRACE_STD();
 
-	if (Logger::logfd)
+	if (logfd)
 	{
-		std::fclose(Logger::logfd);
-		Logger::logfd = nullptr;
+		std::fclose(logfd);
+		logfd = nullptr;
 	}
 }

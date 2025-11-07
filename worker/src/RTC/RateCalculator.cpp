@@ -2,19 +2,38 @@
 // #define MS_LOG_DEV_LEVEL 3
 
 #include "RTC/RateCalculator.hpp"
-#include "RTC/SeqManager.hpp"
 #include "Logger.hpp"
-#include <cmath> // std::trunc()
+#include "Utils.hpp"
+#include <cmath>   // std::trunc()
+#include <cstring> // std::memset()
 
 namespace RTC
 {
+	RateCalculator::RateCalculator(size_t windowSizeMs, float scale, uint16_t windowItems)
+	  : windowSizeMs(windowSizeMs), scale(scale), windowItems(windowItems),
+	    itemSizeMs(std::max(windowSizeMs / windowItems, size_t{ 1 }))
+	{
+		MS_TRACE();
+
+		this->buffer.resize(windowItems);
+
+		std::memset(
+		  static_cast<void*>(std::addressof(this->buffer.front())),
+		  0,
+		  sizeof(BufferItem) * this->buffer.size());
+	}
+
 	void RateCalculator::Update(size_t size, uint64_t nowMs)
 	{
 		MS_TRACE();
 
 		// Ignore too old data. Should never happen.
-		if (nowMs < this->oldestItemStartTime)
+		if (this->oldestItemStartTime.has_value() && Utils::Number<uint64_t>::IsLowerThan(nowMs, *this->oldestItemStartTime))
+		{
+			MS_WARN_DEV("nowMs < this->oldestItemStartTime, should never happen");
+
 			return;
+		}
 
 		// Increase bytes.
 		this->bytes += size;
@@ -23,27 +42,38 @@ namespace RTC
 
 		// If the elapsed time from the newest item start time is greater than the
 		// item size (in milliseconds), increase the item index.
-		if (this->newestItemIndex < 0 || nowMs - this->newestItemStartTime >= this->itemSizeMs)
+		if (
+		  this->newestItemIndex < 0 || !this->newestItemStartTime.has_value() ||
+		  Utils::Number<uint64_t>::IsHigherOrEqualThan(
+		    nowMs - *this->newestItemStartTime, this->itemSizeMs))
 		{
 			this->newestItemIndex++;
 			this->newestItemStartTime = nowMs;
+
 			if (this->newestItemIndex >= this->windowItems)
+			{
+				MS_DEBUG_DEV("this->newestItemIndex >= this->windowItems, setting this->newestItemIndex = 0");
+
 				this->newestItemIndex = 0;
-
-			// Modified by Amir Pauker on 02/05/2024
-			// See https://github.com/versatica/mediasoup/issues/1316
-			// See also https://lively-video.atlassian.net/browse/VR-221
-			MS_ASSERT(
-			  this->newestItemIndex != this->oldestItemIndex || this->oldestItemIndex == -1 || this->newestItemIndex,
-			  "newest index overlaps with the oldest one");
-
-			if (this->oldestItemIndex == this->newestItemIndex) {
-			    MS_WARN_TAG(rtp, "please update versatica issue 1316. "
-			            "oldestItemIndex=%d nowMs=%" PRIu64 " "
-			            "newestItemStartTime=%" PRIu64 " itemSizeMs=%zu windowItems=%" PRIu16,
-			            this->oldestItemIndex, nowMs, this->newestItemStartTime, this->itemSizeMs,
-			            this->windowItems);
 			}
+
+			// Advance oldestItemIndex if buffer is full.
+			// NOTE: This avoids a crash:
+			//   https://github.com/versatica/mediasoup/issues/1316
+			if (this->newestItemIndex == this->oldestItemIndex && this->oldestItemIndex != -1)
+			{
+				if (++this->oldestItemIndex >= this->windowItems)
+				{
+					this->oldestItemIndex = 0;
+				}
+			}
+
+			MS_ASSERT(
+			  this->newestItemIndex != this->oldestItemIndex || this->oldestItemIndex == -1,
+			  "newest index overlaps with the oldest one [newestItemIndex:%" PRId32
+			  ", oldestItemIndex:%" PRId32 "]",
+			  this->newestItemIndex,
+			  this->oldestItemIndex);
 
 			// Set the newest item.
 			BufferItem& item = this->buffer[this->newestItemIndex];
@@ -60,6 +90,9 @@ namespace RTC
 		// Set the oldest item index and time, if not set.
 		if (this->oldestItemIndex < 0)
 		{
+			MS_DEBUG_DEV(
+			  "this->oldestItemIndex < 0, setting this->oldestItemIndex and this->oldestItemStartTime");
+
 			this->oldestItemIndex     = this->newestItemIndex;
 			this->oldestItemStartTime = nowMs;
 		}
@@ -69,49 +102,84 @@ namespace RTC
 		// Reset lastRate and lastTime so GetRate() will calculate rate again even
 		// if called with same now in the same loop iteration.
 		this->lastRate = 0;
-		this->lastTime = 0;
+		this->lastTime = std::nullopt;
 	}
 
 	uint32_t RateCalculator::GetRate(uint64_t nowMs)
 	{
 		MS_TRACE();
 
-		if (nowMs == this->lastTime)
+		if (this->lastTime.has_value() && nowMs == *this->lastTime)
+		{
+			MS_DEBUG_DEV("nowMs == this->lastTime, early return");
+
 			return this->lastRate;
+		}
 
 		RemoveOldData(nowMs);
 
 		const float scale = this->scale / this->windowSizeMs;
 
 		this->lastTime = nowMs;
-		this->lastRate = static_cast<uint32_t>(std::trunc(this->totalCount * scale + 0.5f));
+		this->lastRate = static_cast<uint32_t>(std::trunc((this->totalCount * scale) + 0.5f));
 
 		return this->lastRate;
 	}
 
-	inline void RateCalculator::RemoveOldData(uint64_t nowMs)
+	void RateCalculator::Reset()
 	{
 		MS_TRACE();
 
+		std::memset(
+		  static_cast<void*>(std::addressof(this->buffer.front())),
+		  0,
+		  sizeof(BufferItem) * this->buffer.size());
+
+		this->newestItemStartTime = std::nullopt;
+		this->newestItemIndex     = -1;
+		this->oldestItemStartTime = std::nullopt;
+		this->oldestItemIndex     = -1;
+		this->totalCount          = 0u;
+		this->lastRate            = 0u;
+		this->lastTime            = std::nullopt;
+	}
+
+	void RateCalculator::RemoveOldData(uint64_t nowMs)
+	{
+		MS_TRACE();
+
+		if (!this->oldestItemStartTime.has_value())
+		{
+			return;
+		}
+
 		// No item set.
 		if (this->newestItemIndex < 0 || this->oldestItemIndex < 0)
+		{
 			return;
+		}
 
 		const uint64_t newOldestTime = nowMs - this->windowSizeMs;
 
 		// Oldest item already removed.
-		if (newOldestTime < this->oldestItemStartTime)
+		if (Utils::Number<uint64_t>::IsLowerThan(newOldestTime, *this->oldestItemStartTime))
+		{
 			return;
+		}
 
 		// A whole window size time has elapsed since last entry. Reset the buffer.
-		if (newOldestTime >= this->newestItemStartTime)
+		if (
+		  this->newestItemStartTime.has_value() &&
+		  Utils::Number<uint64_t>::IsHigherOrEqualThan(newOldestTime, *this->newestItemStartTime))
 		{
+			MS_DEBUG_DEV("newOldestTime >= this->newestItemStartTime, resetting the buffer");
+
 			Reset();
 
 			return;
 		}
 
-		while (newOldestTime >= this->oldestItemStartTime)
+		while (Utils::Number<uint64_t>::IsHigherOrEqualThan(newOldestTime, *this->oldestItemStartTime))
 		{
 			BufferItem& oldestItem = this->buffer[this->oldestItemIndex];
 			this->totalCount -= oldestItem.count;
@@ -119,7 +187,9 @@ namespace RTC
 			oldestItem.time  = 0u;
 
 			if (++this->oldestItemIndex >= this->windowItems)
+			{
 				this->oldestItemIndex = 0;
+			}
 
 			const BufferItem& newOldestItem = this->buffer[this->oldestItemIndex];
 			this->oldestItemStartTime       = newOldestItem.time;
@@ -131,22 +201,26 @@ namespace RTC
 		const uint64_t nowMs = DepLibUV::GetTimeMs();
 
 		this->packets++;
-		this->rate.Update(packet->GetSize(), nowMs);
 
-		//update frame cnt
+		if (!this->ignorePaddingOnlyPackets || packet->GetPayloadLength() > 0)
+		{
+			this->rate.Update(packet->GetSize(), nowMs);
+		}
+
+		// Update frame count
 		uint32_t ts = packet->GetTimestamp();
 		if (ts == this->last_ts)
 			return;
-		
+
 		if (this->last_ts == 0u || RTC::SeqManager<uint32_t>::IsSeqHigherThan(ts, this->last_ts)) // first frame or newer pkt
 		{
 			this->frames++;
 			this->last_ts = ts;
 		}
-		else if( parseNAL && RTC::SeqManager<uint32_t>::IsSeqLowerThan(ts, this->last_ts)) // video: if older pkt arrived, and it is either single or aggregate, let's increment
+		else if (parseNAL && RTC::SeqManager<uint32_t>::IsSeqLowerThan(ts, this->last_ts)) // video: if older pkt arrived, and it is either single or aggregate, let's increment
 		{
-			uint8_t const* cdata   = packet->GetPayload();
-			uint8_t nal = cdata ? *(cdata) & 0x1F : 0u;
+			uint8_t const* cdata = packet->GetPayload();
+			uint8_t nal          = cdata ? *(cdata)&0x1F : 0u;
 
 			if (nal >= 1 && nal <= 24)
 				this->frames++;

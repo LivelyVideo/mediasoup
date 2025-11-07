@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::data_structures::AppData;
+use crate::fbs::TryFromFbs;
 use crate::messages::{
     RtpObserverAddProducerRequest, RtpObserverCloseRequest, RtpObserverPauseRequest,
     RtpObserverRemoveProducerRequest, RtpObserverResumeRequest,
@@ -9,11 +9,13 @@ use crate::messages::{
 use crate::producer::{Producer, ProducerId};
 use crate::router::Router;
 use crate::rtp_observer::{RtpObserver, RtpObserverAddProducerOptions, RtpObserverId};
-use crate::worker::{Channel, RequestError, SubscriptionHandler};
+use crate::worker::{Channel, NotificationParseError, RequestError, SubscriptionHandler};
 use async_executor::Executor;
 use async_trait::async_trait;
 use event_listener_primitives::{Bag, BagOnce, HandlerId};
 use log::{debug, error};
+use mediasoup_sys::fbs::notification;
+use mediasoup_types::data_structures::AppData;
 use parking_lot::Mutex;
 use serde::Deserialize;
 use std::fmt;
@@ -74,6 +76,30 @@ enum Notification {
     DominantSpeaker(DominantSpeakerNotification),
 }
 
+impl<'a> TryFromFbs<'a> for Notification {
+    type FbsType = notification::NotificationRef<'a>;
+    type Error = NotificationParseError;
+
+    fn try_from_fbs(notification: Self::FbsType) -> Result<Self, Self::Error> {
+        match notification.event().unwrap() {
+            notification::Event::ActivespeakerobserverDominantSpeaker => {
+                let Ok(Some(
+                    notification::BodyRef::ActiveSpeakerObserverDominantSpeakerNotification(body),
+                )) = notification.body()
+                else {
+                    panic!("Wrong message from worker: {notification:?}");
+                };
+
+                let dominant_speaker_notification = DominantSpeakerNotification {
+                    producer_id: body.producer_id().unwrap().parse().unwrap(),
+                };
+                Ok(Notification::DominantSpeaker(dominant_speaker_notification))
+            }
+            _ => Err(NotificationParseError::InvalidEvent),
+        }
+    }
+}
+
 struct Inner {
     id: RtpObserverId,
     executor: Arc<Executor<'static>>,
@@ -114,8 +140,14 @@ impl Inner {
 
                 self.executor
                     .spawn(async move {
-                        if let Err(error) = channel.request(router_id, request).await {
-                            error!("active speaker observer closing failed on drop: {}", error);
+                        match channel.request(router_id, request).await {
+                            Err(RequestError::ChannelClosed) => {
+                                debug!("active speaker observer closing failed on drop: Channel already closed");
+                            }
+                            Err(error) => {
+                                error!("active speaker observer closing failed on drop: {}", error);
+                            }
+                            Ok(_) => {}
                         }
                     })
                     .detach();
@@ -294,7 +326,7 @@ impl ActiveSpeakerObserver {
             let handlers = Arc::clone(&handlers);
 
             channel.subscribe_to_notifications(id.into(), move |notification| {
-                match serde_json::from_slice::<Notification>(notification) {
+                match Notification::try_from_fbs(notification) {
                     Ok(notification) => match notification {
                         Notification::DominantSpeaker(dominant_speaker) => {
                             let DominantSpeakerNotification { producer_id } = dominant_speaker;

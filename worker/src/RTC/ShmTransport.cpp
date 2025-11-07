@@ -12,8 +12,8 @@ namespace RTC
 {
 	/* Instance methods. */
 
-	ShmTransport::ShmTransport(RTC::Shared* shared, const std::string& id, RTC::Transport::Listener* listener, json& data)
-	  : RTC::Transport::Transport(shared, id, listener, data)
+	ShmTransport::ShmTransport(RTC::Shared* shared, const std::string& id, RTC::Transport::Listener* listener, const FBS::Transport::Options* options)
+	  : RTC::Transport::Transport(shared, id, listener, options)
 	{
 		MS_TRACE();
 		/*
@@ -40,13 +40,12 @@ namespace RTC
 				}
 			}
 		*/
-		MS_DEBUG_TAG_LIVELYAPP(xcode, this->appData, "ShmTransport ctor[transportId:%s] [%s]", this->id.c_str(), data.dump().c_str());
+		MS_DEBUG_TAG_LIVELYAPP(xcode, this->appData, "ShmTransport ctor[transportId:%s]", this->id.c_str());
 
-		auto jsonShmIt = data.find("shm");
-		if (jsonShmIt == data.end())
-			MS_THROW_TYPE_ERROR("missing shm in [%s]", data.dump().c_str());
-		else if (!jsonShmIt->is_object())
-			MS_THROW_TYPE_ERROR("wrong shm (not an object) in [%s]", data.dump().c_str());
+		// Parse shm configuration from FlatBuffers
+		auto* shmOptions = options->shm();
+		if (!shmOptions)
+			MS_THROW_TYPE_ERROR("missing shm options in ShmTransport");
 
         // NOTE: RND-6440 in order to support true multi-tenant environment
         // we use namespace in shm. not ideal but we use three different
@@ -57,120 +56,64 @@ namespace RTC
 		std::string clientReferrer;
 		std::string shm;
 
-        auto jsonClientReferrerIt = jsonShmIt->find("clientReferrer");
-        if (jsonClientReferrerIt == jsonShmIt->end())
-            MS_THROW_TYPE_ERROR("missing shm.clientReferrer in [%s]", data.dump().c_str());
-        else if (!jsonClientReferrerIt->is_string())
-            MS_THROW_TYPE_ERROR("wrong shm.clientReferrer (not a string) in [%s]", data.dump().c_str());
+		if (!shmOptions->clientReferrer())
+			MS_THROW_TYPE_ERROR("missing shm.clientReferrer in ShmTransport");
+		clientReferrer.assign(shmOptions->clientReferrer()->str());
 
-        clientReferrer.assign(jsonClientReferrerIt->get<std::string>());
+		if (!shmOptions->name())
+			MS_THROW_TYPE_ERROR("missing shm.name in ShmTransport");
+		shm.assign(shmOptions->name()->str());
 
+		// Read shm.queueAge in ms (default 100)
+		auto queueAge = shmOptions->queueAge();
 
-		auto jsonShmNameIt = jsonShmIt->find("name");
-		if (jsonShmNameIt == jsonShmIt->end())
-			MS_THROW_TYPE_ERROR("missing shm.name in [%s]", data.dump().c_str());
-		else if (!jsonShmNameIt->is_string())
-			MS_THROW_TYPE_ERROR("wrong shm.name (not a string) in [%s]", data.dump().c_str());
-
-		shm.assign(jsonShmNameIt->get<std::string>());
-
-		// Read shm.queueAge in ms
-		auto queueAge = 100;
-		auto jsonQueueAgeIt = jsonShmIt->find("queueAge");
-		if (jsonQueueAgeIt != jsonShmIt->end())
-		{
-			if (!jsonQueueAgeIt->is_number())
-				MS_THROW_TYPE_ERROR("wrong shm.queueAge (not a number) in [%s]", data.dump().c_str());
-			else
-				queueAge = jsonQueueAgeIt->get<int>();
-		}
-		
 		// Read shm.testNack in ms, default is 0 which means disabled NACK testing
-		auto testNack = 0;
-		auto jsonTestNackIt = jsonShmIt->find("testNack");
-		if (jsonTestNackIt != jsonShmIt->end())
-		{
-			if (!jsonTestNackIt->is_number())
-				MS_THROW_TYPE_ERROR("wrong shm.testNack (not a number) in [%s]", data.dump().c_str());
-			else
-				testNack = jsonTestNackIt->get<int>();
-		}
+		auto testNack = shmOptions->testNack();
 
 		// Perf testing: use forward or reverse iterator to place incoming chunks into video buffer
-		bool useReverse = false;
-		auto jsonReverseIt = jsonShmIt->find("reverseIt");
-		if (jsonReverseIt != jsonShmIt->end() && jsonReverseIt->is_number())
-		{
-			useReverse = (jsonReverseIt->get<int>() != 0) ? true : false;
-		}
-		
+		bool useReverse = (shmOptions->reverseIt() != 0);
+
 		// Read shmAppData
 		std::string shmAppData;
-		auto shmAppDataIt = jsonShmIt->find("shmAppData");
-		if (shmAppDataIt != jsonShmIt->end() && shmAppDataIt->is_string()) {
-				shmAppData.assign(shmAppDataIt->get<std::string>());
+		if (shmOptions->shmAppData()) {
+			shmAppData.assign(shmOptions->shmAppData()->str());
 		}
 
 		// ngxshm log name and level
-		auto jsonLogIt = data.find("log");
-		if (jsonLogIt == data.end())
-			MS_THROW_TYPE_ERROR("missing log in [%s]", data.dump().c_str());
-		else if(!jsonLogIt->is_object())
-			MS_THROW_TYPE_ERROR("wrong log (not an object) in [%s]", data.dump().c_str());
+		auto* logOptions = options->log();
+		if (!logOptions)
+			MS_THROW_TYPE_ERROR("missing log options in ShmTransport");
 
-		auto jsonLogNameIt = jsonLogIt->find("name");
-		if (jsonLogNameIt == jsonLogIt->end())
-		  MS_THROW_TYPE_ERROR("missing log.name in [%s]", data.dump().c_str());
-		else if (!jsonLogNameIt->is_string())
-			MS_THROW_TYPE_ERROR("wrong log.name (not a string) in [%s]", data.dump().c_str());
-		
+		if (!logOptions->name())
+			MS_THROW_TYPE_ERROR("missing log.name in ShmTransport");
+
 		std::string logname;
-		logname.assign(jsonLogNameIt->get<std::string>());
+		logname.assign(logOptions->name()->str());
 
-		auto loglevel = 9; // default log level. TODO: add log level mapping into DepLibSfuShm
-		auto jsonLogLevelIt = jsonLogIt->find("level");
-		if (jsonLogLevelIt != jsonLogIt->end())
-		{
-			if (!jsonLogLevelIt->is_number())
-				MS_THROW_TYPE_ERROR("wrong log.level (not a number) in [%s]", data.dump().c_str());
-			else
-				loglevel = jsonLogLevelIt->get<int>();
-		}
+		auto loglevel = logOptions->level(); // default is 9 in schema
 
-		// data contains listenIp: {ip: ..., announcedIp: ...}
-		auto jsonListenIpIt = data.find("listenIp");
-		if (jsonListenIpIt == data.end())
-			MS_THROW_TYPE_ERROR("missing listenIp in [%s]", data.dump().c_str());
-		else if (!jsonListenIpIt->is_object())
-			MS_THROW_TYPE_ERROR("wrong listenIp (not an object) in [%s]", data.dump().c_str());
+		// Parse listenIp from FlatBuffers
+		auto* listenIpOptions = options->listenIp();
+		if (!listenIpOptions)
+			MS_THROW_TYPE_ERROR("missing listenIp in ShmTransport");
 
-		auto jsonIpIt = jsonListenIpIt->find("ip");
+		if (!listenIpOptions->ip())
+			MS_THROW_TYPE_ERROR("missing listen_ip.ip in ShmTransport");
 
-		if (jsonIpIt == jsonListenIpIt->end())
-			MS_THROW_TYPE_ERROR("missing listenIp.ip in [%s]", data.dump().c_str());
-		else if (!jsonIpIt->is_string())
-			MS_THROW_TYPE_ERROR("wrong listenIp.ip (not a string) in [%s]", data.dump().c_str());
-
-		this->listenIp.ip.assign(jsonIpIt->get<std::string>());
+		this->listenIp.ip.assign(listenIpOptions->ip()->str());
 
 		// This may throw.
 		Utils::IP::NormalizeIp(this->listenIp.ip);
 
-		auto jsonAnnouncedIpIt = jsonListenIpIt->find("announcedIp");
-
-		if (jsonAnnouncedIpIt != jsonListenIpIt->end())
+		if (listenIpOptions->announcedIp())
 		{
-			if (!jsonAnnouncedIpIt->is_string())
-				MS_THROW_TYPE_ERROR("wrong listenIp.announcedIp (not an string) in [%s]", data.dump().c_str());
-
-			this->listenIp.announcedIp.assign(jsonAnnouncedIpIt->get<std::string>());
+			this->listenIp.announcedIp.assign(listenIpOptions->announcedIp()->str());
 		}
 		// NOTE: This may throw.
 		this->shared->channelMessageRegistrator->RegisterHandler(
 		  this->id,
 		  /*channelRequestHandler*/ this,
-		  /*payloadChannelRequestHandler*/ this,
-		  /*payloadChannelNotificationHandler*/ this);
+		  /*channelNotificationHandler*/ this);
 
 		this->shmCtx.InitializeShmWriterCtx(
 		        clientReferrer,
@@ -182,7 +125,7 @@ namespace RTC
 		        loglevel,
 		        shmAppData);
 
-		this->shmNoConsumeTimer = new Timer(this);
+		this->shmNoConsumeTimer = new TimerHandle(this);
 		this->shmNoConsumeTimer->Start(60000);
 	}
 
@@ -199,7 +142,7 @@ namespace RTC
 	}
 
 
-	inline void ShmTransport::OnTimer(Timer* timer)
+	inline void ShmTransport::OnTimer(TimerHandle* timer)
 	{
 		MS_TRACE();
 
@@ -233,47 +176,83 @@ namespace RTC
 	}
 
 
-	void ShmTransport::FillJson(json& jsonObject) const
+	flatbuffers::Offset<FBS::ShmTransport::DumpResponse> ShmTransport::FillBuffer(flatbuffers::FlatBufferBuilder& builder) const
 	{
 		MS_TRACE();
 
-		// Call the parent method.
-		RTC::Transport::FillJson(jsonObject);
+		// Get base Transport dump
+		auto baseDump = RTC::Transport::FillBuffer(builder);
 
-		jsonObject["shm"] = json::object();
-		auto jsonIt = jsonObject.find("shm");
-
-		(*jsonIt)["name"] = this->shmCtx.StreamName().c_str();
-		(*jsonIt)["log"] = this->shmCtx.LogName().c_str();
-		(*jsonIt)["maxqueueage"] = this->shmCtx.MaxQueuePktDelayMs();
-		(*jsonIt)["testnack"] = this->shmCtx.TestNackMs();
-
+		// Convert ShmWriterStatus to FlatBuffers enum
+		// Note: DepLibSfuShm only has: SHM_WRT_UNDEFINED, SHM_WRT_READY, SHM_WRT_CLOSED
+		FBS::ShmTransport::ShmWriterStatus shmStatus;
 		switch (this->shmCtx.Status())
 		{
-			case DepLibSfuShm::SHM_WRT_READY:
-				(*jsonIt)["status"] = "ready";
+			case DepLibSfuShm::ShmWriterStatus::SHM_WRT_READY:
+				shmStatus = FBS::ShmTransport::ShmWriterStatus::READY;
 				break;
-
-			case DepLibSfuShm::SHM_WRT_CLOSED:
-				(*jsonIt)["status"] = "closed";
+			case DepLibSfuShm::ShmWriterStatus::SHM_WRT_CLOSED:
+				shmStatus = FBS::ShmTransport::ShmWriterStatus::CLOSED;
 				break;
-
-			case DepLibSfuShm::SHM_WRT_UNDEFINED:
+			case DepLibSfuShm::ShmWriterStatus::SHM_WRT_UNDEFINED:
 			default:
-				(*jsonIt)["status"] = "undefined";
+				shmStatus = FBS::ShmTransport::ShmWriterStatus::NOTSET;
 				break;
 		}
+
+		// Create SHM-specific dump with all Lively data
+		auto shmDump = FBS::ShmTransport::CreateDumpResponseDirect(
+		  builder,
+		  baseDump,
+		  this->shmCtx.StreamName().c_str(),
+		  this->shmCtx.LogName().c_str(),
+		  shmStatus,
+		  this->shmCtx.MaxQueuePktDelayMs(),
+		  this->shmCtx.TestNackMs(),
+		  this->listenIp.ip.c_str(),
+		  this->listenIp.announcedIp.empty() ? nullptr : this->listenIp.announcedIp.c_str(),
+		  this->rtcpMux,
+		  this->comedia,
+		  this->multiSource);
+
+		return shmDump;
 	}
 
-	void ShmTransport::FillJsonStats(json& jsonArray)
+	flatbuffers::Offset<FBS::ShmTransport::GetStatsResponse> ShmTransport::FillBufferStats(flatbuffers::FlatBufferBuilder& builder)
 	{
 		MS_TRACE();
 
-		Transport::FillJsonStats(jsonArray);
+		// Get base Transport stats
+		auto baseStats = RTC::Transport::FillBufferStats(builder);
 
-		auto& jsonObject = jsonArray[0];
-		// Add type.
-		jsonObject["type"] = "shm-transport";
+		// Convert ShmWriterStatus to FlatBuffers enum
+		// Note: DepLibSfuShm only has: SHM_WRT_UNDEFINED, SHM_WRT_READY, SHM_WRT_CLOSED
+		FBS::ShmTransport::ShmWriterStatus shmStatus;
+		switch (this->shmCtx.Status())
+		{
+			case DepLibSfuShm::ShmWriterStatus::SHM_WRT_READY:
+				shmStatus = FBS::ShmTransport::ShmWriterStatus::READY;
+				break;
+			case DepLibSfuShm::ShmWriterStatus::SHM_WRT_CLOSED:
+				shmStatus = FBS::ShmTransport::ShmWriterStatus::CLOSED;
+				break;
+			case DepLibSfuShm::ShmWriterStatus::SHM_WRT_UNDEFINED:
+			default:
+				shmStatus = FBS::ShmTransport::ShmWriterStatus::NOTSET;
+				break;
+		}
+
+		// Create SHM-specific stats
+		// Note: video_queue_size is not accessible (private member), set to 0 for now
+		auto shmStats = FBS::ShmTransport::CreateGetStatsResponseDirect(
+		  builder,
+		  baseStats,
+		  this->shmCtx.StreamName().c_str(),
+		  shmStatus,
+		  0, // video_queue_size - TODO: expose this from ShmCtx if needed
+		  this->shmCtx.MaxQueuePktDelayMs());
+
+		return shmStats;
 	}
 
 	void ShmTransport::SendStreamClosed(uint32_t /*ssrc*/)
@@ -291,7 +270,7 @@ namespace RTC
 	}
 
 	void ShmTransport::SendMessage(
-	  RTC::DataConsumer* /*dataConsumer*/, uint32_t /*ppid*/, const uint8_t* /*msg*/, size_t /*len*/, onQueuedCallback* /*cb*/)
+	  RTC::DataConsumer* /*dataConsumer*/, const uint8_t* /*msg*/, size_t /*len*/, uint32_t /*ppid*/, onQueuedCallback* /*cb*/)
 	{
 		MS_TRACE();
 
@@ -386,9 +365,9 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		switch (request->methodId)
+		switch (request->method)
 		{
-			case Channel::ChannelRequest::MethodId::TRANSPORT_CONNECT:
+			case Channel::ChannelRequest::Method::TRANSPORT_CONNECT:
 			{
 				if (this->IsConnected())
 				{
@@ -402,12 +381,27 @@ namespace RTC
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::TRANSPORT_CONSUME_STREAM_META:
+			case Channel::ChannelRequest::Method::TRANSPORT_CONSUME_STREAM_META:
 			{
-				if (RecvStreamMeta(request->data))
+				const auto* body = request->data->body_as<FBS::Transport::ConsumeStreamMetaRequest>();
+
+				// Extract meta and shm from FlatBuffers request
+				std::string metadata(body->meta()->c_str());
+				std::string shm(body->shm()->c_str());
+
+				MS_DEBUG_TAG_LIVELYAPP(xcode, this->appData, "shm[%s] received stream metadata [meta:%s, shm:%s]",
+					this->shmCtx.StreamName().c_str(), metadata.c_str(), shm.c_str());
+
+				// Write the stream metadata
+				if (0 == this->shmCtx.WriteStreamMeta(metadata, shm))
+				{
 					request->Accept();
+				}
 				else
-					request->Error("ShmTransport::RecvStreamMeta returned false");
+				{
+					request->Error("ShmTransport::WriteStreamMeta failed");
+				}
+
 				break;
 			}
 
@@ -419,8 +413,7 @@ namespace RTC
 		}
 	}
 
-
-	void ShmTransport::HandleNotification(PayloadChannel::PayloadChannelNotification* notification)
+	void ShmTransport::HandleNotification(Channel::ChannelNotification* notification)
 	{
 		MS_TRACE();
 
@@ -470,38 +463,6 @@ namespace RTC
 		RTC::Transport::DataSent(packet->GetSize());
 	}
 
-
-  bool ShmTransport::RecvStreamMeta(json& data)
-	{
-		MS_TRACE();
-/*
-					const reqdata = {
-						meta: ...,
-						shm: ...
-					};
-*/
-		MS_DEBUG_TAG_LIVELYAPP(xcode, this->appData, "shm[%s] received stream metadata [%s]", this->shmCtx.StreamName().c_str(), data.dump().c_str());
-
-		std::string metadata;
-		auto jsonMetaIt = data.find("meta");
-		if (jsonMetaIt == data.end())
-			MS_THROW_TYPE_ERROR("missing metadata in [%s]", data.dump().c_str());
-		else if (!jsonMetaIt->is_string())
-			MS_THROW_TYPE_ERROR("wrong metadata (not a string) in [%s]", data.dump().c_str());
-
-		metadata.assign(jsonMetaIt->get<std::string>());
-
-		std::string shm;
-		auto jsonShmIt = data.find("shm");
-		if (jsonShmIt == data.end())
-			MS_THROW_TYPE_ERROR("missing shm name in [%s]", data.dump().c_str());
-		else if (!jsonShmIt->is_string())
-			MS_THROW_TYPE_ERROR("wrong shm name (not a string) in [%s]", data.dump().c_str());
-
-		shm.assign(jsonShmIt->get<std::string>());
-
-		return (0 == this->shmCtx.WriteStreamMeta(metadata, shm));
-	}
 
 
 	void ShmTransport::SendSctpData(const uint8_t* data, size_t len)

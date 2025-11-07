@@ -3,7 +3,7 @@
 
 #include "RTC/RtxStream.hpp"
 #include "Logger.hpp"
-#include "RTC/SeqManager.hpp"
+#include "Utils.hpp"
 
 namespace RTC
 {
@@ -28,12 +28,15 @@ namespace RTC
 		MS_TRACE();
 	}
 
-	void RtxStream::FillJson(json& jsonObject) const
+	flatbuffers::Offset<FBS::RtxStream::RtxDump> RtxStream::FillBuffer(
+	  flatbuffers::FlatBufferBuilder& builder) const
 	{
 		MS_TRACE();
 
 		// Add params.
-		this->params.FillJson(jsonObject["params"]);
+		auto params = this->params.FillBuffer(builder);
+
+		return FBS::RtxStream::CreateRtxDump(builder, params);
 	}
 
 	bool RtxStream::ReceivePacket(RTC::RtpPacket* packet)
@@ -66,7 +69,7 @@ namespace RTC
 		}
 
 		// Update highest seen RTP timestamp.
-		if (RTC::SeqManager<uint32_t>::IsSeqHigherThan(packet->GetTimestamp(), this->maxPacketTs))
+		if (Utils::Number<uint32_t>::IsHigherThan(packet->GetTimestamp(), this->maxPacketTs))
 		{
 			this->maxPacketTs = packet->GetTimestamp();
 			this->maxPacketMs = DepLibUV::GetTimeMs();
@@ -92,9 +95,13 @@ namespace RTC
 		auto expected = GetExpectedPackets();
 
 		if (expected > this->packetsCount)
+		{
 			this->packetsLost = expected - this->packetsCount;
+		}
 		else
+		{
 			this->packetsLost = 0u;
+		}
 
 		// Calculate Fraction Lost.
 		const uint32_t expectedInterval = expected - this->expectedPrior;
@@ -108,9 +115,13 @@ namespace RTC
 		const int32_t lostInterval = expectedInterval - receivedInterval;
 
 		if (expectedInterval == 0 || lostInterval <= 0)
+		{
 			this->fractionLost = 0;
+		}
 		else
+		{
 			this->fractionLost = std::round((static_cast<double>(lostInterval << 8) / expectedInterval));
+		}
 
 		this->reportedPacketLost += (this->packetsLost - prevPacketsLost);
 
@@ -126,7 +137,7 @@ namespace RTC
 		if (this->lastSrReceived != 0)
 		{
 			// Get delay in milliseconds.
-			auto delayMs = static_cast<uint32_t>(DepLibUV::GetTimeMs() - this->lastSrReceived);
+			const uint32_t delayMs = DepLibUV::GetTimeMs() - this->lastSrReceived;
 			// Express delay in units of 1/65536 seconds.
 			uint32_t dlsr = (delayMs / 1000) << 16;
 
@@ -174,6 +185,23 @@ namespace RTC
 			}
 
 			this->maxSeq = seq;
+
+			// Timestamp moved backwards despite in-order sequence number. Likely
+			// caused by prolonged Producer inactivity (e.g., overnight pause).
+			if (Utils::Number<uint32_t>::IsLowerThan(packet->GetTimestamp(), this->maxPacketTs))
+			{
+				MS_DEBUG_TAG(
+				  rtx,
+				  "timestamp moved backwards, updating [ssrc:%" PRIu32 ", seq:%" PRIu16
+				  ", old maxPacketTs:%" PRIu32 ", new maxPacketTs:%" PRIu32 "]",
+				  packet->GetSsrc(),
+				  packet->GetSequenceNumber(),
+				  this->maxPacketTs,
+				  packet->GetTimestamp());
+
+				this->maxPacketTs = packet->GetTimestamp();
+				this->maxPacketMs = DepLibUV::GetTimeMs();
+			}
 		}
 		// Too old packet received (older than the allowed misorder).
 		// Or to new packet (more than acceptable dropout).
@@ -231,18 +259,18 @@ namespace RTC
 		this->badSeq  = RtpSeqMod + 1; // So seq == badSeq is false.
 	}
 
-	void RtxStream::Params::FillJson(json& jsonObject) const
+	flatbuffers::Offset<FBS::RtxStream::Params> RtxStream::Params::FillBuffer(
+	  flatbuffers::FlatBufferBuilder& builder) const
 	{
 		MS_TRACE();
 
-		jsonObject["ssrc"]        = this->ssrc;
-		jsonObject["payloadType"] = this->payloadType;
-		jsonObject["mimeType"]    = this->mimeType.ToString();
-		jsonObject["clockRate"]   = this->clockRate;
-
-		if (!this->rrid.empty())
-			jsonObject["rrid"] = this->rrid;
-
-		jsonObject["cname"] = this->cname;
+		return FBS::RtxStream::CreateParamsDirect(
+		  builder,
+		  this->ssrc,
+		  this->payloadType,
+		  this->mimeType.ToString().c_str(),
+		  this->clockRate,
+		  this->rrid.c_str(),
+		  this->cname.c_str());
 	}
 } // namespace RTC

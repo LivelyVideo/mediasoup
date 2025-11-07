@@ -2,7 +2,6 @@ use futures_lite::future;
 use mediasoup::consumer::{ConsumerOptions, ConsumerScore, ConsumerType};
 use mediasoup::data_consumer::{DataConsumerOptions, DataConsumerType};
 use mediasoup::data_producer::{DataProducerOptions, DataProducerType};
-use mediasoup::data_structures::{AppData, ListenIp};
 use mediasoup::pipe_transport::{PipeTransportOptions, PipeTransportRemoteParameters};
 use mediasoup::prelude::*;
 use mediasoup::producer::ProducerOptions;
@@ -10,18 +9,21 @@ use mediasoup::router::{
     PipeDataProducerToRouterPair, PipeProducerToRouterPair, PipeToRouterOptions, Router,
     RouterOptions,
 };
-use mediasoup::rtp_parameters::{
+use mediasoup::transport::ProduceError;
+use mediasoup::webrtc_transport::{
+    WebRtcTransport, WebRtcTransportListenInfos, WebRtcTransportOptions,
+};
+use mediasoup::worker::{RequestError, Worker, WorkerSettings};
+use mediasoup::worker_manager::WorkerManager;
+use mediasoup_types::data_structures::{AppData, ListenInfo, Protocol};
+use mediasoup_types::rtp_parameters::{
     MediaKind, MimeTypeAudio, MimeTypeVideo, RtcpFeedback, RtcpParameters, RtpCapabilities,
     RtpCodecCapability, RtpCodecParameters, RtpCodecParametersParameters, RtpEncodingParameters,
     RtpHeaderExtension, RtpHeaderExtensionDirection, RtpHeaderExtensionParameters,
     RtpHeaderExtensionUri, RtpParameters,
 };
-use mediasoup::sctp_parameters::SctpStreamParameters;
-use mediasoup::srtp_parameters::{SrtpCryptoSuite, SrtpParameters};
-use mediasoup::transport::ProduceError;
-use mediasoup::webrtc_transport::{TransportListenIps, WebRtcTransport, WebRtcTransportOptions};
-use mediasoup::worker::{RequestError, Worker, WorkerSettings};
-use mediasoup::worker_manager::WorkerManager;
+use mediasoup_types::sctp_parameters::SctpStreamParameters;
+use mediasoup_types::srtp_parameters::{SrtpCryptoSuite, SrtpParameters};
 use parking_lot::Mutex;
 use portpicker::pick_unused_port;
 use std::env;
@@ -81,6 +83,7 @@ fn audio_producer_options() -> ProducerOptions {
                 cname: Some("FOOBAR".to_string()),
                 ..RtcpParameters::default()
             },
+            msid: None,
         },
     );
 
@@ -140,6 +143,7 @@ fn video_producer_options() -> ProducerOptions {
                 cname: Some("FOOBAR".to_string()),
                 ..RtcpParameters::default()
             },
+            msid: Some("aaaa-bbbb".to_string()),
         },
     );
 
@@ -206,8 +210,8 @@ fn consumer_device_capabilities() -> RtpCapabilities {
             },
             RtpHeaderExtension {
                 kind: MediaKind::Audio,
-                uri: RtpHeaderExtensionUri::AudioLevel,
-                preferred_id: 10,
+                uri: RtpHeaderExtensionUri::SsrcAudioLevel,
+                preferred_id: 6,
                 preferred_encrypt: false,
                 direction: RtpHeaderExtensionDirection::default(),
             },
@@ -253,10 +257,18 @@ async fn init() -> (
         .await
         .expect("Failed to create router");
 
-    let mut transport_options = WebRtcTransportOptions::new(TransportListenIps::new(ListenIp {
-        ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-        announced_ip: None,
-    }));
+    let mut transport_options =
+        WebRtcTransportOptions::new(WebRtcTransportListenInfos::new(ListenInfo {
+            protocol: Protocol::Udp,
+            ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            announced_address: None,
+            expose_internal_ip: false,
+            port: None,
+            port_range: None,
+            flags: None,
+            send_buffer_size: None,
+            recv_buffer_size: None,
+        }));
     transport_options.enable_sctp = true;
 
     let transport_1 = router1
@@ -283,8 +295,8 @@ fn pipe_to_router_succeeds_with_audio() {
             .expect("Failed to produce audio");
 
         let PipeProducerToRouterPair {
-            pipe_consumer,
             pipe_producer,
+            pipe_consumer,
         } = router1
             .pipe_producer_to_router(
                 audio_producer.id(),
@@ -333,15 +345,30 @@ fn pipe_to_router_succeeds_with_audio() {
             pipe_consumer.rtp_parameters().header_extensions,
             vec![
                 RtpHeaderExtensionParameters {
-                    uri: RtpHeaderExtensionUri::AudioLevel,
-                    id: 10,
+                    uri: RtpHeaderExtensionUri::SsrcAudioLevel,
+                    id: 6,
+                    encrypt: false,
+                },
+                RtpHeaderExtensionParameters {
+                    uri: RtpHeaderExtensionUri::DependencyDescriptor,
+                    id: 7,
                     encrypt: false,
                 },
                 RtpHeaderExtensionParameters {
                     uri: RtpHeaderExtensionUri::AbsCaptureTime,
-                    id: 13,
+                    id: 10,
                     encrypt: false,
-                }
+                },
+                RtpHeaderExtensionParameters {
+                    uri: RtpHeaderExtensionUri::PlayoutDelay,
+                    id: 11,
+                    encrypt: false,
+                },
+                RtpHeaderExtensionParameters {
+                    uri: RtpHeaderExtensionUri::MediasoupPacketId,
+                    id: 12,
+                    encrypt: false,
+                },
             ],
         );
         assert_eq!(pipe_consumer.r#type(), ConsumerType::Pipe);
@@ -378,15 +405,30 @@ fn pipe_to_router_succeeds_with_audio() {
             pipe_producer.rtp_parameters().header_extensions,
             vec![
                 RtpHeaderExtensionParameters {
-                    uri: RtpHeaderExtensionUri::AudioLevel,
-                    id: 10,
+                    uri: RtpHeaderExtensionUri::SsrcAudioLevel,
+                    id: 6,
+                    encrypt: false,
+                },
+                RtpHeaderExtensionParameters {
+                    uri: RtpHeaderExtensionUri::DependencyDescriptor,
+                    id: 7,
                     encrypt: false,
                 },
                 RtpHeaderExtensionParameters {
                     uri: RtpHeaderExtensionUri::AbsCaptureTime,
-                    id: 13,
+                    id: 10,
                     encrypt: false,
-                }
+                },
+                RtpHeaderExtensionParameters {
+                    uri: RtpHeaderExtensionUri::PlayoutDelay,
+                    id: 11,
+                    encrypt: false,
+                },
+                RtpHeaderExtensionParameters {
+                    uri: RtpHeaderExtensionUri::MediasoupPacketId,
+                    id: 12,
+                    encrypt: false,
+                },
             ],
         );
         assert!(!pipe_producer.paused());
@@ -423,8 +465,8 @@ fn pipe_to_router_succeeds_with_video() {
             .expect("Failed to pause video producer");
 
         let PipeProducerToRouterPair {
-            pipe_consumer,
             pipe_producer,
+            pipe_consumer,
         } = router1
             .pipe_producer_to_router(
                 video_producer.id(),
@@ -464,30 +506,34 @@ fn pipe_to_router_succeeds_with_video() {
         assert_eq!(
             pipe_consumer.rtp_parameters().header_extensions,
             vec![
-                // NOTE: Remove this once framemarking draft becomes RFC.
                 RtpHeaderExtensionParameters {
-                    uri: RtpHeaderExtensionUri::FrameMarkingDraft07,
-                    id: 6,
-                    encrypt: false,
-                },
-                RtpHeaderExtensionParameters {
-                    uri: RtpHeaderExtensionUri::FrameMarking,
+                    uri: RtpHeaderExtensionUri::DependencyDescriptor,
                     id: 7,
                     encrypt: false,
                 },
                 RtpHeaderExtensionParameters {
                     uri: RtpHeaderExtensionUri::VideoOrientation,
-                    id: 11,
+                    id: 8,
                     encrypt: false,
                 },
                 RtpHeaderExtensionParameters {
                     uri: RtpHeaderExtensionUri::TimeOffset,
-                    id: 12,
+                    id: 9,
                     encrypt: false,
                 },
                 RtpHeaderExtensionParameters {
                     uri: RtpHeaderExtensionUri::AbsCaptureTime,
-                    id: 13,
+                    id: 10,
+                    encrypt: false,
+                },
+                RtpHeaderExtensionParameters {
+                    uri: RtpHeaderExtensionUri::PlayoutDelay,
+                    id: 11,
+                    encrypt: false,
+                },
+                RtpHeaderExtensionParameters {
+                    uri: RtpHeaderExtensionUri::MediasoupPacketId,
+                    id: 12,
                     encrypt: false,
                 },
             ],
@@ -521,30 +567,34 @@ fn pipe_to_router_succeeds_with_video() {
         assert_eq!(
             pipe_consumer.rtp_parameters().header_extensions,
             vec![
-                // NOTE: Remove this once framemarking draft becomes RFC.
                 RtpHeaderExtensionParameters {
-                    uri: RtpHeaderExtensionUri::FrameMarkingDraft07,
-                    id: 6,
-                    encrypt: false,
-                },
-                RtpHeaderExtensionParameters {
-                    uri: RtpHeaderExtensionUri::FrameMarking,
+                    uri: RtpHeaderExtensionUri::DependencyDescriptor,
                     id: 7,
                     encrypt: false,
                 },
                 RtpHeaderExtensionParameters {
                     uri: RtpHeaderExtensionUri::VideoOrientation,
-                    id: 11,
+                    id: 8,
                     encrypt: false,
                 },
                 RtpHeaderExtensionParameters {
                     uri: RtpHeaderExtensionUri::TimeOffset,
-                    id: 12,
+                    id: 9,
                     encrypt: false,
                 },
                 RtpHeaderExtensionParameters {
                     uri: RtpHeaderExtensionUri::AbsCaptureTime,
-                    id: 13,
+                    id: 10,
+                    encrypt: false,
+                },
+                RtpHeaderExtensionParameters {
+                    uri: RtpHeaderExtensionUri::PlayoutDelay,
+                    id: 11,
+                    encrypt: false,
+                },
+                RtpHeaderExtensionParameters {
+                    uri: RtpHeaderExtensionUri::MediasoupPacketId,
+                    id: 12,
                     encrypt: false,
                 },
             ],
@@ -554,7 +604,7 @@ fn pipe_to_router_succeeds_with_video() {
 }
 
 #[test]
-fn pipe_to_router_fails_if_both_routers_belong_to_the_same_worker() {
+fn pipe_to_router_with_keep_id_true_fails_if_both_routers_belong_to_the_same_worker() {
     future::block_on(async move {
         let (worker1, _worker2, router1, _router2, transport1, _transport2) = init().await;
 
@@ -587,15 +637,55 @@ fn pipe_to_router_fails_if_both_routers_belong_to_the_same_worker() {
 }
 
 #[test]
+fn pipe_to_router_with_keep_id_false_does_not_fail_if_both_routers_belong_to_the_same_worker() {
+    future::block_on(async move {
+        let (worker1, _worker2, router1, _router2, transport1, _transport2) = init().await;
+
+        let router1bis = worker1
+            .create_router(RouterOptions::new(media_codecs()))
+            .await
+            .expect("Failed to create router");
+
+        let video_producer = transport1
+            .produce(video_producer_options())
+            .await
+            .expect("Failed to produce video");
+
+        let PipeProducerToRouterPair {
+            pipe_producer,
+            pipe_consumer: _,
+        } = router1
+            .pipe_producer_to_router(video_producer.id(), {
+                let mut options = PipeToRouterOptions::new(router1bis.clone());
+                options.keep_id = false;
+                options
+            })
+            .await
+            .expect("Failed to pipe producer to router");
+
+        let pipe_producer = pipe_producer.into_inner();
+
+        assert_ne!(pipe_producer.id(), video_producer.id());
+    });
+}
+
+#[test]
 fn weak() {
     future::block_on(async move {
         let (_worker1, _worker2, router1, _router2, _transport1, _transport2) = init().await;
 
         let pipe_transport = router1
             .create_pipe_transport({
-                let mut options = PipeTransportOptions::new(ListenIp {
+                let mut options = PipeTransportOptions::new(ListenInfo {
+                    protocol: Protocol::Udp,
                     ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-                    announced_ip: None,
+                    announced_address: None,
+                    expose_internal_ip: false,
+                    port: None,
+                    port_range: None,
+                    flags: None,
+                    send_buffer_size: None,
+                    recv_buffer_size: None,
                 });
                 options.enable_rtx = true;
 
@@ -623,13 +713,17 @@ fn create_with_fixed_port_succeeds() {
 
         let pipe_transport = router1
             .create_pipe_transport({
-                let mut options = PipeTransportOptions::new(ListenIp {
+                PipeTransportOptions::new(ListenInfo {
+                    protocol: Protocol::Udp,
                     ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-                    announced_ip: None,
-                });
-                options.port = Some(port);
-
-                options
+                    announced_address: None,
+                    expose_internal_ip: false,
+                    port: Some(port),
+                    port_range: None,
+                    flags: None,
+                    send_buffer_size: None,
+                    recv_buffer_size: None,
+                })
             })
             .await
             .expect("Failed to create Pipe transport");
@@ -645,9 +739,16 @@ fn create_with_enable_rtx_succeeds() {
 
         let pipe_transport = router1
             .create_pipe_transport({
-                let mut options = PipeTransportOptions::new(ListenIp {
+                let mut options = PipeTransportOptions::new(ListenInfo {
+                    protocol: Protocol::Udp,
                     ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-                    announced_ip: None,
+                    announced_address: None,
+                    expose_internal_ip: false,
+                    port: None,
+                    port_range: None,
+                    flags: None,
+                    send_buffer_size: None,
+                    recv_buffer_size: None,
                 });
                 options.enable_rtx = true;
 
@@ -703,30 +804,34 @@ fn create_with_enable_rtx_succeeds() {
         assert_eq!(
             pipe_consumer.rtp_parameters().header_extensions,
             vec![
-                // NOTE: Remove this once framemarking draft becomes RFC.
                 RtpHeaderExtensionParameters {
-                    uri: RtpHeaderExtensionUri::FrameMarkingDraft07,
-                    id: 6,
-                    encrypt: false,
-                },
-                RtpHeaderExtensionParameters {
-                    uri: RtpHeaderExtensionUri::FrameMarking,
+                    uri: RtpHeaderExtensionUri::DependencyDescriptor,
                     id: 7,
                     encrypt: false,
                 },
                 RtpHeaderExtensionParameters {
                     uri: RtpHeaderExtensionUri::VideoOrientation,
-                    id: 11,
+                    id: 8,
                     encrypt: false,
                 },
                 RtpHeaderExtensionParameters {
                     uri: RtpHeaderExtensionUri::TimeOffset,
-                    id: 12,
+                    id: 9,
                     encrypt: false,
                 },
                 RtpHeaderExtensionParameters {
                     uri: RtpHeaderExtensionUri::AbsCaptureTime,
-                    id: 13,
+                    id: 10,
+                    encrypt: false,
+                },
+                RtpHeaderExtensionParameters {
+                    uri: RtpHeaderExtensionUri::PlayoutDelay,
+                    id: 11,
+                    encrypt: false,
+                },
+                RtpHeaderExtensionParameters {
+                    uri: RtpHeaderExtensionUri::MediasoupPacketId,
+                    id: 12,
                     encrypt: false,
                 },
             ],
@@ -753,9 +858,16 @@ fn create_with_enable_srtp_succeeds() {
 
         let pipe_transport = router1
             .create_pipe_transport({
-                let mut options = PipeTransportOptions::new(ListenIp {
+                let mut options = PipeTransportOptions::new(ListenInfo {
+                    protocol: Protocol::Udp,
                     ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-                    announced_ip: None,
+                    announced_address: None,
+                    expose_internal_ip: false,
+                    port: None,
+                    port_range: None,
+                    flags: None,
+                    send_buffer_size: None,
+                    recv_buffer_size: None,
                 });
                 options.enable_srtp = true;
 
@@ -804,9 +916,16 @@ fn create_with_invalid_srtp_parameters_fails() {
         let (_worker1, _worker2, router1, _router2, _transport1, _transport2) = init().await;
 
         let pipe_transport = router1
-            .create_pipe_transport(PipeTransportOptions::new(ListenIp {
+            .create_pipe_transport(PipeTransportOptions::new(ListenInfo {
+                protocol: Protocol::Udp,
                 ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-                announced_ip: None,
+                announced_address: None,
+                expose_internal_ip: false,
+                port: None,
+                port_range: None,
+                flags: None,
+                send_buffer_size: None,
+                recv_buffer_size: None,
             }))
             .await
             .expect("Failed to create Pipe transport");
@@ -845,7 +964,7 @@ fn consume_for_pipe_producer_succeeds() {
             .await
             .expect("Failed to pause video producer");
 
-        router1
+        let PipeProducerToRouterPair { pipe_producer, .. } = router1
             .pipe_producer_to_router(
                 video_producer.id(),
                 PipeToRouterOptions::new(router2.clone()),
@@ -853,9 +972,11 @@ fn consume_for_pipe_producer_succeeds() {
             .await
             .expect("Failed to pipe video producer to router");
 
+        let pipe_video_producer = pipe_producer.into_inner();
+
         let video_consumer = transport2
             .consume(ConsumerOptions::new(
-                video_producer.id(),
+                pipe_video_producer.id(),
                 consumer_device_capabilities(),
             ))
             .await
@@ -904,6 +1025,10 @@ fn consume_for_pipe_producer_succeeds() {
         assert_eq!(video_consumer.rtp_parameters().encodings.len(), 1);
         assert!(video_consumer.rtp_parameters().encodings[0].ssrc.is_some());
         assert!(video_consumer.rtp_parameters().encodings[0].rtx.is_some());
+        assert_eq!(
+            video_consumer.rtp_parameters().msid,
+            Some("aaaa-bbbb".to_string())
+        );
         assert_eq!(video_consumer.r#type(), ConsumerType::Simulcast);
         assert!(!video_consumer.paused());
         assert!(video_consumer.producer_paused());
@@ -935,7 +1060,10 @@ fn producer_pause_resume_are_transmitted_to_pipe_consumer() {
             .await
             .expect("Failed to pause video producer");
 
-        router1
+        let PipeProducerToRouterPair {
+            pipe_producer,
+            pipe_consumer: _,
+        } = router1
             .pipe_producer_to_router(
                 video_producer.id(),
                 PipeToRouterOptions::new(router2.clone()),
@@ -943,9 +1071,11 @@ fn producer_pause_resume_are_transmitted_to_pipe_consumer() {
             .await
             .expect("Failed to pipe video producer to router");
 
+        let pipe_video_producer = pipe_producer.into_inner();
+
         let video_consumer = transport2
             .consume(ConsumerOptions::new(
-                video_producer.id(),
+                pipe_video_producer.id(),
                 consumer_device_capabilities(),
             ))
             .await
@@ -1010,8 +1140,8 @@ fn pipe_to_router_succeeds_with_data() {
             .expect("Failed to produce data");
 
         let PipeDataProducerToRouterPair {
-            pipe_data_consumer,
             pipe_data_producer,
+            pipe_data_consumer,
         } = router1
             .pipe_data_producer_to_router(
                 data_producer.id(),
@@ -1054,7 +1184,6 @@ fn pipe_to_router_succeeds_with_data() {
         assert_eq!(pipe_data_consumer.label().as_str(), "foo");
         assert_eq!(pipe_data_consumer.protocol().as_str(), "bar");
 
-        assert_eq!(pipe_data_producer.id(), data_producer.id());
         assert_eq!(pipe_data_producer.r#type(), DataProducerType::Sctp);
         {
             let sctp_stream_parameters = pipe_data_producer.sctp_stream_parameters();
@@ -1081,7 +1210,10 @@ fn data_consume_for_pipe_data_producer_succeeds() {
             .await
             .expect("Failed to produce data");
 
-        router1
+        let PipeDataProducerToRouterPair {
+            pipe_data_producer,
+            pipe_data_consumer: _,
+        } = router1
             .pipe_data_producer_to_router(
                 data_producer.id(),
                 PipeToRouterOptions::new(router2.clone()),
@@ -1089,8 +1221,10 @@ fn data_consume_for_pipe_data_producer_succeeds() {
             .await
             .expect("Failed to pipe data producer to router");
 
+        let pipe_data_producer = pipe_data_producer.into_inner();
+
         let data_consumer = transport2
-            .consume_data(DataConsumerOptions::new_sctp(data_producer.id()))
+            .consume_data(DataConsumerOptions::new_sctp(pipe_data_producer.id()))
             .await
             .expect("Failed to create data consumer");
 
@@ -1126,9 +1260,16 @@ fn pipe_to_router_called_twice_generates_single_pair() {
             .expect("Failed to create router");
 
         let mut transport_options =
-            WebRtcTransportOptions::new(TransportListenIps::new(ListenIp {
+            WebRtcTransportOptions::new(WebRtcTransportListenInfos::new(ListenInfo {
+                protocol: Protocol::Udp,
                 ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-                announced_ip: None,
+                announced_address: None,
+                expose_internal_ip: false,
+                port: None,
+                port_range: None,
+                flags: None,
+                send_buffer_size: None,
+                recv_buffer_size: None,
             }));
         transport_options.enable_sctp = true;
 

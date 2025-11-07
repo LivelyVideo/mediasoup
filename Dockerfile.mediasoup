@@ -1,16 +1,20 @@
-ARG BASE_URL=golang:1.18-buster
+ARG BASE_URL=golang:1.21-bookworm
 FROM $BASE_URL AS base
 
 ARG XCODE2_BUILD=false
+
 RUN if [ "$XCODE2_BUILD" = "false" ]; then \
   apt update && \
   apt -y upgrade && \
-  apt install -y build-essential autoconf vim wget curl libtool libtool-bin gpp less libpcre3-dev libz-dev&& \
+  apt install -y build-essential autoconf vim wget curl libtool libtool-bin gpp less libpcre3-dev libz-dev && \
   apt -y upgrade python3 && \
-  apt install -y python3-pip supervisor && \
+  apt install -y python3-pip python3-venv supervisor && \
   ln -s /usr/bin/python3 /usr/local/bin/python3 && \
-  pip3 install ninja meson && \
-  curl -sL https://deb.nodesource.com/setup_16.x | bash - && \
+  pip3 install --break-system-packages ninja meson && \
+  mkdir -p /etc/apt/keyrings && \
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
+  apt update && \
   apt install -y nodejs; \
   fi
 
@@ -21,6 +25,7 @@ ENV MS_BUILD /mediasoup/build
 COPY worker ${MS_BUILD}/worker
 COPY node ${MS_BUILD}/node
 COPY package.json ${MS_BUILD}/package.json
+COPY tsconfig.json ${MS_BUILD}/tsconfig.json
 COPY npm-scripts.mjs ${MS_BUILD}/npm-scripts.mjs
 
 RUN if [ "$XCODE2_BUILD" = "true" ]; then \
@@ -31,6 +36,16 @@ RUN if [ "$XCODE2_BUILD" = "true" ]; then \
 
 ARG MEDIASOUP_BUILDTYPE_ARG=Release
 ENV MEDIASOUP_BUILDTYPE=${MEDIASOUP_BUILDTYPE_ARG}
+
+# Create symlink so npm-scripts.mjs can find flatc in the expected location
+RUN mkdir -p ${MS_BUILD}/worker/out/${MEDIASOUP_BUILDTYPE} && \
+  ln -s ${BUILD_DIR} ${MS_BUILD}/worker/out/${MEDIASOUP_BUILDTYPE}/build
+
+# Create directory structure for meson/ninja and symlink to system-installed binaries
+# This prevents tasks.py from installing broken pip versions
+RUN mkdir -p ${MS_BUILD}/worker/out/pip_meson_ninja/bin && \
+  ln -sf $(which meson) ${MS_BUILD}/worker/out/pip_meson_ninja/bin/meson && \
+  ln -sf $(which ninja) ${MS_BUILD}/worker/out/pip_meson_ninja/bin/ninja
 
 RUN \
   cd ${MS_BUILD} && \

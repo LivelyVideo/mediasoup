@@ -43,7 +43,7 @@ namespace RTC
 			{
 			}
 
-			void Dump() const;
+			void Dump(int indentation = 0) const;
 			size_t Serialize(uint8_t* buffer);
 			size_t GetSize() const
 			{
@@ -71,11 +71,15 @@ namespace RTC
 
 				// Possitive value.
 				if (((value >> 23) & 1) == 0)
+				{
 					return value;
+				}
 
 				// Negative value.
 				if (value != 0x0800000)
+				{
 					value &= ~(1 << 23);
+				}
 
 				return -value;
 			}
@@ -170,7 +174,9 @@ namespace RTC
 				auto it = std::find(this->reports.begin(), this->reports.end(), report);
 
 				if (it != this->reports.end())
+				{
 					this->reports.erase(it);
+				}
 			}
 			Iterator Begin()
 			{
@@ -183,7 +189,7 @@ namespace RTC
 
 			/* Pure virtual methods inherited from Packet. */
 		public:
-			void Dump() const override;
+			void Dump(int indentation = 0) const override;
 			size_t Serialize(uint8_t* buffer) override;
 			// NOTE: We need to force this since when we parse a SenderReportPacket that
 			// contains receive report blocks we also generate a second ReceiverReportPacket

@@ -1,15 +1,17 @@
-use crate::data_structures::ListenIp;
 use crate::producer::ProducerOptions;
 use crate::router::{Router, RouterOptions};
-use crate::rtp_parameters::{
-    MediaKind, MimeTypeAudio, RtpCodecCapability, RtpCodecParameters, RtpCodecParametersParameters,
-    RtpParameters,
-};
 use crate::transport::Transport;
-use crate::webrtc_transport::{TransportListenIps, WebRtcTransport, WebRtcTransportOptions};
+use crate::webrtc_transport::{
+    WebRtcTransport, WebRtcTransportListenInfos, WebRtcTransportOptions,
+};
 use crate::worker::WorkerSettings;
 use crate::worker_manager::WorkerManager;
 use futures_lite::future;
+use mediasoup_types::data_structures::{ListenInfo, Protocol};
+use mediasoup_types::rtp_parameters::{
+    MediaKind, MimeTypeAudio, RtpCodecCapability, RtpCodecParameters, RtpCodecParametersParameters,
+    RtpParameters,
+};
 use std::env;
 use std::net::{IpAddr, Ipv4Addr};
 use std::num::{NonZeroU32, NonZeroU8};
@@ -64,10 +66,18 @@ async fn init() -> (Router, WebRtcTransport) {
         .await
         .expect("Failed to create router");
 
-    let transport_options = WebRtcTransportOptions::new(TransportListenIps::new(ListenIp {
-        ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-        announced_ip: None,
-    }));
+    let transport_options =
+        WebRtcTransportOptions::new(WebRtcTransportListenInfos::new(ListenInfo {
+            protocol: Protocol::Udp,
+            ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            announced_address: None,
+            expose_internal_ip: false,
+            port: None,
+            port_range: None,
+            flags: None,
+            send_buffer_size: None,
+            recv_buffer_size: None,
+        }));
 
     let transport_1 = router
         .create_webrtc_transport(transport_options.clone())

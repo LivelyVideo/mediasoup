@@ -2,11 +2,9 @@
 #define MS_RTC_PRODUCER_HPP
 
 #include "common.hpp"
-#include "Lively.hpp"
-#include "LivelyBinLogs.hpp"
 #include "Channel/ChannelRequest.hpp"
 #include "Channel/ChannelSocket.hpp"
-#include "PayloadChannel/PayloadChannelSocket.hpp"
+#include "Lively.hpp"
 #include "RTC/KeyFrameRequestManager.hpp"
 #include "RTC/RTCP/CompoundPacket.hpp"
 #include "RTC/RTCP/Packet.hpp"
@@ -17,18 +15,15 @@
 #include "RTC/RtpPacket.hpp"
 #include "RTC/RtpStreamRecv.hpp"
 #include "RTC/Shared.hpp"
-#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
-
-using json = nlohmann::json;
 
 namespace RTC
 {
 	class Producer : public RTC::RtpStreamRecv::Listener,
 	                 public RTC::KeyFrameRequestManager::Listener,
 	                 public Channel::ChannelSocket::RequestHandler,
-	                 public PayloadChannel::PayloadChannelSocket::NotificationHandler
+	                 public Channel::ChannelSocket::NotificationHandler
 	{
 	public:
 		class Listener
@@ -95,19 +90,23 @@ namespace RTC
 			bool nack{ false };
 			bool pli{ false };
 			bool fir{ false };
+			bool sr{ false };
 		};
 
 	public:
-		Producer(RTC::Shared* shared, const std::string& id, RTC::Producer::Listener* listener, json& data, bool producerBinLogEnabled, Lively::AppData* appData = nullptr);
-		virtual ~Producer();
+		Producer(
+		  RTC::Shared* shared,
+		  const std::string& id,
+		  RTC::Producer::Listener* listener,
+		  const FBS::Transport::ProduceRequest* data,
+		  Lively::AppData* appData = nullptr);
+		~Producer() override;
 
 	public:
-		void FillJson(json& jsonObject) const;
-		void FillJsonStats(json& jsonArray) const;
-
-        // Added by Amir Pauker 02/27/2024 RND-568
-        void EmitProducerStats() const;
-
+		flatbuffers::Offset<FBS::Producer::DumpResponse> FillBuffer(
+		  flatbuffers::FlatBufferBuilder& builder) const;
+		flatbuffers::Offset<FBS::Producer::GetStatsResponse> FillBufferStats(
+		  flatbuffers::FlatBufferBuilder& builder);
 		RTC::Media::Kind GetKind() const
 		{
 			return this->kind;
@@ -146,9 +145,9 @@ namespace RTC
 	public:
 		void HandleRequest(Channel::ChannelRequest* request) override;
 
-		/* Methods inherited from PayloadChannel::PayloadChannelSocket::NotificationHandler. */
+		/* Methods inherited from Channel::ChannelSocket::NotificationHandler. */
 	public:
-		void HandleNotification(PayloadChannel::PayloadChannelNotification* notification) override;
+		void HandleNotification(Channel::ChannelNotification* notification) override;
 
 	private:
 		RTC::RtpStreamRecv* GetRtpStream(RTC::RtpPacket* packet);
@@ -164,6 +163,8 @@ namespace RTC
 		void EmitTraceEventPliType(uint32_t ssrc) const;
 		void EmitTraceEventFirType(uint32_t ssrc) const;
 		void EmitTraceEventNackType() const;
+		void EmitTraceEventSrType(RTC::RTCP::SenderReport* report) const;
+		void EmitTraceEvent(flatbuffers::Offset<FBS::Producer::TraceNotification>& notification) const;
 
 		/* Pure virtual methods inherited from RTC::RtpStreamRecv::Listener. */
 	public:
@@ -179,16 +180,8 @@ namespace RTC
 	public:
 		// Passed by argument.
 		const std::string id;
-
-	public:
+		// Lively-specific: appData for logging
 		std::string appData;
-
-	private:
-		Lively::AppData lively;
-		Lively::StatsBinLog binLog;
-		
-	public:
-		void FillBinLogStats();
 
 	private:
 		// Passed by argument.
@@ -200,7 +193,7 @@ namespace RTC
 		// Others.
 		RTC::Media::Kind kind;
 		RTC::RtpParameters rtpParameters;
-		RTC::RtpParameters::Type type{ RTC::RtpParameters::Type::NONE };
+		RTC::RtpParameters::Type type;
 		struct RtpMapping rtpMapping;
 		std::vector<RTC::RtpStreamRecv*> rtpStreamByEncodingIdx;
 		std::vector<uint8_t> rtpStreamScores;
@@ -209,6 +202,7 @@ namespace RTC
 		absl::flat_hash_map<uint32_t, uint32_t> mapMappedSsrcSsrc;
 		struct RTC::RtpHeaderExtensionIds rtpHeaderExtensionIds;
 		bool paused{ false };
+		bool enableMediasoupPacketIdHeaderExtension{ false };
 		RTC::RtpPacket* currentRtpPacket{ nullptr };
 		// Timestamp when last RTCP was sent.
 		uint64_t lastRtcpSentTime{ 0u };
@@ -217,9 +211,6 @@ namespace RTC
 		bool videoOrientationDetected{ false };
 		struct VideoOrientation videoOrientation;
 		struct TraceEventTypes traceEventTypes;
-
-		std::map<RTC::RtpStreamRecv*, Lively::CallStatsRecordCtx*> rtpStreamBinLogRecords;
-		
 		// Static buffer.
 		thread_local static uint8_t* buffer;
 	};

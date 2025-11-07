@@ -5,8 +5,7 @@
 #include "Logger.hpp"
 #include "Utils.hpp"
 #include "RTC/SeqManager.hpp"
-#include <limits> // std::numeric_limits()
-#include <sstream>
+#include <sstream> // std::ostringstream
 
 namespace RTC
 {
@@ -62,7 +61,7 @@ namespace RTC
 		{
 			MS_TRACE();
 
-			size_t len = static_cast<size_t>(ntohs(commonHeader->length) + 1) * 4;
+			const size_t len = static_cast<size_t>(ntohs(commonHeader->length) + 1) * 4;
 
 			if (len > availableLen)
 			{
@@ -86,8 +85,8 @@ namespace RTC
 			// Make contentData point to the beginning of the chunks.
 			uint8_t* contentData = data + FeedbackRtpTransportPacket::fixedHeaderSize;
 			// Make contentLen be the available length for chunks.
-			size_t contentLen = len - Packet::CommonHeaderSize - FeedbackPacket::HeaderSize -
-			                    FeedbackRtpTransportPacket::fixedHeaderSize;
+			const size_t contentLen = len - Packet::CommonHeaderSize - FeedbackPacket::HeaderSize -
+			                          FeedbackRtpTransportPacket::fixedHeaderSize;
 			size_t offset{ 0u };
 			uint16_t count{ 0u };
 			uint16_t receivedPacketStatusCount{ 0u };
@@ -175,49 +174,50 @@ namespace RTC
 			this->chunks.clear();
 		}
 
-		void FeedbackRtpTransportPacket::Dump() const
+		void FeedbackRtpTransportPacket::Dump(int indentation) const
 		{
 			MS_TRACE();
 
-			MS_DUMP("<FeedbackRtpTransportPacket>");
-			MS_DUMP("  base sequence         : %" PRIu16, this->baseSequenceNumber);
-			MS_DUMP("  packet status count   : %" PRIu16, this->packetStatusCount);
-			MS_DUMP("  reference time        : %" PRIi32, this->referenceTime);
-			MS_DUMP("  feedback packet count : %" PRIu8, this->feedbackPacketCount);
-			MS_DUMP("  size                  : %zu", GetSize());
+			MS_DUMP_CLEAN(indentation, "<FeedbackRtpTransportPacket>");
+			MS_DUMP_CLEAN(indentation, "  base sequence: %" PRIu16, this->baseSequenceNumber);
+			MS_DUMP_CLEAN(indentation, "  packet status count: %" PRIu16, this->packetStatusCount);
+			MS_DUMP_CLEAN(indentation, "  reference time: %" PRIi32, this->referenceTime);
+			MS_DUMP_CLEAN(indentation, "  feedback packet count: %" PRIu8, this->feedbackPacketCount);
+			MS_DUMP_CLEAN(indentation, "  size: %zu", GetSize());
 
 			for (auto* chunk : this->chunks)
 			{
-				chunk->Dump();
+				chunk->Dump(indentation + 1);
 			}
 
-			MS_DUMP("  <Deltas>");
+			MS_DUMP_CLEAN(indentation + 1, "<Deltas>");
 			for (auto delta : this->deltas)
 			{
-				MS_DUMP("    %" PRIi16 " ms", static_cast<int16_t>(delta / 4));
+				MS_DUMP_CLEAN(indentation + 1, "  %" PRIi16 " ms", static_cast<int16_t>(delta / 4));
 			}
-			MS_DUMP("  </Deltas>");
+			MS_DUMP_CLEAN(indentation + 1, "</Deltas>");
 
 			auto packetResults = GetPacketResults();
 
-			MS_DUMP("  <PacketResults>");
+			MS_DUMP_CLEAN(indentation + 1, "<PacketResults>");
 			for (auto& packetResult : packetResults)
 			{
 				if (packetResult.received)
 				{
-					MS_DUMP(
-					  "    seq:%" PRIu16 ", received:yes, receivedAtMs:%" PRIi64,
+					MS_DUMP_CLEAN(
+					  indentation + 1,
+					  "  seq:%" PRIu16 ", received:yes, receivedAtMs:%" PRIi64,
 					  packetResult.sequenceNumber,
 					  packetResult.receivedAtMs);
 				}
 				else
 				{
-					MS_DUMP("    seq:%" PRIu16 ", received:no", packetResult.sequenceNumber);
+					MS_DUMP_CLEAN(
+					  indentation + 1, "  seq:%" PRIu16 ", received:no", packetResult.sequenceNumber);
 				}
 			}
-			MS_DUMP("  </PacketResults>");
-
-			MS_DUMP("</FeedbackRtpTransportPacket>");
+			MS_DUMP_CLEAN(indentation + 1, "</PacketResults>");
+			MS_DUMP_CLEAN(indentation, "</FeedbackRtpTransportPacket>");
 		}
 
 		size_t FeedbackRtpTransportPacket::Serialize(uint8_t* buffer)
@@ -279,26 +279,29 @@ namespace RTC
 			return offset;
 		}
 
+		void FeedbackRtpTransportPacket::SetBase(uint16_t sequenceNumber, uint64_t timestamp)
+		{
+			MS_TRACE();
+
+			MS_ASSERT(!this->baseSet, "base already set");
+
+			this->baseSet              = true;
+			this->baseSequenceNumber   = sequenceNumber;
+			this->referenceTime        = static_cast<int32_t>((timestamp & 0x1FFFFFC0) / 64);
+			this->latestSequenceNumber = sequenceNumber - 1;
+			this->latestTimestamp      = (timestamp >> 6) * 64; // IMPORTANT: Loose precision.
+		}
+
 		FeedbackRtpTransportPacket::AddPacketResult FeedbackRtpTransportPacket::AddPacket(
 		  uint16_t sequenceNumber, uint64_t timestamp, size_t maxRtcpPacketLen)
 		{
 			MS_TRACE();
 
+			MS_ASSERT(this->baseSet, "base not set");
 			MS_ASSERT(!IsFull(), "packet is full");
 
-			// Let's see if we must set our base.
-			if (this->latestTimestamp == 0u)
-			{
-				this->baseSequenceNumber   = sequenceNumber + 1;
-				this->referenceTime        = static_cast<int32_t>((timestamp & 0x1FFFFFC0) / 64);
-				this->latestSequenceNumber = sequenceNumber;
-				this->latestTimestamp      = (timestamp >> 6) * 64; // IMPORTANT: Loose precision.
-
-				return AddPacketResult::SUCCESS;
-			}
-
-			// If the wide sequence number of the new packet is lower than the latest seen,
-			// ignore it.
+			// If the wide sequence number of the new packet is lower than the latest
+			// seen, ignore it.
 			// NOTE: Not very spec compliant but libwebrtc does it.
 			// Also ignore if the sequence number matches the latest seen.
 			if (!RTC::SeqManager<uint16_t>::IsSeqHigherThan(sequenceNumber, this->latestSequenceNumber))
@@ -308,7 +311,9 @@ namespace RTC
 
 			// Check if there are too many missing packets.
 			{
-				auto missingPackets = sequenceNumber - (this->latestSequenceNumber + 1);
+				// NOTE: We CANNOT use auto here, we must use uint16_t. Otherwise this is a bug.
+				// https://github.com/versatica/mediasoup/issues/1385#issuecomment-2084982087
+				const uint16_t missingPackets = sequenceNumber - (this->latestSequenceNumber + 1);
 
 				if (missingPackets > FeedbackRtpTransportPacket::maxMissingPackets)
 				{
@@ -340,7 +345,8 @@ namespace RTC
 			// Delta in 16 bits signed.
 			auto delta = static_cast<int16_t>(delta64);
 
-			// Check whether another chunks and corresponding delta infos could be added.
+			// Check whether another chunks and corresponding delta infos could be
+			// added.
 			{
 				// Fixed packet size.
 				size_t size = FeedbackRtpPacket::GetSize();
@@ -618,8 +624,8 @@ namespace RTC
 				return nullptr;
 			}
 
-			auto bytes        = Utils::Byte::Get2Bytes(data, 0);
-			uint8_t chunkType = (bytes >> 15) & 0x01;
+			auto bytes              = Utils::Byte::Get2Bytes(data, 0);
+			const uint8_t chunkType = (bytes >> 15) & 0x01;
 
 			// Run length chunk.
 			if (chunkType == 0)
@@ -649,7 +655,7 @@ namespace RTC
 			// Vector chunk.
 			else
 			{
-				uint8_t symbolSize = data[0] & 0x40;
+				const uint8_t symbolSize = data[0] & 0x40;
 
 				if (symbolSize == 0)
 				{
@@ -720,14 +726,15 @@ namespace RTC
 			return true;
 		}
 
-		void FeedbackRtpTransportPacket::RunLengthChunk::Dump() const
+		void FeedbackRtpTransportPacket::RunLengthChunk::Dump(int indentation) const
 		{
 			MS_TRACE();
 
-			MS_DUMP("  <RunLengthChunk>");
-			MS_DUMP("    status : %s", FeedbackRtpTransportPacket::status2String[this->status].c_str());
-			MS_DUMP("    count  : %" PRIu16, this->count);
-			MS_DUMP("  </RunLengthChunk>");
+			MS_DUMP_CLEAN(indentation, "<RunLengthChunk>");
+			MS_DUMP_CLEAN(
+			  indentation, "  status: %s", FeedbackRtpTransportPacket::status2String[this->status].c_str());
+			MS_DUMP_CLEAN(indentation, "  count: %" PRIu16, this->count);
+			MS_DUMP_CLEAN(indentation, "</RunLengthChunk>");
 		}
 
 		uint16_t FeedbackRtpTransportPacket::RunLengthChunk::GetReceivedStatusCount() const
@@ -750,7 +757,8 @@ namespace RTC
 		{
 			MS_TRACE();
 
-			bool received = (this->status == Status::SmallDelta || this->status == Status::LargeDelta);
+			const bool received =
+			  (this->status == Status::SmallDelta || this->status == Status::LargeDelta);
 
 			for (uint16_t count{ 1u }; count <= this->count; ++count)
 			{
@@ -825,7 +833,7 @@ namespace RTC
 			return true;
 		}
 
-		void FeedbackRtpTransportPacket::OneBitVectorChunk::Dump() const
+		void FeedbackRtpTransportPacket::OneBitVectorChunk::Dump(int indentation) const
 		{
 			MS_TRACE();
 
@@ -845,9 +853,9 @@ namespace RTC
 
 			out << "|";
 
-			MS_DUMP("  <OneBitVectorChunk>");
-			MS_DUMP("    %s", out.str().c_str());
-			MS_DUMP("  </OneBitVectorChunk>");
+			MS_DUMP_CLEAN(indentation, "<OneBitVectorChunk>");
+			MS_DUMP_CLEAN(indentation, "  %s", out.str().c_str());
+			MS_DUMP_CLEAN(indentation, "</OneBitVectorChunk>");
 		}
 
 		uint16_t FeedbackRtpTransportPacket::OneBitVectorChunk::GetReceivedStatusCount() const
@@ -875,7 +883,7 @@ namespace RTC
 
 			for (auto status : this->statuses)
 			{
-				bool received = (status == Status::SmallDelta || status == Status::LargeDelta);
+				const bool received = (status == Status::SmallDelta || status == Status::LargeDelta);
 
 				packetResults.emplace_back(++currentSequenceNumber, received);
 			}
@@ -965,7 +973,7 @@ namespace RTC
 			return true;
 		}
 
-		void FeedbackRtpTransportPacket::TwoBitVectorChunk::Dump() const
+		void FeedbackRtpTransportPacket::TwoBitVectorChunk::Dump(int indentation) const
 		{
 			MS_TRACE();
 
@@ -985,9 +993,9 @@ namespace RTC
 
 			out << "|";
 
-			MS_DUMP("  <TwoBitVectorChunk>");
-			MS_DUMP("    %s", out.str().c_str());
-			MS_DUMP("  </TwoBitVectorChunk>");
+			MS_DUMP_CLEAN(indentation, "<TwoBitVectorChunk>");
+			MS_DUMP_CLEAN(indentation, "  %s", out.str().c_str());
+			MS_DUMP_CLEAN(indentation, "</TwoBitVectorChunk>");
 		}
 
 		uint16_t FeedbackRtpTransportPacket::TwoBitVectorChunk::GetReceivedStatusCount() const
@@ -1015,7 +1023,7 @@ namespace RTC
 
 			for (auto status : this->statuses)
 			{
-				bool received = (status == Status::SmallDelta || status == Status::LargeDelta);
+				const bool received = (status == Status::SmallDelta || status == Status::LargeDelta);
 
 				packetResults.emplace_back(++currentSequenceNumber, received);
 			}

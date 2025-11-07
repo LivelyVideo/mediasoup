@@ -1,7 +1,6 @@
 #ifndef MS_RTC_SVC_CONSUMER_HPP
 #define MS_RTC_SVC_CONSUMER_HPP
 
-#include "Lively.hpp"
 #include "RTC/Codecs/PayloadDescriptorHandler.hpp"
 #include "RTC/Consumer.hpp"
 #include "RTC/SeqManager.hpp"
@@ -18,20 +17,23 @@ namespace RTC
 		  const std::string& id,
 		  const std::string& producerId,
 		  RTC::Consumer::Listener* listener,
-		  json& data,
-			Lively::AppData* appData = nullptr);
+		  const FBS::Transport::ConsumeRequest* data,
+		  Lively::AppData* appData = nullptr);
 		~SvcConsumer() override;
 
 	public:
-		void FillJson(json& jsonObject) const override;
-		void FillJsonStats(json& jsonArray) const override;
-		void FillJsonScore(json& jsonObject) const override;
-		RTC::Consumer::Layers GetPreferredLayers() const override
+		flatbuffers::Offset<FBS::Consumer::DumpResponse> FillBuffer(
+		  flatbuffers::FlatBufferBuilder& builder) const;
+		flatbuffers::Offset<FBS::Consumer::GetStatsResponse> FillBufferStats(
+		  flatbuffers::FlatBufferBuilder& builder) override;
+		flatbuffers::Offset<FBS::Consumer::ConsumerScore> FillBufferScore(
+		  flatbuffers::FlatBufferBuilder& builder) const override;
+		VideoLayers GetPreferredLayers() const override
 		{
-			RTC::Consumer::Layers layers;
+			VideoLayers layers;
 
-			layers.spatial  = this->preferredSpatialLayer;
-			layers.temporal = this->preferredTemporalLayer;
+			layers.spatial  = this->preferredLayers.spatial;
+			layers.temporal = this->preferredLayers.temporal;
 
 			return layers;
 		}
@@ -56,7 +58,7 @@ namespace RTC
 		uint32_t IncreaseLayer(uint32_t bitrate, bool considerLoss) override;
 		void ApplyLayers() override;
 		uint32_t GetDesiredBitrate() const override;
-		void SendRtpPacket(RTC::RtpPacket* packet, std::shared_ptr<RTC::RtpPacket>& sharedPacket) override;
+		void SendRtpPacket(RTC::RtpPacket* packet, RTC::SharedRtpPacket& sharedPacket) override;
 		bool GetRtcp(RTC::RTCP::CompoundPacket* packet, uint64_t nowMs) override;
 		const std::vector<RTC::RtpStreamSend*>& GetRtpStreams() const override
 		{
@@ -82,18 +84,17 @@ namespace RTC
 		void CreateRtpStream();
 		void RequestKeyFrame();
 		void MayChangeLayers(bool force = false);
-		bool RecalculateTargetLayers(int16_t& newTargetSpatialLayer, int16_t& newTargetTemporalLayer) const;
+		bool RecalculateTargetLayers(VideoLayers& newTargetLayers) const;
 		void UpdateTargetLayers(int16_t newTargetSpatialLayer, int16_t newTargetTemporalLayer);
 		void EmitScore() const;
+		void StorePacketInTargetLayerRetransmissionBuffer(
+		  RTC::RtpPacket* packet, RTC::SharedRtpPacket& sharedPacket);
 		void EmitLayersChange() const;
 
 		/* Pure virtual methods inherited from RtpStreamSend::Listener. */
 	public:
 		void OnRtpStreamScore(RTC::RtpStream* rtpStream, uint8_t score, uint8_t previousScore) override;
 		void OnRtpStreamRetransmitRtpPacket(RTC::RtpStreamSend* rtpStream, RTC::RtpPacket* packet) override;
-
-	public:
-		void FillBinLogStats(Lively::StatsBinLog* log) override;
 
 	private:
 		// Allocated by this.
@@ -102,15 +103,16 @@ namespace RTC
 		std::vector<RTC::RtpStreamSend*> rtpStreams;
 		RTC::RtpStreamRecv* producerRtpStream{ nullptr };
 		bool syncRequired{ false };
-		RTC::SeqManager<uint16_t> rtpSeqManager;
-		int16_t preferredSpatialLayer{ -1 };
-		int16_t preferredTemporalLayer{ -1 };
-		int16_t provisionalTargetSpatialLayer{ -1 };
-		int16_t provisionalTargetTemporalLayer{ -1 };
+		std::unique_ptr<RTC::SeqManager<uint16_t>> rtpSeqManager;
+		VideoLayers preferredLayers;
+		VideoLayers provisionalTargetLayers;
 		std::unique_ptr<RTC::Codecs::EncodingContext> encodingContext;
-		uint64_t lastBweDowngradeAtMs{ 0u }; // Last time we moved to lower spatial layer due to BWE.
-		// bin log
-		Lively::CallStatsRecordCtx* rtpStreamBinLogRecord;
+		// Last time we moved to lower spatial layer due to BWE.
+		uint64_t lastBweDowngradeAtMs{ 0u };
+		// Buffer to store packets that arrive earlier than the first packet of the
+		// video key frame.
+		std::map<uint16_t, RTC::SharedRtpPacket, RTC::SeqManager<uint16_t>::SeqLowerThan>
+		  targetLayerRetransmissionBuffer;
 	};
 } // namespace RTC
 

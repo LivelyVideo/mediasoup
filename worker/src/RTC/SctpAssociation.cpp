@@ -341,33 +341,24 @@ namespace RTC
 		}
 	}
 
-	void SctpAssociation::FillJson(json& jsonObject) const
+	flatbuffers::Offset<FBS::SctpParameters::SctpParameters> SctpAssociation::FillBuffer(
+	  flatbuffers::FlatBufferBuilder& builder) const
 	{
 		MS_TRACE();
 
-		// Add port (always 5000).
-		jsonObject["port"] = 5000;
-
-		// Add OS.
-		jsonObject["OS"] = this->os;
-
-		// Add MIS.
-		jsonObject["MIS"] = this->mis;
-
-		// Add maxMessageSize.
-		jsonObject["maxMessageSize"] = this->maxSctpMessageSize;
-
-		// Add sendBufferSize.
-		jsonObject["sendBufferSize"] = this->sctpSendBufferSize;
-
-		// Add sctpBufferedAmountLowThreshold.
-		jsonObject["sctpBufferedAmount"] = this->sctpBufferedAmount;
-
-		// Add isDataChannel.
-		jsonObject["isDataChannel"] = this->isDataChannel;
+		return FBS::SctpParameters::CreateSctpParameters(
+		  builder,
+		  5000,                      // port (always 5000)
+		  this->os,                  // OS
+		  this->mis,                 // MIS
+		  this->maxSctpMessageSize,  // maxMessageSize
+		  this->sctpSendBufferSize,  // sendBufferSize
+		  this->sctpBufferedAmount,  // sctpBufferedAmount
+		  this->isDataChannel        // isDataChannel
+		);
 	}
 
-	void SctpAssociation::ProcessSctpData(const uint8_t* data, size_t len)
+	void SctpAssociation::ProcessSctpData(const uint8_t* data, size_t len) const
 	{
 		MS_TRACE();
 
@@ -379,7 +370,7 @@ namespace RTC
 	}
 
 	void SctpAssociation::SendSctpMessage(
-	  RTC::DataConsumer* dataConsumer, uint32_t ppid, const uint8_t* msg, size_t len, onQueuedCallback* cb)
+	  RTC::DataConsumer* dataConsumer, const uint8_t* msg, size_t len, uint32_t ppid, onQueuedCallback* cb)
 	{
 		MS_TRACE();
 
@@ -433,7 +424,7 @@ namespace RTC
 		// via onSendSctpData.
 		this->listener->OnSctpAssociationBufferedAmount(this, this->sctpBufferedAmount);
 
-		int ret = usrsctp_sendv(
+		const ssize_t ret = usrsctp_sendv(
 		  this->socket, msg, len, nullptr, 0, &spa, static_cast<socklen_t>(sizeof(spa)), SCTP_SENDV_SPA, 0);
 
 		if (ret < 0)
@@ -515,7 +506,7 @@ namespace RTC
 		ResetSctpStream(streamId, StreamDirection::OUTGOING);
 	}
 
-	void SctpAssociation::ResetSctpStream(uint16_t streamId, StreamDirection direction)
+	void SctpAssociation::ResetSctpStream(uint16_t streamId, StreamDirection direction) const
 	{
 		MS_TRACE();
 
@@ -549,7 +540,7 @@ namespace RTC
 		}
 
 		// As per spec: https://tools.ietf.org/html/rfc6525#section-4.1
-		len = sizeof(sctp_assoc_t) + (2 + 1) * sizeof(uint16_t);
+		len = sizeof(sctp_assoc_t) + ((2 + 1) * sizeof(uint16_t));
 
 		auto* srs = static_cast<struct sctp_reset_streams*>(std::malloc(len));
 
@@ -691,7 +682,7 @@ namespace RTC
 		{
 			MS_DEBUG_DEV("directly notifying listener [eor:1, buffer len:0]");
 
-			this->listener->OnSctpAssociationMessageReceived(this, streamId, ppid, data, len);
+			this->listener->OnSctpAssociationMessageReceived(this, streamId, data, len, ppid);
 		}
 		// If end of message and there is buffered data, append data and notify buffer.
 		else if (eor && this->messageBufferLen != 0)
@@ -702,7 +693,7 @@ namespace RTC
 			MS_DEBUG_DEV("notifying listener [eor:1, buffer len:%zu]", this->messageBufferLen);
 
 			this->listener->OnSctpAssociationMessageReceived(
-			  this, streamId, ppid, this->messageBuffer, this->messageBufferLen);
+			  this, streamId, this->messageBuffer, this->messageBufferLen, ppid);
 
 			this->messageBufferLen = 0;
 		}

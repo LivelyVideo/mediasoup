@@ -58,7 +58,7 @@ namespace RTC
 				{
 				}
 
-				void Dump() const;
+				void Dump(int indentation = 0) const;
 				size_t Serialize(uint8_t* buffer);
 				size_t GetSize() const
 				{
@@ -119,6 +119,19 @@ namespace RTC
 			{
 				this->ssrcInfos.push_back(ssrcInfo);
 			}
+			// NOTE: This method not only removes given number of ssrc info sub-blocks
+			// but also deletes their SsrcInfo instances.
+			void RemoveLastSsrcInfos(size_t number)
+			{
+				while (!this->ssrcInfos.empty() && number-- > 0)
+				{
+					auto* ssrcInfo = this->ssrcInfos.back();
+
+					this->ssrcInfos.pop_back();
+
+					delete ssrcInfo;
+				}
+			}
 			Iterator Begin()
 			{
 				return this->ssrcInfos.begin();
@@ -130,9 +143,9 @@ namespace RTC
 
 			/* Pure virtual methods inherited from ExtendedReportBlock. */
 		public:
-			virtual void Dump() const override;
-			virtual size_t Serialize(uint8_t* buffer) override;
-			virtual size_t GetSize() const override
+			void Dump(int indentation = 0) const override;
+			size_t Serialize(uint8_t* buffer) override;
+			size_t GetSize() const override
 			{
 				size_t size{ 4u }; // Common header.
 

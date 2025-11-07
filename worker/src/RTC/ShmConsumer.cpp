@@ -51,8 +51,8 @@ namespace RTC
 	}
 
 
-	ShmConsumer::ShmConsumer(RTC::Shared* shared, const std::string& id, const std::string& producerId, RTC::Consumer::Listener* listener, json& data, DepLibSfuShm::ShmCtx *shmCtx)
-	  : RTC::Consumer::Consumer(shared, id, producerId, listener, data, RTC::RtpParameters::Type::SHM)
+	ShmConsumer::ShmConsumer(RTC::Shared* shared, const std::string& id, const std::string& producerId, RTC::Consumer::Listener* listener, const FBS::Transport::ConsumeRequest* data, DepLibSfuShm::ShmCtx *shmCtx, Lively::AppData* appData)
+	  : RTC::Consumer::Consumer(shared, id, producerId, listener, data, RTC::RtpParameters::Type::SHM, appData)
 	{
 		MS_TRACE();
 
@@ -67,7 +67,7 @@ namespace RTC
 			MS_THROW_TYPE_ERROR("%s codec not supported for shm", mediaCodec->mimeType.ToString().c_str());
 		}
 
-		MS_DEBUG_TAG_LIVELYAPP(xcode, this->appData, "ShmConsumer ctor() data [%s] media codec [%s]", data.dump().c_str(), mediaCodec->mimeType.ToString().c_str());
+		MS_DEBUG_TAG_LIVELYAPP(xcode, this->appData, "ShmConsumer ctor() media codec [%s]", mediaCodec->mimeType.ToString().c_str());
 
 		this->keyFrameSupported = RTC::Codecs::Tools::CanBeKeyFrame(mediaCodec->mimeType);
 
@@ -92,17 +92,12 @@ namespace RTC
             this->encodingContext.reset(
               RTC::Codecs::Tools::GetEncodingContext(mediaCodec->mimeType, params));
 
-            auto jsonIgnoreDtx = data.find("ignoreDtx");
-
-            if (jsonIgnoreDtx != data.end() && jsonIgnoreDtx->is_boolean())
-            {
-                auto ignoreDtx = jsonIgnoreDtx->get<bool>();
-
-                this->encodingContext->SetIgnoreDtx(ignoreDtx);
-            }
+            // Get ignoreDtx from FlatBuffers
+            bool ignoreDtx = data->ignoreDtx();
+            this->encodingContext->SetIgnoreDtx(ignoreDtx);
         }
 
-		this->shmIdleCheckTimer = new Timer(this);
+		this->shmIdleCheckTimer = new TimerHandle(this);
 		this->shmIdleCheckTimer->Start(ShmIdleCheckInterval);
 
 		this->shmCtx->ResetShmMediaStatsAndQueue((this->GetKind() == RTC::Media::Kind::AUDIO) ? DepLibSfuShm::Media::AUDIO : DepLibSfuShm::Media::VIDEO);
@@ -111,8 +106,7 @@ namespace RTC
 		this->shared->channelMessageRegistrator->RegisterHandler(
 		  this->id,
 		  /*channelRequestHandler*/ this,
-		  /*payloadChannelRequestHandler*/ nullptr,
-		  /*payloadChannelNotificationHandler*/ nullptr);
+		  /*channelNotificationHandler*/ nullptr);
 	}
 
 	ShmConsumer::~ShmConsumer()
@@ -126,7 +120,7 @@ namespace RTC
 	}
 
 
-	inline void ShmConsumer::OnTimer(Timer* timer)
+	inline void ShmConsumer::OnTimer(TimerHandle* timer)
 	{
 		MS_TRACE();
 
@@ -138,66 +132,25 @@ namespace RTC
 	}
 
 
-	void ShmConsumer::FillJson(json& jsonObject) const
+	flatbuffers::Offset<FBS::Consumer::GetStatsResponse> ShmConsumer::FillBufferStats(
+	  flatbuffers::FlatBufferBuilder& builder)
 	{
 		MS_TRACE();
 
-		// Call the parent method.
-		RTC::Consumer::FillJson(jsonObject);
-
-		// Add rtpStream.
-	  this->rtpStream->FillJson(jsonObject["rtpStream"]);
-	}
-
-
-	void ShmConsumer::FillJsonStats(json& jsonArray) const
-	{
-		MS_TRACE();
+		std::vector<flatbuffers::Offset<FBS::RtpStream::Stats>> rtpStreams;
 
 		// Add stats of our send stream.
-	  jsonArray.emplace_back(json::value_t::object);
-		this->rtpStream->FillJsonStats(jsonArray[0]);
+		rtpStreams.emplace_back(this->rtpStream->FillBufferStats(builder));
 
 		// Add stats of our recv stream.
 		if (this->producerRtpStream)
 		{
-			jsonArray.emplace_back(json::value_t::object);
-			this->producerRtpStream->FillJsonStats(jsonArray[1]);
+			rtpStreams.emplace_back(this->producerRtpStream->FillBufferStats(builder));
 		}
 
-		// Shm writing stats
-	  jsonArray.emplace_back(json::value_t::object);
-		this->FillShmWriterStats(jsonArray[2]);
-	}
-
-
-	void ShmConsumer::FillShmWriterStats(json& jsonObject) const
-	{
-		MS_TRACE();
-		
-		uint64_t nowMs = DepLibUV::GetTimeMs();
-		RTC::RtpLostPktRateCounter* loss = const_cast<RTC::RtpLostPktRateCounter*>(&this->lostPktRateCounter);
-		uint64_t totalRate = loss->GetTotalRate(nowMs);
-		uint64_t lossRate = loss->GetLossRate(nowMs);
-
-		RTC::RtpDataCounter* ptr       = const_cast<RTC::RtpDataCounter*>(&this->shmWriterCounter);
-		RTC::RtpStreamRecv* recvStream = dynamic_cast<RTC::RtpStreamRecv*>(this->producerRtpStream);
-		jsonObject["type"]             = "shm-writer-stats";
-		jsonObject["packetCount"]      = ptr->GetPacketCount();
-		jsonObject["byteCount"]        = ptr->GetBytes();
-		jsonObject["bitrate"]          = ptr->GetBitrate(nowMs);
-		jsonObject["packetLossRate"]   = totalRate != 0 ? (float)lossRate / (float)totalRate : 0.0f;
-		jsonObject["recvJitter"]       = recvStream != nullptr ? recvStream->GetJitter() : 0;
-	}
- 
- 
-	void ShmConsumer::FillJsonScore(json& jsonObject) const
-	{
-		MS_TRACE();
-
-		// NOTE: Hardcoded values
-		jsonObject["score"]         = 10;
-		jsonObject["producerScore"] = 10;
+		// TODO: Add SHM writer stats to FlatBuffers if needed
+		// For now, just return the RTP stream stats like SimpleConsumer
+		return FBS::Consumer::CreateGetStatsResponseDirect(builder, &rtpStreams);
 	}
 
 	
@@ -207,16 +160,24 @@ namespace RTC
 
 		MS_WARN_TAG_LIVELYAPP(xcode, this->appData, "shm[%s] idle shm consumer", this->shmCtx->StreamName().c_str());
 
-		this->shared->channelNotifier->Emit(this->id, "idleshmconsumer");
+		// Emit Lively-specific idle SHM consumer notification using FlatBuffers
+		auto notificationOffset = FBS::Consumer::CreateIdleShmConsumerNotification(
+		  this->shared->channelNotifier->GetBufferBuilder());
+
+		this->shared->channelNotifier->Emit(
+		  this->id,
+		  FBS::Notification::Event::CONSUMER_IDLE_SHM,
+		  FBS::Notification::Body::Consumer_IdleShmConsumerNotification,
+		  notificationOffset);
 	}
 
 	void ShmConsumer::HandleRequest(Channel::ChannelRequest* request)
 	{
 		MS_TRACE();
 
-		switch (request->methodId)
+		switch (request->method)
 		{
-			case Channel::ChannelRequest::MethodId::CONSUMER_REQUEST_KEY_FRAME:
+			case Channel::ChannelRequest::Method::CONSUMER_REQUEST_KEY_FRAME:
 			{
 				if (IsActive())
 					RequestKeyFrame();
@@ -275,7 +236,7 @@ namespace RTC
 	}
 
 
-	void ShmConsumer::SendRtpPacket(RTC::RtpPacket* packet, std::shared_ptr<RTC::RtpPacket>& sharedPacket)
+	void ShmConsumer::SendRtpPacket(RTC::RtpPacket* packet, RTC::SharedRtpPacket& sharedPacket)
 	{
 		MS_TRACE();
 
@@ -402,7 +363,8 @@ namespace RTC
 		}
 
 		// Process the packet. In case of shm writer this logic is still needed for NACKs
-		if (this->rtpStream->ReceivePacket(packet, sharedPacket))
+		auto result = this->rtpStream->ReceivePacket(packet, sharedPacket);
+		if (result != RTC::RtpStreamSend::ReceivePacketResult::DISCARDED)
 		{
 			// Send the packet.
 			this->listener->OnConsumerSendRtpPacket(this, packet);
@@ -414,7 +376,7 @@ namespace RTC
 		{
 			MS_WARN_TAG_LIVELYAPP(
 				rtp,
-				this->appData, 
+				this->appData,
 				"failed to send packet [ssrc:%" PRIu32 ", seq:%" PRIu16 ", ts:%" PRIu32
 				"] from original [seq:%" PRIu16 "]",
 				packet->GetSsrc(),
@@ -760,18 +722,11 @@ namespace RTC
 	    // Build SDES chunk for this sender.
 	    auto* sdesChunk = this->rtpStream->GetRtcpSdesChunk();
 
-	    RTC::RTCP::DelaySinceLastRr* delaySinceLastRrReport{ nullptr };
-
-	    auto* dlrr = this->rtpStream->GetRtcpXrDelaySinceLastRr(nowMs);
-
-	    if (dlrr)
-	    {
-	        delaySinceLastRrReport = new RTC::RTCP::DelaySinceLastRr();
-	        delaySinceLastRrReport->AddSsrcInfo(dlrr);
-	    }
+	    // Get delay since last RR SsrcInfo
+	    auto* delaySinceLastRrSsrcInfo = this->rtpStream->GetRtcpXrDelaySinceLastRrSsrcInfo(nowMs);
 
 	    // RTCP Compound packet buffer cannot hold the data.
-	    if (!packet->Add(senderReport, sdesChunk, delaySinceLastRrReport))
+	    if (!packet->Add(senderReport, sdesChunk, delaySinceLastRrSsrcInfo))
 	        return false;
 
 	    this->lastRtcpSentTime = nowMs;

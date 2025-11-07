@@ -1,20 +1,22 @@
 use async_io::Timer;
 use futures_lite::future;
 use hash_hasher::{HashedMap, HashedSet};
-use mediasoup::data_structures::{AppData, ListenIp};
 use mediasoup::prelude::*;
 use mediasoup::producer::{ProducerOptions, ProducerTraceEventType, ProducerType};
 use mediasoup::router::{Router, RouterOptions};
-use mediasoup::rtp_parameters::{
+use mediasoup::transport::ProduceError;
+use mediasoup::webrtc_transport::{
+    WebRtcTransport, WebRtcTransportListenInfos, WebRtcTransportOptions,
+};
+use mediasoup::worker::{Worker, WorkerSettings};
+use mediasoup::worker_manager::WorkerManager;
+use mediasoup_types::data_structures::{AppData, ListenInfo, Protocol};
+use mediasoup_types::rtp_parameters::{
     MediaKind, MimeTypeAudio, MimeTypeVideo, RtcpFeedback, RtcpParameters, RtpCodecCapability,
     RtpCodecParameters, RtpCodecParametersParameters, RtpEncodingParameters,
     RtpEncodingParametersRtx, RtpHeaderExtensionParameters, RtpHeaderExtensionUri, RtpParameters,
 };
-use mediasoup::scalability_modes::ScalabilityMode;
-use mediasoup::transport::ProduceError;
-use mediasoup::webrtc_transport::{TransportListenIps, WebRtcTransport, WebRtcTransportOptions};
-use mediasoup::worker::{Worker, WorkerSettings};
-use mediasoup::worker_manager::WorkerManager;
+use mediasoup_types::scalability_modes::ScalabilityMode;
 use std::env;
 use std::net::{IpAddr, Ipv4Addr};
 use std::num::{NonZeroU32, NonZeroU8};
@@ -84,7 +86,7 @@ fn audio_producer_options() -> ProducerOptions {
                     encrypt: false,
                 },
                 RtpHeaderExtensionParameters {
-                    uri: RtpHeaderExtensionUri::AudioLevel,
+                    uri: RtpHeaderExtensionUri::SsrcAudioLevel,
                     id: 12,
                     encrypt: false,
                 },
@@ -95,6 +97,7 @@ fn audio_producer_options() -> ProducerOptions {
                 cname: Some("audio-1".to_string()),
                 ..RtcpParameters::default()
             },
+            msid: None,
         },
     );
 
@@ -170,6 +173,7 @@ fn video_producer_options() -> ProducerOptions {
                 cname: Some("video-1".to_string()),
                 ..RtcpParameters::default()
             },
+            msid: None,
         },
     );
 
@@ -199,10 +203,18 @@ async fn init() -> (Worker, Router, WebRtcTransport, WebRtcTransport) {
         .await
         .expect("Failed to create router");
 
-    let transport_options = WebRtcTransportOptions::new(TransportListenIps::new(ListenIp {
-        ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-        announced_ip: None,
-    }));
+    let transport_options =
+        WebRtcTransportOptions::new(WebRtcTransportListenInfos::new(ListenInfo {
+            protocol: Protocol::Udp,
+            ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            announced_address: None,
+            expose_internal_ip: false,
+            port: None,
+            port_range: None,
+            flags: None,
+            send_buffer_size: None,
+            recv_buffer_size: None,
+        }));
 
     let transport_1 = router
         .create_webrtc_transport(transport_options.clone())
@@ -405,6 +417,7 @@ fn produce_wrong_arguments() {
             let produce_result = transport_1
                 .produce(ProducerOptions::new(MediaKind::Video, {
                     let mut parameters = RtpParameters::default();
+
                     parameters.codecs = vec![
                         RtpCodecParameters::Video {
                             mime_type: MimeTypeVideo::H264,
@@ -431,6 +444,7 @@ fn produce_wrong_arguments() {
                         cname: Some("qwerty".to_string()),
                         ..RtcpParameters::default()
                     };
+
                     parameters
                 }))
                 .await;
@@ -443,6 +457,7 @@ fn produce_wrong_arguments() {
             let produce_result = transport_1
                 .produce(ProducerOptions::new(MediaKind::Video, {
                     let mut parameters = RtpParameters::default();
+
                     parameters.codecs = vec![
                         RtpCodecParameters::Video {
                             mime_type: MimeTypeVideo::H264,
@@ -474,6 +489,7 @@ fn produce_wrong_arguments() {
                         cname: Some("video-1".to_string()),
                         ..RtcpParameters::default()
                     };
+
                     parameters
                 }))
                 .await;
@@ -496,6 +512,7 @@ fn produce_unsupported_codecs() {
             transport_1
                 .produce(ProducerOptions::new(MediaKind::Audio, {
                     let mut parameters = RtpParameters::default();
+
                     parameters.codecs = vec![RtpCodecParameters::Audio {
                         mime_type: MimeTypeAudio::Isac,
                         payload_type: 108,
@@ -513,6 +530,7 @@ fn produce_unsupported_codecs() {
                         cname: Some("audio".to_string()),
                         ..RtcpParameters::default()
                     };
+
                     parameters
                 }))
                 .await,
@@ -524,6 +542,7 @@ fn produce_unsupported_codecs() {
             let produce_result = transport_1
                 .produce(ProducerOptions::new(MediaKind::Video, {
                     let mut parameters = RtpParameters::default();
+
                     parameters.codecs = vec![
                         RtpCodecParameters::Video {
                             mime_type: MimeTypeVideo::H264,
@@ -551,6 +570,7 @@ fn produce_unsupported_codecs() {
                         rtx: Some(RtpEncodingParametersRtx { ssrc: 6667 }),
                         ..RtpEncodingParameters::default()
                     }];
+
                     parameters
                 }))
                 .await;
@@ -577,6 +597,7 @@ fn produce_already_used_mid_ssrc() {
             let produce_result = transport_1
                 .produce(ProducerOptions::new(MediaKind::Audio, {
                     let mut parameters = RtpParameters::default();
+
                     parameters.mid = Some("AUDIO".to_string());
                     parameters.codecs = vec![RtpCodecParameters::Audio {
                         mime_type: MimeTypeAudio::Opus,
@@ -595,6 +616,7 @@ fn produce_already_used_mid_ssrc() {
                         cname: Some("audio-2".to_string()),
                         ..RtcpParameters::default()
                     };
+
                     parameters
                 }))
                 .await;
@@ -612,6 +634,7 @@ fn produce_already_used_mid_ssrc() {
             let produce_result = transport_2
                 .produce(ProducerOptions::new(MediaKind::Video, {
                     let mut parameters = RtpParameters::default();
+
                     parameters.mid = Some("VIDEO2".to_string());
                     parameters.codecs = vec![RtpCodecParameters::Video {
                         mime_type: MimeTypeVideo::Vp8,
@@ -625,6 +648,7 @@ fn produce_already_used_mid_ssrc() {
                         rtx: Some(RtpEncodingParametersRtx { ssrc: 6667 }),
                         ..RtpEncodingParameters::default()
                     }];
+
                     parameters
                 }))
                 .await;
@@ -635,13 +659,14 @@ fn produce_already_used_mid_ssrc() {
 }
 
 #[test]
-fn produce_no_mid_single_encoding_without_dir_or_ssrc() {
+fn produce_no_mid_single_encoding_without_rid_or_ssrc() {
     future::block_on(async move {
         let (_worker, _router, transport_1, _transport_2) = init().await;
 
         let produce_result = transport_1
             .produce(ProducerOptions::new(MediaKind::Audio, {
                 let mut parameters = RtpParameters::default();
+
                 parameters.codecs = vec![RtpCodecParameters::Audio {
                     mime_type: MimeTypeAudio::Opus,
                     payload_type: 111,
@@ -656,6 +681,7 @@ fn produce_no_mid_single_encoding_without_dir_or_ssrc() {
                     cname: Some("audio-2".to_string()),
                     ..RtcpParameters::default()
                 };
+
                 parameters
             }))
             .await;
@@ -699,7 +725,6 @@ fn dump_succeeds() {
                     rtx: None,
                     dtx: None,
                     scalability_mode: ScalabilityMode::None,
-                    scale_resolution_down_by: None,
                     max_bitrate: None
                 }],
             );
@@ -737,7 +762,6 @@ fn dump_succeeds() {
                         rtx: Some(RtpEncodingParametersRtx { ssrc: 22222223 }),
                         dtx: None,
                         scalability_mode: "L1T3".parse().unwrap(),
-                        scale_resolution_down_by: None,
                         max_bitrate: None
                     },
                     RtpEncodingParameters {
@@ -747,7 +771,6 @@ fn dump_succeeds() {
                         rtx: Some(RtpEncodingParametersRtx { ssrc: 22222225 }),
                         dtx: None,
                         scalability_mode: ScalabilityMode::None,
-                        scale_resolution_down_by: None,
                         max_bitrate: None
                     },
                     RtpEncodingParameters {
@@ -757,7 +780,6 @@ fn dump_succeeds() {
                         rtx: Some(RtpEncodingParametersRtx { ssrc: 22222227 }),
                         dtx: None,
                         scalability_mode: ScalabilityMode::None,
-                        scale_resolution_down_by: None,
                         max_bitrate: None
                     },
                     RtpEncodingParameters {
@@ -767,7 +789,6 @@ fn dump_succeeds() {
                         rtx: Some(RtpEncodingParametersRtx { ssrc: 22222229 }),
                         dtx: None,
                         scalability_mode: ScalabilityMode::None,
-                        scale_resolution_down_by: None,
                         max_bitrate: None
                     },
                 ],
@@ -880,7 +901,10 @@ fn enable_trace_event_succeeds() {
                 .await
                 .expect("Failed to dump audio producer");
 
-            assert_eq!(dump.trace_event_types.as_str(), "rtp,pli");
+            assert_eq!(
+                dump.trace_event_types,
+                vec![ProducerTraceEventType::Rtp, ProducerTraceEventType::Pli]
+            );
         }
 
         {
@@ -894,7 +918,7 @@ fn enable_trace_event_succeeds() {
                 .await
                 .expect("Failed to dump audio producer");
 
-            assert_eq!(dump.trace_event_types.as_str(), "");
+            assert_eq!(dump.trace_event_types, vec![]);
         }
     });
 }

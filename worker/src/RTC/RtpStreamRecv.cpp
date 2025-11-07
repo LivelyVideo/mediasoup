@@ -27,7 +27,7 @@ namespace RTC
 		{
 			for (uint8_t tIdx{ 0u }; tIdx < temporalLayers; ++tIdx)
 			{
-				spatialLayerCounter.emplace_back(RTC::RtpDataCounter(windowSize));
+				spatialLayerCounter.emplace_back(/*ignorePaddingOnlyPackets*/ true, windowSize);
 			}
 		}
 	}
@@ -158,9 +158,9 @@ namespace RTC
 
 		size_t packetCount{ 0u };
 
-		for (auto& spatialLayerCounter : this->spatialLayerCounters)
+		for (const auto& spatialLayerCounter : this->spatialLayerCounters)
 		{
-			for (auto& temporalLayerCounter : spatialLayerCounter)
+			for (const auto& temporalLayerCounter : spatialLayerCounter)
 			{
 				packetCount += temporalLayerCounter.GetPacketCount();
 			}
@@ -191,12 +191,13 @@ namespace RTC
 	RtpStreamRecv::RtpStreamRecv(
 	  RTC::RtpStreamRecv::Listener* listener,
 	  RTC::RtpStream::Params& params,
-	  unsigned int sendNackDelayMs,
+	  uint32_t sendNackDelayMs,
 	  bool useRtpInactivityCheck)
 	  : RTC::RtpStream::RtpStream(listener, params, 10), sendNackDelayMs(sendNackDelayMs),
 	    useRtpInactivityCheck(useRtpInactivityCheck),
 	    transmissionCounter(
-	      params.spatialLayers, params.temporalLayers, this->params.useDtx ? 6000 : 2500)
+	      params.spatialLayers, params.temporalLayers, this->params.useDtx ? 6000 : 2500),
+	    mediaTransmissionCounter(/*ignorePaddingOnlyPackets*/ true)
 	{
 		MS_TRACE();
 
@@ -217,7 +218,7 @@ namespace RTC
 		{
 			// Run the RTP inactivity periodic timer (use a different timeout if DTX is
 			// enabled).
-			this->inactivityCheckPeriodicTimer = new Timer(this);
+			this->inactivityCheckPeriodicTimer = new TimerHandle(this);
 
 			this->inactivityCheckPeriodicTimer->Start(
 			  this->params.useDtx ? InactivityCheckIntervalWithDtx : InactivityCheckInterval);
@@ -233,34 +234,41 @@ namespace RTC
 		this->inactivityCheckPeriodicTimer = nullptr;
 	}
 
-	void RtpStreamRecv::FillJsonStats(json& jsonObject)
+	flatbuffers::Offset<FBS::RtpStream::Stats> RtpStreamRecv::FillBufferStats(
+	  flatbuffers::FlatBufferBuilder& builder)
 	{
 		MS_TRACE();
 
 		const uint64_t nowMs = DepLibUV::GetTimeMs();
 
-		RTC::RtpStream::FillJsonStats(jsonObject);
+		auto baseStats = RTC::RtpStream::FillBufferStats(builder);
 
-		jsonObject["type"]        = "inbound-rtp";
-		jsonObject["jitter"]      = static_cast<uint32_t>(this->jitter);
-		jsonObject["packetCount"] = this->transmissionCounter.GetPacketCount();
-		jsonObject["byteCount"]   = this->transmissionCounter.GetBytes();
-		jsonObject["bitrate"]     = this->transmissionCounter.GetBitrate(nowMs);
+		std::vector<flatbuffers::Offset<FBS::RtpStream::BitrateByLayer>> bitrateByLayer;
 
 		if (GetSpatialLayers() > 1 || GetTemporalLayers() > 1)
 		{
-			jsonObject["bitrateByLayer"] = json::object();
-			auto jsonBitrateByLayerIt    = jsonObject.find("bitrateByLayer");
-
 			for (uint8_t sIdx = 0; sIdx < GetSpatialLayers(); ++sIdx)
 			{
 				for (uint8_t tIdx = 0; tIdx < GetTemporalLayers(); ++tIdx)
 				{
-					(*jsonBitrateByLayerIt)[std::to_string(sIdx) + "." + std::to_string(tIdx)] =
-					  GetBitrate(nowMs, sIdx, tIdx);
+					auto layer = std::to_string(sIdx) + "." + std::to_string(tIdx);
+
+					bitrateByLayer.emplace_back(FBS::RtpStream::CreateBitrateByLayerDirect(
+					  builder, layer.c_str(), GetBitrate(nowMs, sIdx, tIdx)));
 				}
 			}
 		}
+
+		auto stats = FBS::RtpStream::CreateRecvStatsDirect(
+		  builder,
+		  baseStats,
+		  static_cast<uint32_t>(this->jitter),
+		  this->transmissionCounter.GetPacketCount(),
+		  this->transmissionCounter.GetBytes(),
+		  this->transmissionCounter.GetBitrate(nowMs),
+		  &bitrateByLayer);
+
+		return FBS::RtpStream::CreateStats(builder, FBS::RtpStream::StatsData::RecvStats, stats.Union());
 	}
 
 	bool RtpStreamRecv::ReceivePacket(RTC::RtpPacket* packet)
@@ -278,7 +286,7 @@ namespace RTC
 		// Process the packet at codec level.
 		if (packet->GetPayloadType() == GetPayloadType())
 		{
-			RTC::Codecs::Tools::ProcessRtpPacket(packet, GetMimeType());
+			RTC::Codecs::Tools::ProcessRtpPacket(packet, GetMimeType(), this->templateDependencyStructure);
 		}
 
 		// Pass the packet to the NackGenerator.
@@ -307,6 +315,12 @@ namespace RTC
 
 		// Increase media transmission counter.
 		this->mediaTransmissionCounter.Update(packet, this->GetMimeType().type == RTC::RtpCodecMimeType::Type::VIDEO);
+
+		// Padding only packet, do not consider it for stream activation.
+		if (packet->GetPayloadLength() == 0)
+		{
+			return true;
+		}
 
 		// Not inactive anymore.
 		if (this->inactive)
@@ -393,7 +407,7 @@ namespace RTC
 		// Process the packet at codec level.
 		if (packet->GetPayloadType() == GetPayloadType())
 		{
-			RTC::Codecs::Tools::ProcessRtpPacket(packet, GetMimeType());
+			RTC::Codecs::Tools::ProcessRtpPacket(packet, GetMimeType(), this->templateDependencyStructure);
 		}
 
 		// Mark the packet as retransmitted.
@@ -408,6 +422,12 @@ namespace RTC
 
 			// Increase transmission counter.
 			this->transmissionCounter.Update(packet);
+
+			// Padding only packet, do not consider it for stream activation.
+			if (packet->GetPayloadLength() == 0)
+			{
+				return true;
+			}
 
 			// Not inactive anymore.
 			if (this->inactive)
@@ -551,7 +571,7 @@ namespace RTC
 		this->lastSrTimestamp += report->GetNtpFrac() >> 16;
 
 		// Update info about last Sender Report.
-		Utils::Time::Ntp ntp; // NOLINT(cppcoreguidelines-pro-type-member-init)
+		Utils::Time::Ntp ntp{}; // NOLINT(cppcoreguidelines-pro-type-member-init)
 
 		ntp.seconds   = report->GetNtpSec();
 		ntp.fractions = report->GetNtpFrac();
@@ -833,7 +853,8 @@ namespace RTC
 		  score);
 #endif
 
-		RtpStream::UpdateScore(score);
+		// Call the parent method for update score.
+		RTC::RtpStream::UpdateScore(score);
 	}
 
 	void RtpStreamRecv::UserOnSequenceNumberReset()
@@ -843,7 +864,7 @@ namespace RTC
 		// Nothing to do.
 	}
 
-	inline void RtpStreamRecv::OnTimer(Timer* timer)
+	inline void RtpStreamRecv::OnTimer(TimerHandle* timer)
 	{
 		MS_TRACE();
 
@@ -883,7 +904,7 @@ namespace RTC
 
 			while (it != end)
 			{
-				uint16_t shift = *it - seq - 1;
+				const uint16_t shift = *it - seq - 1;
 
 				if (shift > 15)
 				{
@@ -925,5 +946,24 @@ namespace RTC
 		MS_DEBUG_TAG(rtx, "requesting key frame [ssrc:%" PRIu32 "]", this->params.ssrc);
 
 		RequestKeyFrame();
+	}
+
+	void RtpStreamRecv::FillStats(size_t& packetsCount, size_t& bytesCount, size_t& framesCount,
+	                               uint32_t& packetsLost, size_t& packetsDiscarded, size_t& packetsRetransmitted,
+	                               size_t& packetsRepaired, size_t& nackCount, size_t& nackPacketCount,
+	                               size_t& kfCount, float& rtt, uint32_t& maxPacketTs)
+	{
+		packetsCount = this->transmissionCounter.GetPacketCount();
+		bytesCount = this->transmissionCounter.GetBytes();
+		framesCount = 0; // Not tracked in RtpStreamRecv
+		packetsLost = this->packetsLost;
+		packetsDiscarded = this->packetsDiscarded;
+		packetsRetransmitted = this->packetsRetransmitted;
+		packetsRepaired = this->packetsRepaired;
+		nackCount = this->nackCount;
+		nackPacketCount = this->nackPacketCount;
+		kfCount = this->pliCount + this->firCount; // Key frame requests
+		rtt = this->rtt;
+		maxPacketTs = this->maxPacketTs;
 	}
 } // namespace RTC

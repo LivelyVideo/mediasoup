@@ -15,7 +15,9 @@ namespace RTC
 			{
 				// data size must be >= header.
 				if (Item::HeaderSize > len)
+				{
 					return nullptr;
+				}
 
 				auto* header =
 				  const_cast<typename Item::Header*>(reinterpret_cast<const typename Item::Header*>(data));
@@ -29,14 +31,14 @@ namespace RTC
 				return this->isCorrect;
 			}
 
-		protected:
+		public:
 			virtual ~FeedbackItem()
 			{
 				delete[] this->raw;
 			}
 
 		public:
-			virtual void Dump() const = 0;
+			virtual void Dump(int indentation = 0) const = 0;
 			virtual void Serialize()
 			{
 				delete[] this->raw;

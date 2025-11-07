@@ -1,16 +1,18 @@
 use futures_lite::future;
-use mediasoup::data_structures::ListenIp;
 use mediasoup::prelude::*;
 use mediasoup::producer::ProducerOptions;
 use mediasoup::router::{Router, RouterOptions};
-use mediasoup::rtp_parameters::{
+use mediasoup::webrtc_transport::{
+    WebRtcTransport, WebRtcTransportListenInfos, WebRtcTransportOptions,
+};
+use mediasoup::worker::WorkerSettings;
+use mediasoup::worker_manager::WorkerManager;
+use mediasoup_types::data_structures::{ListenInfo, Protocol};
+use mediasoup_types::rtp_parameters::{
     MediaKind, MimeTypeAudio, RtpCodecCapability, RtpCodecParameters, RtpCodecParametersParameters,
     RtpHeaderExtension, RtpHeaderExtensionDirection, RtpHeaderExtensionParameters,
     RtpHeaderExtensionUri, RtpParameters,
 };
-use mediasoup::webrtc_transport::{TransportListenIps, WebRtcTransport, WebRtcTransportOptions};
-use mediasoup::worker::WorkerSettings;
-use mediasoup::worker_manager::WorkerManager;
 use std::env;
 use std::net::{IpAddr, Ipv4Addr};
 use std::num::{NonZeroU32, NonZeroU8};
@@ -56,7 +58,7 @@ fn audio_producer_options() -> ProducerOptions {
                     encrypt: false,
                 },
                 RtpHeaderExtensionParameters {
-                    uri: RtpHeaderExtensionUri::AudioLevel,
+                    uri: RtpHeaderExtensionUri::SsrcAudioLevel,
                     id: 12,
                     encrypt: false,
                 },
@@ -97,7 +99,7 @@ fn consumer_device_capabilities() -> RtpCapabilities {
             },
             RtpHeaderExtension {
                 kind: MediaKind::Audio,
-                uri: RtpHeaderExtensionUri::AudioLevel,
+                uri: RtpHeaderExtensionUri::SsrcAudioLevel,
                 preferred_id: 10,
                 preferred_encrypt: false,
                 direction: RtpHeaderExtensionDirection::default(),
@@ -127,10 +129,18 @@ async fn init() -> (Router, WebRtcTransport) {
         .await
         .expect("Failed to create router");
 
-    let transport_options = WebRtcTransportOptions::new(TransportListenIps::new(ListenIp {
-        ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-        announced_ip: None,
-    }));
+    let transport_options =
+        WebRtcTransportOptions::new(WebRtcTransportListenInfos::new(ListenInfo {
+            protocol: Protocol::Udp,
+            ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            announced_address: None,
+            expose_internal_ip: false,
+            port: None,
+            port_range: None,
+            flags: None,
+            send_buffer_size: None,
+            recv_buffer_size: None,
+        }));
 
     let transport = router
         .create_webrtc_transport(transport_options.clone())
