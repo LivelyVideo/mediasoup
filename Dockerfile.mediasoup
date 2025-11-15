@@ -13,7 +13,7 @@ RUN if [ "$XCODE2_BUILD" = "false" ]; then \
   pip3 install --break-system-packages ninja meson && \
   mkdir -p /etc/apt/keyrings && \
   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
-  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
   apt update && \
   apt install -y nodejs; \
   fi
@@ -38,7 +38,9 @@ ARG MEDIASOUP_BUILDTYPE_ARG=Release
 ENV MEDIASOUP_BUILDTYPE=${MEDIASOUP_BUILDTYPE_ARG}
 
 # Create symlink so npm-scripts.mjs can find flatc in the expected location
+# Remove any existing build directory first (may have been copied from source)
 RUN mkdir -p ${MS_BUILD}/worker/out/${MEDIASOUP_BUILDTYPE} && \
+  rm -rf ${MS_BUILD}/worker/out/${MEDIASOUP_BUILDTYPE}/build && \
   ln -s ${BUILD_DIR} ${MS_BUILD}/worker/out/${MEDIASOUP_BUILDTYPE}/build
 
 # Create directory structure for meson/ninja and symlink to system-installed binaries
