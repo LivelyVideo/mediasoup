@@ -1,6 +1,6 @@
 {
   "name": "@livelyvideo/mediasoup",
-  "version": "3.12.12-lv3-notranscode-87e7553",
+  "version": "3.12.12-lv3-notranscode-icf-lipsync",
   "description": "Cutting Edge WebRTC Video Conferencing",
   "contributors": [
     "Iñaki Baz Castillo <ibc@aliax.net> (https://inakibaz.me)",
@@ -9,7 +9,6 @@
   ],
   "license": "ISC",
   "publishConfig": {
-    "always-auth": true,
     "registry": "https://npm.livelyvideo.tv"
   },
   "repository": {
