@@ -1,26 +1,32 @@
 ARG BASE_URL=golang:1.21-bookworm
 FROM $BASE_URL AS base
 
-ARG XCODE2_BUILD=false
-
-RUN if [ "$XCODE2_BUILD" = "false" ]; then \
-  apt update && \
+# Install system dependencies and build tools
+RUN apt update && \
   apt -y upgrade && \
   apt install -y build-essential autoconf vim wget curl libtool libtool-bin gpp less libpcre3-dev libz-dev && \
   apt -y upgrade python3 && \
-  apt install -y python3-pip python3-venv supervisor && \
-  ln -s /usr/bin/python3 /usr/local/bin/python3 && \
-  pip3 install --break-system-packages ninja meson && \
-  mkdir -p /etc/apt/keyrings && \
+  apt install -y python3-pip pipx supervisor && \
+  ln -s /usr/bin/python3 /usr/local/bin/python3
+
+# Install Python build tools using pipx (isolated from system Python)
+RUN pipx install ninja && \
+  pipx install meson && \
+  pipx ensurepath
+
+# Add pipx bin directory to PATH
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Install Node.js 22 (required for mediasoup 3.19.7+)
+RUN mkdir -p /etc/apt/keyrings && \
   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
   echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
   apt update && \
-  apt install -y nodejs; \
-  fi
+  apt install -y nodejs
 
 RUN mkdir -p /root/build/mediasoup /mediasoup/build
-ENV BUILD_DIR /root/build/mediasoup
-ENV MS_BUILD /mediasoup/build
+ENV BUILD_DIR=/root/build/mediasoup
+ENV MS_BUILD=/mediasoup/build
 
 COPY worker ${MS_BUILD}/worker
 COPY node ${MS_BUILD}/node
