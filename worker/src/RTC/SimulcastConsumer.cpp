@@ -801,122 +801,6 @@ namespace RTC
 			if (packet->IsKeyFrame())
 				MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData, "sync key frame received");
 
-			uint32_t tsOffset{ 0u };
-
-			// Sync our RTP stream's RTP timestamp.
-			if (spatialLayer == this->tsReferenceSpatialLayer)
-			{
-				tsOffset = 0u;
-			}
-			// If this is not the RTP stream we use as TS reference, do NTP based RTP TS synchronization.
-			else
-			{
-				auto* producerTsReferenceRtpStream = GetProducerTsReferenceRtpStream();
-				auto* producerTargetRtpStream      = GetProducerTargetRtpStream();
-
-				// NOTE: If we are here is because we have Sender Reports for both the
-				// TS reference stream and the target one.
-				MS_ASSERT(
-				  producerTsReferenceRtpStream->GetSenderReportNtpMs(),
-				  "no Sender Report for TS reference RTP stream");
-				MS_ASSERT(
-				  producerTargetRtpStream->GetSenderReportNtpMs(), "no Sender Report for current RTP stream");
-
-				// Calculate NTP and TS stuff.
-				auto ntpMs1 = producerTsReferenceRtpStream->GetSenderReportNtpMs();
-				auto ts1    = producerTsReferenceRtpStream->GetSenderReportTs();
-				auto ntpMs2 = producerTargetRtpStream->GetSenderReportNtpMs();
-				auto ts2    = producerTargetRtpStream->GetSenderReportTs();
-				int64_t diffMs;
-
-				if (ntpMs2 >= ntpMs1)
-					diffMs = ntpMs2 - ntpMs1;
-				else
-					diffMs = -1 * (ntpMs1 - ntpMs2);
-
-				const int64_t diffTs  = diffMs * this->rtpStream->GetClockRate() / 1000;
-				const uint32_t newTs2 = ts2 - diffTs;
-
-				// Apply offset. This is the difference that later must be removed from the
-				// sending RTP packet.
-				tsOffset = newTs2 - ts1;
-			}
-
-			// When switching to a new stream it may happen that the timestamp of this
-			// key frame is lower than the highest timestamp sent to the remote endpoint.
-			// If so, apply an extra offset to "fix" it for the whole live of this selected
-			// Producer stream.
-			//
-			// clang-format off
-			if (
-				shouldSwitchCurrentSpatialLayer &&
-				(packet->GetTimestamp() - tsOffset <= this->rtpStream->GetMaxPacketTs())
-			)
-			// clang-format on
-			{
-				// Max delay in ms we allow for the stream when switching.
-				// https://en.wikipedia.org/wiki/Audio-to-video_synchronization#Recommendations
-				static const uint32_t MaxExtraOffsetMs{ 75u };
-
-				// Outgoing packet matches the highest timestamp seen in the previous stream.
-				// Apply an expected offset for a new frame in a 30fps stream.
-				static const uint8_t MsOffset{ 33u }; // (1 / 30 * 1000).
-
-				const int64_t maxTsExtraOffset = MaxExtraOffsetMs * this->rtpStream->GetClockRate() / 1000;
-				uint32_t tsExtraOffset = this->rtpStream->GetMaxPacketTs() - packet->GetTimestamp() +
-				                         tsOffset + MsOffset * this->rtpStream->GetClockRate() / 1000;
-
-				// NOTE: Don't ask for a key frame if already done.
-				if (this->keyFrameForTsOffsetRequested)
-				{
-					// Give up and use the theoretical offset.
-					if (tsExtraOffset > maxTsExtraOffset)
-					{
-						MS_WARN_TAG_LIVELYAPP(
-						  simulcast, this->appData,
-						  "giving up on proper stream switching after got a requested keyframe for which still too high RTP timestamp extra offset is needed (%" PRIu32
-						  ")",
-						  tsExtraOffset);
-
-						tsExtraOffset = 1u;
-					}
-				}
-				else if (tsExtraOffset > maxTsExtraOffset)
-				{
-					MS_WARN_TAG_LIVELYAPP(
-					  simulcast, this->appData,
-					  "cannot switch stream due to too high RTP timestamp extra offset needed (%" PRIu32
-					  "), requesting keyframe",
-					  tsExtraOffset);
-
-					RequestKeyFrameForTargetSpatialLayer();
-
-					this->keyFrameForTsOffsetRequested = true;
-
-					// Reset flags since we are discarding this key frame.
-					this->syncRequired       = false;
-					this->spatialLayerToSync = -1;
-
-					packet->logger.Dropped(RtcLogger::RtpPacket::DropReason::TOO_HIGH_TIMESTAMP_EXTRA_NEEDED);
-
-					return;
-				}
-
-				if (tsExtraOffset > 0u)
-				{
-					MS_DEBUG_TAG_LIVELYAPP(
-					  simulcast, this->appData,
-					  "RTP timestamp extra offset generated for stream switching: %" PRIu32,
-					  tsExtraOffset);
-
-					// Increase the timestamp offset for the whole life of this Producer stream
-					// (until switched to a different one).
-					tsOffset -= tsExtraOffset;
-				}
-			}
-
-			this->tsOffset = tsOffset;
-
 			// Sync our RTP stream's sequence number.
 			// If previous frame has not been sent completely when we switch layer,
 			// we can tell libwebrtc that previous frame is incomplete by skipping
@@ -928,9 +812,8 @@ namespace RTC
 
 			this->encodingContext->SyncRequired();
 
-			this->syncRequired                 = false;
-			this->spatialLayerToSync           = -1;
-			this->keyFrameForTsOffsetRequested = false;
+			this->syncRequired       = false;
+			this->spatialLayerToSync = -1;
 		}
 
 		if (!shouldSwitchCurrentSpatialLayer && this->checkingForOldPacketsInSpatialLayer)
@@ -995,9 +878,9 @@ namespace RTC
 				EmitLayersChange();
 		}
 
-		// Update RTP seq number and timestamp based on NTP offset.
+		// Update RTP seq number. Pass through original timestamp unchanged.
 		uint16_t seq;
-		const uint32_t timestamp = packet->GetTimestamp() - this->tsOffset;
+		const uint32_t timestamp = packet->GetTimestamp();
 
 		this->rtpSeqManager.Input(packet->GetSequenceNumber(), seq);
 
@@ -1082,7 +965,19 @@ namespace RTC
 		if (static_cast<float>((nowMs - this->lastRtcpSentTime) * 1.15) < this->maxRtcpInterval)
 			return true;
 
-		auto* senderReport = this->rtpStream->GetRtcpSenderReport(nowMs);
+		// Get producer SR data for lip-sync accurate SR generation
+		uint64_t producerNtpMs = 0;
+		uint32_t producerRtpTs = 0;
+
+		auto* producerCurrentRtpStream = GetProducerCurrentRtpStream();
+
+		if (producerCurrentRtpStream && producerCurrentRtpStream->GetSenderReportNtpMs() != 0)
+		{
+			producerNtpMs = producerCurrentRtpStream->GetSenderReportNtpMs();
+			producerRtpTs = producerCurrentRtpStream->GetSenderReportTs();
+		}
+
+		auto* senderReport = this->rtpStream->GetRtcpSenderReport(nowMs, producerNtpMs, producerRtpTs);
 
 		if (!senderReport)
 			return true;
@@ -1211,9 +1106,8 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		this->syncRequired                 = true;
-		this->spatialLayerToSync           = -1;
-		this->keyFrameForTsOffsetRequested = false;
+		this->syncRequired       = true;
+		this->spatialLayerToSync = -1;
 
 		if (IsActive())
 			MayChangeLayers();
@@ -1250,7 +1144,6 @@ namespace RTC
 
 		this->syncRequired                        = true;
 		this->spatialLayerToSync                  = -1;
-		this->keyFrameForTsOffsetRequested        = false;
 		this->checkingForOldPacketsInSpatialLayer = false;
 
 		if (IsActive())
@@ -1503,15 +1396,6 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		// If we don't have yet a RTP timestamp reference, set it now.
-		if (newTargetSpatialLayer != -1 && this->tsReferenceSpatialLayer == -1)
-		{
-			MS_DEBUG_TAG_LIVELYAPP(
-			  simulcast, this->appData, "using spatial layer %" PRIi16 " as RTP timestamp reference", newTargetSpatialLayer);
-
-			this->tsReferenceSpatialLayer = newTargetSpatialLayer;
-		}
-
 		if (newTargetSpatialLayer == -1)
 		{
 			// Unset current and target layers.
@@ -1562,22 +1446,9 @@ namespace RTC
 		  "no Producer RtpStream for the given spatialLayer:%" PRIi16,
 		  spatialLayer);
 
-		// We can switch to the given spatial layer if:
-		// - we don't have any TS reference spatial layer yet, or
-		// - the given spatial layer matches the TS reference spatial layer, or
-		// - both , the RTP streams of our TS reference spatial layer and the given
-		//   spatial layer, have Sender Report.
-		//
-		// clang-format off
-		return (
-			this->tsReferenceSpatialLayer == -1 ||
-			spatialLayer == this->tsReferenceSpatialLayer ||
-			(
-				GetProducerTsReferenceRtpStream()->GetSenderReportNtpMs() &&
-				this->producerRtpStreams.at(spatialLayer)->GetSenderReportNtpMs()
-			)
-		);
-		// clang-format on
+		// We can always switch to any spatial layer since we pass through original
+		// RTP timestamps without rewriting.
+		return true;
 	}
 
 	inline void SimulcastConsumer::EmitScore() const
@@ -1636,17 +1507,6 @@ namespace RTC
 
 		// This may return nullptr.
 		return this->producerRtpStreams.at(this->targetSpatialLayer);
-	}
-
-	inline RTC::RtpStreamRecv* SimulcastConsumer::GetProducerTsReferenceRtpStream() const
-	{
-		MS_TRACE();
-
-		if (this->tsReferenceSpatialLayer == -1)
-			return nullptr;
-
-		// This may return nullptr.
-		return this->producerRtpStreams.at(this->tsReferenceSpatialLayer);
 	}
 
 	inline void SimulcastConsumer::OnRtpStreamScore(

@@ -418,7 +418,17 @@ namespace RTC
 		if (static_cast<float>((nowMs - this->lastRtcpSentTime) * 1.15) < this->maxRtcpInterval)
 			return true;
 
-		auto* senderReport = this->rtpStream->GetRtcpSenderReport(nowMs);
+		// Get producer SR data for lip-sync accurate SR generation
+		uint64_t producerNtpMs = 0;
+		uint32_t producerRtpTs = 0;
+
+		if (this->producerRtpStream && this->producerRtpStream->GetSenderReportNtpMs() != 0)
+		{
+			producerNtpMs = this->producerRtpStream->GetSenderReportNtpMs();
+			producerRtpTs = this->producerRtpStream->GetSenderReportTs();
+		}
+
+		auto* senderReport = this->rtpStream->GetRtcpSenderReport(nowMs, producerNtpMs, producerRtpTs);
 
 		if (!senderReport)
 			return true;

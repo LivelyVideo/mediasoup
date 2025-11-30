@@ -246,7 +246,8 @@ namespace RTC
 		this->lastRrTimestamp += report->GetNtpFrac() >> 16;
 	}
 
-	RTC::RTCP::SenderReport* RtpStreamSend::GetRtcpSenderReport(uint64_t nowMs)
+	RTC::RTCP::SenderReport* RtpStreamSend::GetRtcpSenderReport(
+	  uint64_t nowMs, uint64_t producerNtpMs, uint32_t producerRtpTs)
 	{
 		MS_TRACE();
 
@@ -255,23 +256,25 @@ namespace RTC
 			return nullptr;
 		}
 
-		auto ntp     = Utils::Time::TimeMs2Ntp(nowMs);
-		auto* report = new RTC::RTCP::SenderReport();
+		// If no producer SR data available, do not generate SR - wait for producer SR
+		if (producerNtpMs == 0)
+		{
+			return nullptr;
+		}
 
-		// Calculate TS difference between now and maxPacketMs.
-		auto diffMs = nowMs - this->maxPacketMs;
-		auto diffTs = diffMs * GetClockRate() / 1000;
+		auto* report = new RTC::RTCP::SenderReport();
+		auto ntp = Utils::Time::TimeMs2Ntp(producerNtpMs);
 
 		report->SetSsrc(GetSsrc());
 		report->SetPacketCount(this->transmissionCounter.GetPacketCount());
 		report->SetOctetCount(this->transmissionCounter.GetBytes());
 		report->SetNtpSec(ntp.seconds);
 		report->SetNtpFrac(ntp.fractions);
-		report->SetRtpTs(this->maxPacketTs + diffTs);
+		report->SetRtpTs(producerRtpTs);
 
 		// Update info about last Sender Report.
-		this->lastSenderReportNtpMs = nowMs;
-		this->lastSenderReportTs    = this->maxPacketTs + diffTs;
+		this->lastSenderReportNtpMs = producerNtpMs;
+		this->lastSenderReportTs    = producerRtpTs;
 
 		return report;
 	}
