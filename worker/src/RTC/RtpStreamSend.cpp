@@ -279,6 +279,38 @@ namespace RTC
 		return report;
 	}
 
+	RTC::RTCP::SenderReport* RtpStreamSend::GetRtcpSenderReport(uint64_t nowMs)
+	{
+		MS_TRACE();
+
+		if (this->transmissionCounter.GetPacketCount() == 0u)
+		{
+			return nullptr;
+		}
+
+		auto ntp     = Utils::Time::TimeMs2Ntp(nowMs);
+		auto* report = new RTC::RTCP::SenderReport();
+
+		// Calculate TS difference between now and maxPacketMs.
+		auto diffMs = nowMs - this->maxPacketMs;
+		auto diffTs = diffMs * GetClockRate() / 1000;
+
+		report->SetSsrc(GetSsrc());
+		report->SetPacketCount(this->transmissionCounter.GetPacketCount());
+		report->SetOctetCount(this->transmissionCounter.GetBytes());
+		report->SetNtpSec(ntp.seconds);
+		report->SetNtpFrac(ntp.fractions);
+		report->SetRtpTs(this->maxPacketTs + diffTs);
+
+		// Update info about last Sender Report.
+		this->lastSenderReportNtpMs = nowMs;
+		this->lastSenderReportTs    = this->maxPacketTs + diffTs;
+
+		return report;
+	}
+
+
+
 	RTC::RTCP::DelaySinceLastRr::SsrcInfo* RtpStreamSend::GetRtcpXrDelaySinceLastRr(uint64_t nowMs)
 	{
 		MS_TRACE();
