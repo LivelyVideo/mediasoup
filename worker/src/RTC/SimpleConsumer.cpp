@@ -193,12 +193,13 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		// XXX Lipsync debug logging - log all incoming SRs
-		MS_ERROR("XXX SR-IN [ssrc:%" PRIu32 ", ntpMs:%" PRIu64 ", rtpTs:%" PRIu32 ", first:%d]",
+#if MS_LOG_DEV_LEVEL >= 3
+		MS_DEBUG_DEV("SR-IN [ssrc:%" PRIu32 ", ntpMs:%" PRIu64 ", rtpTs:%" PRIu32 ", first:%d]",
 		  rtpStream->GetSsrc(),
 		  rtpStream->GetSenderReportNtpMs(),
 		  rtpStream->GetSenderReportTs(),
 		  first ? 1 : 0);
+#endif
 	}
 
 	uint8_t SimpleConsumer::GetBitratePriority() const
@@ -383,13 +384,14 @@ namespace RTC
 			// Send the packet.
 			this->listener->OnConsumerSendRtpPacket(this, packet);
 
-			// XXX Lipsync debug logging
-			MS_ERROR("XXX RTP [ssrc:%" PRIu32 ", seq:%" PRIu16 ", ts:%" PRIu32 ", marker:%d, pt:%" PRIu8 "]",
+#if MS_LOG_DEV_LEVEL >= 3
+			MS_DEBUG_DEV("RTP [ssrc:%" PRIu32 ", seq:%" PRIu16 ", ts:%" PRIu32 ", marker:%d, pt:%" PRIu8 "]",
 			  packet->GetSsrc(),
 			  packet->GetSequenceNumber(),
 			  packet->GetTimestamp(),
 			  packet->HasMarker() ? 1 : 0,
 			  packet->GetPayloadType());
+#endif
 
 			// May emit 'trace' event.
 			EmitTraceEventRtpAndKeyFrameTypes(packet);
@@ -433,14 +435,15 @@ namespace RTC
 		if (!senderReport)
 			return true;
 
-		// XXX Lipsync debug logging - log outgoing SR
-		MS_ERROR("XXX SR-OUT [ssrc:%" PRIu32 ", ntpSec:%" PRIu32 ", ntpFrac:%" PRIu32 ", rtpTs:%" PRIu32 ", packetCount:%" PRIu32 ", octetCount:%" PRIu32 "]",
+#if MS_LOG_DEV_LEVEL >= 3
+		MS_DEBUG_DEV("SR-OUT [ssrc:%" PRIu32 ", ntpSec:%" PRIu32 ", ntpFrac:%" PRIu32 ", rtpTs:%" PRIu32 ", packetCount:%" PRIu32 ", octetCount:%" PRIu32 "]",
 		  senderReport->GetSsrc(),
 		  senderReport->GetNtpSec(),
 		  senderReport->GetNtpFrac(),
 		  senderReport->GetRtpTs(),
 		  senderReport->GetPacketCount(),
 		  senderReport->GetOctetCount());
+#endif
 
 		// Build SDES chunk for this sender.
 		auto* sdesChunk = this->rtpStream->GetRtcpSdesChunk();
