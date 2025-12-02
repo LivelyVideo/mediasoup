@@ -171,18 +171,18 @@ namespace RTC
 		}
 	}
 
-	void PipeConsumer::ProducerRtpStream(RTC::RtpStreamRecv* /*rtpStream*/, uint32_t /*mappedSsrc*/)
+	void PipeConsumer::ProducerRtpStream(RTC::RtpStreamRecv* rtpStream, uint32_t mappedSsrc)
 	{
 		MS_TRACE();
 
-		// Do nothing.
+		this->mapMappedSsrcProducerRtpStream[mappedSsrc] = rtpStream;
 	}
 
-	void PipeConsumer::ProducerNewRtpStream(RTC::RtpStreamRecv* /*rtpStream*/, uint32_t /*mappedSsrc*/)
+	void PipeConsumer::ProducerNewRtpStream(RTC::RtpStreamRecv* rtpStream, uint32_t mappedSsrc)
 	{
 		MS_TRACE();
 
-		// Do nothing.
+		this->mapMappedSsrcProducerRtpStream[mappedSsrc] = rtpStream;
 	}
 
 	void PipeConsumer::ProducerRtpStreamScore(
@@ -193,11 +193,16 @@ namespace RTC
 		// Do nothing.
 	}
 
-	void PipeConsumer::ProducerRtcpSenderReport(RTC::RtpStreamRecv* /*rtpStream*/, bool /*first*/)
+	void PipeConsumer::ProducerRtcpSenderReport(RTC::RtpStreamRecv* rtpStream, bool first)
 	{
 		MS_TRACE();
 
-		// Do nothing.
+		// XXX Lipsync debug logging - log all incoming SRs
+		MS_ERROR("XXX SR-IN [ssrc:%" PRIu32 ", ntpMs:%" PRIu64 ", rtpTs:%" PRIu32 ", first:%d]",
+		  rtpStream->GetSsrc(),
+		  rtpStream->GetSenderReportNtpMs(),
+		  rtpStream->GetSenderReportTs(),
+		  first ? 1 : 0);
 	}
 
 	uint8_t PipeConsumer::GetBitratePriority() const
@@ -322,6 +327,14 @@ namespace RTC
 
 			// May emit 'trace' event.
 			EmitTraceEventRtpAndKeyFrameTypes(packet);
+
+			// XXX Lipsync debug logging
+			MS_ERROR("XXX RTP [ssrc:%" PRIu32 ", seq:%" PRIu16 ", ts:%" PRIu32 ", marker:%d, pt:%" PRIu8 "]",
+			  packet->GetSsrc(),
+			  packet->GetSequenceNumber(),
+			  packet->GetTimestamp(),
+			  packet->HasMarker() ? 1 : 0,
+			  packet->GetPayloadType());
 		}
 		else
 		{
@@ -363,10 +376,40 @@ namespace RTC
 
 		for (auto* rtpStream : this->rtpStreams)
 		{
-			auto* report = rtpStream->GetRtcpSenderReport(nowMs);
+			// Get producer SR data for lip-sync accurate SR generation
+			uint64_t producerNtpMs = 0;
+			uint32_t producerRtpTs = 0;
+
+			// Find the producer RTP stream for this consumer stream
+			auto ssrc = rtpStream->GetSsrc();
+			for (const auto& kv : this->mapMappedSsrcSsrc)
+			{
+				if (kv.second == ssrc)
+				{
+					auto it = this->mapMappedSsrcProducerRtpStream.find(kv.first);
+					if (it != this->mapMappedSsrcProducerRtpStream.end() &&
+					    it->second && it->second->GetSenderReportNtpMs() != 0)
+					{
+						producerNtpMs = it->second->GetSenderReportNtpMs();
+						producerRtpTs = it->second->GetSenderReportTs();
+					}
+					break;
+				}
+			}
+
+			auto* report = rtpStream->GetRtcpSenderReport(nowMs, producerNtpMs, producerRtpTs);
 
 			if (!report)
 				continue;
+
+			// XXX Lipsync debug logging - log outgoing SR
+			MS_ERROR("XXX SR-OUT [ssrc:%" PRIu32 ", ntpSec:%" PRIu32 ", ntpFrac:%" PRIu32 ", rtpTs:%" PRIu32 ", packetCount:%" PRIu32 ", octetCount:%" PRIu32 "]",
+			  report->GetSsrc(),
+			  report->GetNtpSec(),
+			  report->GetNtpFrac(),
+			  report->GetRtpTs(),
+			  report->GetPacketCount(),
+			  report->GetOctetCount());
 
 			senderReports.push_back(report);
 
