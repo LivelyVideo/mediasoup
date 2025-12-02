@@ -1,0 +1,48 @@
+#ARG BASE_URL=golang:1.18-buster
+ARG BASE_URL=debian:12.2
+FROM $BASE_URL AS base
+
+ARG XCODE2_BUILD=false
+RUN apt update && \
+  apt -y upgrade && \
+  apt install -y build-essential autoconf vim wget curl libtool libtool-bin gpp less libpcre3-dev libz-dev&& \
+  apt -y upgrade python3 && \
+  apt install -y python3-pip supervisor && \
+  ln -s /usr/bin/python3 /usr/local/bin/python3
+
+RUN apt install pipx -y && \
+  pipx install ninja && \
+  pipx ensurepath && \
+  pipx install meson && \
+  pipx ensurepath
+
+RUN apt-get install -y ca-certificates curl gnupg && \
+  mkdir -p /etc/apt/keyrings && \
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
+  export NODE_MAJOR=20 && \
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
+  apt-get update && \
+  apt-get install nodejs -y
+
+RUN mkdir -p /root/build/mediasoup /mediasoup/build
+ENV BUILD_DIR /root/build/mediasoup
+ENV MS_BUILD /mediasoup/build
+
+COPY worker ${MS_BUILD}/worker
+COPY node ${MS_BUILD}/node
+COPY package.json ${MS_BUILD}/package.json
+COPY npm-scripts.mjs ${MS_BUILD}/npm-scripts.mjs
+
+RUN if [ "$XCODE2_BUILD" = "true" ]; then \
+  mv ${MS_BUILD}/worker/meson.build.transcode ${MS_BUILD}/worker/meson.build; \
+  else \
+  mv ${MS_BUILD}/worker/meson.build.notranscode ${MS_BUILD}/worker/meson.build; \
+  fi
+
+ARG MEDIASOUP_BUILDTYPE_ARG=Release
+ENV MEDIASOUP_BUILDTYPE=${MEDIASOUP_BUILDTYPE_ARG}
+
+RUN \
+  cd ${MS_BUILD} && \
+  npm install && \
+  npm run typescript:build

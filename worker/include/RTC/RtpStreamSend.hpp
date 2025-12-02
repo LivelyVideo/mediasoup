@@ -29,30 +29,43 @@ namespace RTC
 		  RTC::RtpStreamSend::Listener* listener, RTC::RtpStream::Params& params, std::string& mid);
 		~RtpStreamSend() override;
 
-		void FillStats(size_t& packetsCount, size_t& bytesCount, size_t& framesCount, uint32_t& packetsLost, size_t& packetsDiscarded,
-									 size_t& packetsRetransmitted, size_t& packetsRepaired, size_t& nackCount,
-									 size_t& nackPacketCount, size_t& kfCount, float& rtt, uint32_t& maxPacketTs) override
+		void FillStats(
+		  size_t& packetsCount,
+		  size_t& bytesCount,
+		  size_t& framesCount,
+		  uint32_t& packetsLost,
+		  size_t& packetsDiscarded,
+		  size_t& packetsRetransmitted,
+		  size_t& packetsRepaired,
+		  size_t& nackCount,
+		  size_t& nackPacketCount,
+		  size_t& kfCount,
+		  float& rtt,
+		  uint32_t& maxPacketTs) override
 		{
-			packetsCount = this->transmissionCounter.GetPacketCount();
-			bytesCount = this->transmissionCounter.GetBytes();
-			framesCount = this->transmissionCounter.GetFrameCount();
-			packetsLost = this->packetsLost;
-			packetsDiscarded = this->packetsDiscarded;
+			packetsCount         = this->transmissionCounter.GetPacketCount();
+			bytesCount           = this->transmissionCounter.GetBytes();
+			framesCount          = this->transmissionCounter.GetFrameCount();
+			packetsLost          = this->packetsLost;
+			packetsDiscarded     = this->packetsDiscarded;
 			packetsRetransmitted = this->packetsRetransmitted;
-			packetsRepaired = this->packetsRepaired;
-			nackCount = this->nackCount;
-			nackPacketCount = this->nackPacketCount;
-			kfCount = this->pliCount + this->firCount;
-			rtt = this->rtt;
+			packetsRepaired      = this->packetsRepaired;
+			nackCount            = this->nackCount;
+			nackPacketCount      = this->nackPacketCount;
+			kfCount              = this->pliCount + this->firCount;
+			rtt                  = this->rtt;
 
 			// convert RTP time to unix timestamp
 			// in ms using the RTCP sender report
 			uint32_t clock_rate = this->GetClockRate();
-			if (!clock_rate) {
+			if (!clock_rate)
+			{
 				maxPacketTs = 0xFFFFFFFF;
-			} else {
+			}
+			else
+			{
 				int delta_rtp = ((int)this->maxPacketTs - (int)this->lastSenderReportTs);
-				delta_rtp = delta_rtp * 1000 / (int)clock_rate;
+				delta_rtp     = delta_rtp * 1000 / (int)clock_rate;
 
 				maxPacketTs = (uint32_t)((int)this->lastSenderReportNtpMs + delta_rtp);
 			}
@@ -65,6 +78,8 @@ namespace RTC
 		void ReceiveKeyFrameRequest(RTC::RTCP::FeedbackPs::MessageType messageType);
 		void ReceiveRtcpReceiverReport(RTC::RTCP::ReceiverReport* report);
 		void ReceiveRtcpXrReceiverReferenceTime(RTC::RTCP::ReceiverReferenceTime* report);
+		RTC::RTCP::SenderReport* GetRtcpSenderReport(
+		  uint64_t nowMs, uint64_t producerNtpMs, uint32_t producerRtpTs);
 		RTC::RTCP::SenderReport* GetRtcpSenderReport(uint64_t nowMs);
 		RTC::RTCP::DelaySinceLastRr::SsrcInfo* GetRtcpXrDelaySinceLastRr(uint64_t nowMs);
 		RTC::RTCP::SdesChunk* GetRtcpSdesChunk();

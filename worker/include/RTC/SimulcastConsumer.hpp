@@ -96,7 +96,6 @@ namespace RTC
 		void EmitLayersChange() const;
 		RTC::RtpStreamRecv* GetProducerCurrentRtpStream() const;
 		RTC::RtpStreamRecv* GetProducerTargetRtpStream() const;
-		RTC::RtpStreamRecv* GetProducerTsReferenceRtpStream() const;
 
 		/* Pure virtual methods inherited from RtpStreamSend::Listener. */
 	public:
@@ -124,12 +123,9 @@ namespace RTC
 		int16_t targetSpatialLayer{ -1 };
 		int16_t targetTemporalLayer{ -1 };
 		int16_t currentSpatialLayer{ -1 };
-		int16_t tsReferenceSpatialLayer{ -1 }; // Used for RTP TS sync.
 		uint16_t snReferenceSpatialLayer{ 0 };
 		bool checkingForOldPacketsInSpatialLayer{ false };
 		std::unique_ptr<RTC::Codecs::EncodingContext> encodingContext;
-		uint32_t tsOffset{ 0u }; // RTP Timestamp offset.
-		bool keyFrameForTsOffsetRequested{ false };
 		uint64_t lastBweDowngradeAtMs{ 0u }; // Last time we moved to lower spatial layer due to BWE.
 		// bin log
 		Lively::CallStatsRecordCtx* rtpStreamBinLogRecord;

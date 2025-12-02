@@ -246,6 +246,39 @@ namespace RTC
 		this->lastRrTimestamp += report->GetNtpFrac() >> 16;
 	}
 
+	RTC::RTCP::SenderReport* RtpStreamSend::GetRtcpSenderReport(
+	  uint64_t nowMs, uint64_t producerNtpMs, uint32_t producerRtpTs)
+	{
+		MS_TRACE();
+
+		if (this->transmissionCounter.GetPacketCount() == 0u)
+		{
+			return nullptr;
+		}
+
+		// If no producer SR data available, do not generate SR - wait for producer SR
+		if (producerNtpMs == 0)
+		{
+			return nullptr;
+		}
+
+		auto* report = new RTC::RTCP::SenderReport();
+		auto ntp = Utils::Time::TimeMs2Ntp(producerNtpMs);
+
+		report->SetSsrc(GetSsrc());
+		report->SetPacketCount(this->transmissionCounter.GetPacketCount());
+		report->SetOctetCount(this->transmissionCounter.GetBytes());
+		report->SetNtpSec(ntp.seconds);
+		report->SetNtpFrac(ntp.fractions);
+		report->SetRtpTs(producerRtpTs);
+
+		// Update info about last Sender Report.
+		this->lastSenderReportNtpMs = producerNtpMs;
+		this->lastSenderReportTs    = producerRtpTs;
+
+		return report;
+	}
+
 	RTC::RTCP::SenderReport* RtpStreamSend::GetRtcpSenderReport(uint64_t nowMs)
 	{
 		MS_TRACE();
@@ -275,6 +308,8 @@ namespace RTC
 
 		return report;
 	}
+
+
 
 	RTC::RTCP::DelaySinceLastRr::SsrcInfo* RtpStreamSend::GetRtcpXrDelaySinceLastRr(uint64_t nowMs)
 	{

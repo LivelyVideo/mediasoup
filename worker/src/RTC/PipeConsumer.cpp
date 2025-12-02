@@ -98,26 +98,32 @@ namespace RTC
 	{
 		MS_TRACE();
 		
-		if (Settings::configuration.logBinStatsDisabled)
-			return;
+		// modified by Amir Pauker on 06/11/2024 as part of the
+		// Saas project. The pipe between SFU and transcode should
+		// not generate binary logs since otherwise they are
+		// counted toward the project billing invoice
+		return;
 
-		if (this->rtpStreams.size() != 1)
-		{
-			MS_WARN_TAG_LIVELYAPP(rtp, this->appData, "found %zu streams in %s, skipping bin stats", this->rtpStreams.size(), this->id.c_str());
-			return;
-		}
-
-		for (auto* rtpStream : this->rtpStreams)
-		{
-			if (!rtpStream)
-				continue;
-
-			Lively::CallStatsRecordCtx* ctx = this->rtpStreamBinLogRecords.at(rtpStream);
-			if (!ctx)
-				continue;
-
-			ctx->AddStatsRecord(log, rtpStream, IsActive());
-		}
+//		if (Settings::configuration.logBinStatsDisabled)
+//			return;
+//
+//		if (this->rtpStreams.size() != 1)
+//		{
+//			MS_WARN_TAG_LIVELYAPP(rtp, this->appData, "found %zu streams in %s, skipping bin stats", this->rtpStreams.size(), this->id.c_str());
+//			return;
+//		}
+//
+//		for (auto* rtpStream : this->rtpStreams)
+//		{
+//			if (!rtpStream)
+//				continue;
+//
+//			Lively::CallStatsRecordCtx* ctx = this->rtpStreamBinLogRecords.at(rtpStream);
+//			if (!ctx)
+//				continue;
+//
+//			ctx->AddStatsRecord(log, rtpStream, IsActive());
+//		}
 	}
 
 	void PipeConsumer::FillJsonScore(json& jsonObject) const
@@ -165,18 +171,18 @@ namespace RTC
 		}
 	}
 
-	void PipeConsumer::ProducerRtpStream(RTC::RtpStreamRecv* /*rtpStream*/, uint32_t /*mappedSsrc*/)
+	void PipeConsumer::ProducerRtpStream(RTC::RtpStreamRecv* rtpStream, uint32_t mappedSsrc)
 	{
 		MS_TRACE();
 
-		// Do nothing.
+		this->mapMappedSsrcProducerRtpStream[mappedSsrc] = rtpStream;
 	}
 
-	void PipeConsumer::ProducerNewRtpStream(RTC::RtpStreamRecv* /*rtpStream*/, uint32_t /*mappedSsrc*/)
+	void PipeConsumer::ProducerNewRtpStream(RTC::RtpStreamRecv* rtpStream, uint32_t mappedSsrc)
 	{
 		MS_TRACE();
 
-		// Do nothing.
+		this->mapMappedSsrcProducerRtpStream[mappedSsrc] = rtpStream;
 	}
 
 	void PipeConsumer::ProducerRtpStreamScore(
@@ -187,11 +193,17 @@ namespace RTC
 		// Do nothing.
 	}
 
-	void PipeConsumer::ProducerRtcpSenderReport(RTC::RtpStreamRecv* /*rtpStream*/, bool /*first*/)
+	void PipeConsumer::ProducerRtcpSenderReport(RTC::RtpStreamRecv* rtpStream, bool first)
 	{
 		MS_TRACE();
 
-		// Do nothing.
+#if MS_LOG_DEV_LEVEL >= 3
+		MS_DEBUG_DEV("SR-IN [ssrc:%" PRIu32 ", ntpMs:%" PRIu64 ", rtpTs:%" PRIu32 ", first:%d]",
+		  rtpStream->GetSsrc(),
+		  rtpStream->GetSenderReportNtpMs(),
+		  rtpStream->GetSenderReportTs(),
+		  first ? 1 : 0);
+#endif
 	}
 
 	uint8_t PipeConsumer::GetBitratePriority() const
@@ -316,6 +328,15 @@ namespace RTC
 
 			// May emit 'trace' event.
 			EmitTraceEventRtpAndKeyFrameTypes(packet);
+
+#if MS_LOG_DEV_LEVEL >= 3
+			MS_DEBUG_DEV("RTP [ssrc:%" PRIu32 ", seq:%" PRIu16 ", ts:%" PRIu32 ", marker:%d, pt:%" PRIu8 "]",
+			  packet->GetSsrc(),
+			  packet->GetSequenceNumber(),
+			  packet->GetTimestamp(),
+			  packet->HasMarker() ? 1 : 0,
+			  packet->GetPayloadType());
+#endif
 		}
 		else
 		{
@@ -357,10 +378,41 @@ namespace RTC
 
 		for (auto* rtpStream : this->rtpStreams)
 		{
-			auto* report = rtpStream->GetRtcpSenderReport(nowMs);
+			// Get producer SR data for lip-sync accurate SR generation
+			uint64_t producerNtpMs = 0;
+			uint32_t producerRtpTs = 0;
+
+			// Find the producer RTP stream for this consumer stream
+			auto ssrc = rtpStream->GetSsrc();
+			for (const auto& kv : this->mapMappedSsrcSsrc)
+			{
+				if (kv.second == ssrc)
+				{
+					auto it = this->mapMappedSsrcProducerRtpStream.find(kv.first);
+					if (it != this->mapMappedSsrcProducerRtpStream.end() &&
+					    it->second && it->second->GetSenderReportNtpMs() != 0)
+					{
+						producerNtpMs = it->second->GetSenderReportNtpMs();
+						producerRtpTs = it->second->GetSenderReportTs();
+					}
+					break;
+				}
+			}
+
+			auto* report = rtpStream->GetRtcpSenderReport(nowMs, producerNtpMs, producerRtpTs);
 
 			if (!report)
 				continue;
+
+#if MS_LOG_DEV_LEVEL >= 3
+			MS_DEBUG_DEV("SR-OUT [ssrc:%" PRIu32 ", ntpSec:%" PRIu32 ", ntpFrac:%" PRIu32 ", rtpTs:%" PRIu32 ", packetCount:%" PRIu32 ", octetCount:%" PRIu32 "]",
+			  report->GetSsrc(),
+			  report->GetNtpSec(),
+			  report->GetNtpFrac(),
+			  report->GetRtpTs(),
+			  report->GetPacketCount(),
+			  report->GetOctetCount());
+#endif
 
 			senderReports.push_back(report);
 

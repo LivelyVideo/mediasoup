@@ -75,7 +75,15 @@ namespace DepLibSfuShm {
   }
 
 
-  void ShmCtx::InitializeShmWriterCtx(std::string shm, int queueAge, bool useReverse, int testNack, std::string log, int level, std::string shmAppData)
+  void ShmCtx::InitializeShmWriterCtx(
+          std::string clientReferrer,
+          std::string shm,
+          int queueAge,
+          bool useReverse,
+          int testNack,
+          std::string log,
+          int level,
+          std::string shmAppData)
   {
     MS_TRACE();
 
@@ -87,6 +95,12 @@ namespace DepLibSfuShm {
     maxVideoPktDelay = uint64_t(queueAge * 90); // queueAge in ms * 90,000 samples per sec / 1,000ms
     testNackEachMs = uint64_t(testNack);
     useReverseIterator = useReverse;
+
+    // NOTE: RND-6440 in order to support true multi-tenant environment
+    // we use namespace in shm. not ideal but we use three different
+    // terms for the same thing )-: namespace, clientReferrer and
+    // project id
+    wrt_init.stream_ns = const_cast<char*>(clientReferrer.c_str());
 
     wrt_init.stream_name = const_cast<char*>(stream_name.c_str());
     wrt_init.stats_win_size = 300;

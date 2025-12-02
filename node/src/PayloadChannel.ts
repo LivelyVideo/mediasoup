@@ -68,7 +68,7 @@ export class PayloadChannel extends EnhancedEventEmitter
 		{
 			if (!this.#recvBuffer.length)
 			{
-				this.#recvBuffer = buffer;
+				this.#recvBuffer = Buffer.from(buffer);
 			}
 			else
 			{
