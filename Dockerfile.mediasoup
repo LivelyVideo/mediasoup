@@ -60,4 +60,5 @@ ENV MESON_ARGS="-Dms_disable_liburing=true"
 RUN \
   cd ${MS_BUILD} && \
   npm install && \
+  npm rebuild && \
   npm run typescript:build
