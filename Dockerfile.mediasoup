@@ -57,6 +57,10 @@ RUN mkdir -p ${MS_BUILD}/worker/out/pip_meson_ninja/bin && \
 ENV MEDIASOUP_BUILDTYPE=${MEDIASOUP_BUILDTYPE_ARG}
 ENV MESON_ARGS="-Dms_disable_liburing=true"
 
+# Force cache invalidation: increment this number to force rebuild
+# lv5 = added cache busting to force npm rebuild execution
+ARG CACHE_BUST=lv5
+
 RUN \
   cd ${MS_BUILD} && \
   npm install && \
