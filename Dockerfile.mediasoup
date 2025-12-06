@@ -52,6 +52,11 @@ RUN mkdir -p ${MS_BUILD}/worker/out/pip_meson_ninja/bin && \
   ln -sf $(which meson) ${MS_BUILD}/worker/out/pip_meson_ninja/bin/meson && \
   ln -sf $(which ninja) ${MS_BUILD}/worker/out/pip_meson_ninja/bin/ninja
 
+# Disable liburing to avoid initialization crashes in Docker containers
+# io_uring syscalls are often blocked by Docker's default seccomp profile
+ENV MEDIASOUP_BUILDTYPE=${MEDIASOUP_BUILDTYPE_ARG}
+ENV MESON_ARGS="-Dms_disable_liburing=true"
+
 RUN \
   cd ${MS_BUILD} && \
   npm install && \
