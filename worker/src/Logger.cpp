@@ -3,6 +3,7 @@
 
 #include "Logger.hpp"
 #include "RTC/Shared.hpp"
+#include "FBS/log.h"
 #include <uv.h>
 #include <cerrno>
 #include <cstdio>
@@ -81,17 +82,31 @@ void Logger::MSlogrotate()
 
 void Logger::MSlogwrite(int written)
 {
-	// Write backed up buffer first
+	// Write backed up buffer first, the one that we failed to write on a previous attempt.
 	if (!backupBuffer.empty())
 	{
 		if (!openLogFile || !logfd ||
 		    (EOF == std::fputs(backupBuffer.c_str(), logfd)) ||
 		    (EOF == std::fputc('\n', logfd)))
 		{
-			// Failed to write previously saved log msg
-			MS_WARN_DEV("Failed to write backup log: %s", strerror(errno));
+			// If failed to write previously saved log msg, send notification to Node.js
+			if (shared)
+			{
+				auto notification = FBS::Log::CreateWriteFailedNotificationDirect(
+				  shared->channelNotifier->GetBufferBuilder(),
+				  "write",
+				  strerror(errno),
+				  logfilename.c_str(),
+				  backupBuffer.c_str());
 
-			// Back up the new log msg
+				shared->channelNotifier->Emit(
+				  std::to_string(pid),
+				  FBS::Notification::Event::LOGGER_WRITE_FAILED,
+				  FBS::Notification::Body::Log_WriteFailedNotification,
+				  notification);
+			}
+
+			// Back up a new log msg, try writing it out next time
 			backupBuffer.assign(Logger::buffer, written);
 			return;
 		}
@@ -99,18 +114,16 @@ void Logger::MSlogwrite(int written)
 		backupBuffer.clear();
 	}
 
-	// Write the new log message
+	// Write a new log message. If failed, save it for another time
 	if (!openLogFile || !logfd ||
 	    (EOF == std::fputs(Logger::buffer, logfd)) ||
 	    (EOF == std::fputs("\n", logfd)))
 	{
 		backupBuffer.assign(Logger::buffer, written);
 
-		// Try refreshing file descriptor
+		// Try refreshing file descriptor and hope file write succeeds next time
 		if (!logfilename.empty())
-		{
 			MSlogrotate();
-		}
 	}
 }
 

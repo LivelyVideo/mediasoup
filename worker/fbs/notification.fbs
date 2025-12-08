@@ -7,6 +7,7 @@ include "dataProducer.fbs";
 include "dataConsumer.fbs";
 include "activeSpeakerObserver.fbs";
 include "audioLevelObserver.fbs";
+include "log.fbs";
 
 namespace FBS.Notification;
 
@@ -48,6 +49,7 @@ enum Event: uint8 {
 
     // Lively-specific events
     CONSUMER_IDLE_SHM,
+    LOGGER_WRITE_FAILED,
 }
 
 union Body {
@@ -79,6 +81,7 @@ union Body {
 
     // Lively-specific notifications
     Consumer_IdleShmConsumerNotification: FBS.Consumer.IdleShmConsumerNotification,
+    Log_WriteFailedNotification: FBS.Log.WriteFailedNotification,
 }
 
 table Notification {

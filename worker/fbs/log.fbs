@@ -4,3 +4,10 @@ table Log {
     data: string (required);
 }
 
+table WriteFailedNotification {
+    source: string (required);
+    error: string (required);
+    file: string (required);
+    data: string (required);
+}
+
