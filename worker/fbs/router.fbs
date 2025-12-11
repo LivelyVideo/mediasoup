@@ -6,6 +6,7 @@ include "pipeTransport.fbs";
 include "plainTransport.fbs";
 include "webRtcTransport.fbs";
 include "directTransport.fbs";
+include "shmTransport.fbs";
 
 namespace FBS.Router;
 
@@ -38,6 +39,11 @@ table CreateWebRtcTransportRequest {
 table CreateDirectTransportRequest {
     transport_id: string (required);
     options: FBS.DirectTransport.DirectTransportOptions (required);
+}
+
+table CreateShmTransportRequest {
+    transport_id: string (required);
+    options: FBS.ShmTransport.ShmTransportOptions (required);
 }
 
 table CreateAudioLevelObserverRequest {

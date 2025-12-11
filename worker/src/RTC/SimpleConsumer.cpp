@@ -83,6 +83,11 @@ namespace RTC
 		this->shared->channelMessageRegistrator->UnregisterHandler(this->id);
 
 		delete this->rtpStream;
+
+#ifdef TRANSCODE
+	// Cleanup binary log record
+	delete this->rtpStreamBinLogRecord;
+#endif
 		this->targetLayerRetransmissionBuffer.clear();
 	}
 
@@ -792,6 +797,18 @@ namespace RTC
 		this->rtpStream = new RTC::RtpStreamSend(this, params, this->rtpParameters.mid);
 		this->rtpStreams.push_back(this->rtpStream);
 
+#ifdef TRANSCODE
+		// Initialize binary log record context for this stream
+		this->rtpStreamBinLogRecord = new Lively::CallStatsRecordCtx(
+		  1,
+		  this->rtpStream->GetSsrc(),
+		  this->rtpStream->GetPayloadType(),
+		  this->kind == RTC::Media::Kind::VIDEO ? 'v' : 'a',
+		  this->lively.callId,
+		  this->id,
+		  this->producerId);
+#endif
+
 		// If the Consumer is paused, tell the RtpStreamSend.
 		if (IsPaused() || IsProducerPaused())
 		{
@@ -876,6 +893,20 @@ namespace RTC
 
 		// Emit the score event.
 		EmitScore();
+	}
+
+	void SimpleConsumer::FillBinLogStats(Lively::StatsBinLog* log)
+	{
+		MS_TRACE();
+
+		if (Settings::configuration.logBinStatsDisabled)
+			return;
+
+		Lively::CallStatsRecordCtx* ctx = this->rtpStreamBinLogRecord;
+		if (!ctx)
+			return;
+
+		ctx->AddStatsRecord(log, this->rtpStream, IsActive());
 	}
 
 	void SimpleConsumer::OnRtpStreamRetransmitRtpPacket(

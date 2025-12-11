@@ -5,6 +5,7 @@
 #include "common.hpp"
 #include "DepLibUV.hpp"
 #include "Lively.hpp"
+#include "LivelyBinLogs.hpp"
 #include "Channel/ChannelNotification.hpp"
 #include "Channel/ChannelRequest.hpp"
 #include "Channel/ChannelSocket.hpp"
@@ -374,6 +375,10 @@ namespace RTC
 		// Lively-specific appData for logging context
 		Lively::AppData lively;
 		std::string appData;
+		// Binary logging infrastructure
+		TimerHandle* binLogTimer{ nullptr };
+		Lively::StatsBinLog consumersBinLog;
+		bool producerBinLogEnabled{ false };
 	};
 } // namespace RTC
 

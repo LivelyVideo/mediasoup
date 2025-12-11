@@ -148,9 +148,21 @@ namespace RTC
 			rtpStreams.emplace_back(this->producerRtpStream->FillBufferStats(builder));
 		}
 
-		// TODO: Add SHM writer stats to FlatBuffers if needed
-		// For now, just return the RTP stream stats like SimpleConsumer
-		return FBS::Consumer::CreateGetStatsResponseDirect(builder, &rtpStreams);
+		// Create SHM writer stats (restored from v3-lively)
+		uint64_t nowMs = DepLibUV::GetTimeMs();
+		uint64_t totalRate = this->lostPktRateCounter.GetTotalRate(nowMs);
+		uint64_t lossRate = this->lostPktRateCounter.GetLossRate(nowMs);
+		auto* recvStream = dynamic_cast<RTC::RtpStreamRecv*>(this->producerRtpStream);
+
+		auto shmWriterStats = FBS::Consumer::CreateShmWriterStats(
+		  builder,
+		  this->shmWriterCounter.GetPacketCount(),
+		  this->shmWriterCounter.GetBytes(),
+		  this->shmWriterCounter.GetBitrate(nowMs),
+		  totalRate != 0 ? static_cast<float>(lossRate) / static_cast<float>(totalRate) : 0.0f,
+		  recvStream != nullptr ? recvStream->GetJitter() : 0);
+
+		return FBS::Consumer::CreateGetStatsResponse(builder, builder.CreateVector(rtpStreams), shmWriterStats);
 	}
 
 	

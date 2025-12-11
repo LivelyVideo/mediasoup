@@ -55,6 +55,14 @@ namespace RTC
 	{
 		MS_TRACE();
 
+#ifdef TRANSCODE
+		// Initialize binary logging timer if not disabled
+		if (!Settings::configuration.logBinStatsDisabled)
+		{
+			this->binLogTimer = new TimerHandle(this);
+		}
+#endif
+
 		if (options->direct())
 		{
 			this->direct = true;
@@ -197,6 +205,17 @@ namespace RTC
 		// Delete the RTCP timer.
 		delete this->rtcpTimer;
 		this->rtcpTimer = nullptr;
+
+#ifdef TRANSCODE
+		// Delete binary logging timer
+		if (!Settings::configuration.logBinStatsDisabled)
+		{
+			delete this->binLogTimer;
+			this->binLogTimer = nullptr;
+		}
+		// Cleanup binary log
+		this->consumersBinLog.DeinitLog();
+#endif
 	}
 
 	void Transport::CloseProducersAndConsumers()
@@ -658,7 +677,7 @@ namespace RTC
 				}
 
 				// This may throw.
-				auto* producer = new RTC::Producer(this->shared, producerId, this, body, &this->lively);
+				auto* producer = new RTC::Producer(this->shared, producerId, this, body, this->producerBinLogEnabled, &this->lively);
 
 				// Insert the Producer into the RtpListener.
 				// This may throw. If so, delete the Producer and throw.
@@ -1531,6 +1550,14 @@ namespace RTC
 		// Start the RTCP timer.
 		this->rtcpTimer->Start(static_cast<uint64_t>(RTC::RTCP::MaxVideoIntervalMs / 2));
 
+#ifdef TRANSCODE
+		// Start binary logging timer (samples every 2000ms)
+		if (!Settings::configuration.logBinStatsDisabled)
+		{
+			this->binLogTimer->Start(CALL_STATS_BIN_LOG_SAMPLING);
+		}
+#endif
+
 		// Tell the TransportCongestionControlClient.
 		if (this->tccClient)
 		{
@@ -1574,6 +1601,14 @@ namespace RTC
 
 		// Stop the RTCP timer.
 		this->rtcpTimer->Stop();
+
+#ifdef TRANSCODE
+		// Stop binary logging timer
+		if (!Settings::configuration.logBinStatsDisabled)
+		{
+			this->binLogTimer->Stop();
+		}
+#endif
 
 		// Tell the TransportCongestionControlClient.
 		if (this->tccClient)
@@ -3152,5 +3187,33 @@ namespace RTC
 
 			this->rtcpTimer->Start(interval);
 		}
+#ifdef TRANSCODE
+		// Binary logging timer.
+		else if (!Settings::configuration.logBinStatsDisabled && timer == this->binLogTimer)
+		{
+			// Collect stats from all Producers
+			for (auto& kv : this->mapProducers)
+			{
+				auto* producer = kv.second;
+				if (producer != nullptr)
+				{
+					producer->FillBinLogStats();
+				}
+			}
+
+			// Collect stats from all Consumers
+			for (auto& kv : this->mapConsumers)
+			{
+				auto* consumer = kv.second;
+				if (consumer != nullptr)
+				{
+					consumer->FillBinLogStats(&this->consumersBinLog);
+				}
+			}
+
+			// Restart timer for next sampling interval
+			this->binLogTimer->Start(CALL_STATS_BIN_LOG_SAMPLING);
+		}
+#endif
 	}
 } // namespace RTC

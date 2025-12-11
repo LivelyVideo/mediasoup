@@ -11,6 +11,15 @@ enum ShmWriterStatus: uint8 {
     ERROR
 }
 
+// Lively-specific SHM transport options
+table ShmTransportOptions {
+    base: FBS.Transport.Options (required);
+    listen_ip: FBS.Transport.ListenIp (required);
+    rtcp_mux: bool = true;
+    comedia: bool = false;
+    multi_source: bool = false;
+}
+
 // Lively-specific SHM transport dump
 table DumpResponse {
     base: FBS.Transport.Dump (required);

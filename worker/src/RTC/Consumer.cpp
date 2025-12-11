@@ -24,36 +24,34 @@ namespace RTC
 		MS_TRACE();
 
 		// Lively-specific: Extract appData for logging
-		Lively::AppData lively;
-
 		// Priority 1: Use appData from Transport (passed as parameter)
 		if (appData)
 		{
-			lively = *appData;
+			this->lively = *appData;
 		}
 		// Priority 2: Extract from FlatBuffers ConsumeRequest if not provided
 		else
 		{
 			if (data->callId())
 			{
-				lively.callId.assign(data->callId()->str());
+				this->lively.callId.assign(data->callId()->str());
 			}
 			if (data->peerId())
 			{
-				lively.peerId.assign(data->peerId()->str());
+				this->lively.peerId.assign(data->peerId()->str());
 			}
 			if (data->mirrorId())
 			{
-				lively.mirrorId.assign(data->mirrorId()->str());
+				this->lively.mirrorId.assign(data->mirrorId()->str());
 			}
 			if (data->streamName())
 			{
-				lively.streamName.assign(data->streamName()->str());
+				this->lively.streamName.assign(data->streamName()->str());
 			}
 		}
 
-		lively.id = producerId;  // Override id to be producerId
-		this->appData = lively.ToStr();
+		this->lively.id = producerId;  // Override id to be producerId
+		this->appData = this->lively.ToStr();
 
 		// This may throw.
 		this->rtpParameters = RTC::RtpParameters(data->rtpParameters());

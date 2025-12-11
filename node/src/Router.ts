@@ -48,6 +48,12 @@ import {
 	DirectTransportImpl,
 	parseDirectTransportDumpResponse,
 } from './DirectTransport';
+import type {
+	ShmTransport,
+	ShmTransportOptions,
+} from './ShmTransport';
+import { ShmTransport as ShmTransportImpl } from './ShmTransport';
+import * as FbsShmTransport from './fbs/shm-transport';
 import type { Producer } from './ProducerTypes';
 import type { Consumer } from './ConsumerTypes';
 import type { DataProducer } from './DataProducerTypes';
@@ -895,6 +901,157 @@ export class RouterImpl<RouterAppData extends AppData = AppData>
 					dataProducerId: string
 				): DataProducer | undefined => this.#dataProducers.get(dataProducerId),
 			});
+
+		this.#transports.set(transport.id, transport);
+		transport.on('@close', () => this.#transports.delete(transport.id));
+		transport.on('@listenserverclose', () =>
+			this.#transports.delete(transport.id)
+		);
+		transport.on('@newproducer', (producer: Producer) =>
+			this.#producers.set(producer.id, producer)
+		);
+		transport.on('@producerclose', (producer: Producer) =>
+			this.#producers.delete(producer.id)
+		);
+		transport.on('@newdataproducer', (dataProducer: DataProducer) =>
+			this.#dataProducers.set(dataProducer.id, dataProducer)
+		);
+		transport.on('@dataproducerclose', (dataProducer: DataProducer) =>
+			this.#dataProducers.delete(dataProducer.id)
+		);
+
+		// Emit observer event.
+		this.#observer.safeEmit('newtransport', transport);
+
+		return transport;
+	}
+
+	async createShmTransport<ShmTransportAppData extends AppData = AppData>({
+		listenIp,
+		shm,
+		log,
+		appData,
+	}: ShmTransportOptions<ShmTransportAppData>): Promise<
+		ShmTransport<ShmTransportAppData>
+	> {
+		logger.debug('createShmTransport()');
+
+		if (!listenIp) {
+			throw new TypeError('missing listenIp');
+		} else if (!shm) {
+			throw new TypeError('missing shm');
+		} else if (appData && typeof appData !== 'object') {
+			throw new TypeError('if given, appData must be an object');
+		}
+
+		// Normalize listenIp
+		let normalizedListenIp: { ip: string; announcedIp?: string };
+
+		if (typeof listenIp === 'string') {
+			normalizedListenIp = { ip: listenIp };
+		} else {
+			normalizedListenIp = {
+				ip: listenIp.ip,
+				announcedIp: listenIp.announcedIp,
+			};
+		}
+
+		const transportId = utils.generateUUIDv4();
+
+		/* Build Request. */
+		// Extract shm configuration from appData.shm or use defaults
+		const shmConfig = (appData as any)?.shm || {};
+		const shmOptions = new FbsTransport.ShmOptionsT(
+			shmConfig.clientReferrer || '',
+			shm,  // The shm filename
+			shmConfig.queueAge !== undefined ? shmConfig.queueAge : 100,
+			shmConfig.testNack !== undefined ? shmConfig.testNack : 0,
+			shmConfig.reverseIt !== undefined ? shmConfig.reverseIt : 0,
+			shmConfig.shmAppData || ''
+		);
+
+		// Extract log configuration from appData.log or use defaults
+		const logConfig = (appData as any)?.log || {};
+		const logOptions = log
+			? new FbsTransport.LogOptionsT(
+					log,  // The log filename
+					logConfig.level !== undefined ? logConfig.level : 9
+				)
+			: undefined;
+
+		const baseTransportOptions = new FbsTransport.OptionsT(
+			false /* direct */,
+			undefined /* maxMessageSize */,
+			undefined /* initialAvailableOutgoingBitrate */,
+			false /* enableSctp */,
+			undefined /* numSctpStreams */,
+			undefined /* maxSctpMessageSize */,
+			undefined /* sctpSendBufferSize */,
+			false /* isDataChannel */,
+			(appData as any)?.callId,
+			(appData as any)?.peerId,
+			(appData as any)?.mirrorId,
+			(appData as any)?.streamName,
+			shmOptions,
+			logOptions,
+			new FbsTransport.ListenIpT(
+				normalizedListenIp.ip,
+				normalizedListenIp.announcedIp
+			)
+		);
+
+		const shmTransportOptions = new FbsShmTransport.ShmTransportOptionsT(
+			baseTransportOptions,
+			new FbsTransport.ListenIpT(
+				normalizedListenIp.ip,
+				normalizedListenIp.announcedIp
+			),
+			true /* rtcpMux */,
+			false /* comedia */,
+			false /* multiSource */
+		);
+
+		const requestOffset = new FbsRouter.CreateShmTransportRequestT(
+			transportId,
+			shmTransportOptions
+		).pack(this.#channel.bufferBuilder);
+
+		const response = await this.#channel.request(
+			FbsRequest.Method.ROUTER_CREATE_SHMTRANSPORT,
+			FbsRequest.Body.Router_CreateShmTransportRequest,
+			requestOffset,
+			this.#internal.routerId
+		);
+
+		/* Decode Response. */
+		const data = new FbsShmTransport.DumpResponse();
+
+		response.body(data);
+
+		// Parse dump response to extract shm data
+		const shmTransportData = {
+			shm: {
+				name: data.streamName() || '',
+				log: data.logName() || '',
+			},
+		};
+
+		const transport: ShmTransport<ShmTransportAppData> = new ShmTransportImpl({
+			internal: {
+				...this.#internal,
+				transportId: transportId,
+			},
+			data: shmTransportData,
+			channel: this.#channel,
+			appData,
+			getRouterRtpCapabilities: (): RtpCapabilities =>
+				this.#data.rtpCapabilities,
+			getProducerById: (producerId: string): Producer | undefined =>
+				this.#producers.get(producerId),
+			getDataProducerById: (
+				dataProducerId: string
+			): DataProducer | undefined => this.#dataProducers.get(dataProducerId),
+		});
 
 		this.#transports.set(transport.id, transport);
 		transport.on('@close', () => this.#transports.delete(transport.id));

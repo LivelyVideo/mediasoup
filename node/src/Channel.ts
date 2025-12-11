@@ -72,7 +72,7 @@ export class Channel extends EnhancedEventEmitter {
 		// Read Channel responses/notifications from the worker.
 		this.#consumerSocket.on('data', (buffer: Buffer) => {
 			if (!this.#recvBuffer.length) {
-				this.#recvBuffer = buffer;
+				this.#recvBuffer = Buffer.from(buffer);
 			} else {
 				this.#recvBuffer = Buffer.concat(
 					[this.#recvBuffer, buffer],

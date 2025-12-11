@@ -65,6 +65,12 @@ namespace RTC
 		this->rtcpMux = options->rtcpMux();
 		this->comedia = options->comedia();
 
+		// Read disableOriginCheck option
+		if (options->disableOriginCheck())
+		{
+			this->disableOriginCheck = options->disableOriginCheck();
+		}
+
 		if (!this->rtcpMux)
 		{
 			if (flatbuffers::IsFieldPresent(
@@ -367,7 +373,7 @@ namespace RTC
 		auto base = Transport::FillBuffer(builder);
 
 		return FBS::PlainTransport::CreateDumpResponse(
-		  builder, base, this->rtcpMux, this->comedia, tuple, rtcpTuple, srtpParameters);
+		  builder, base, this->rtcpMux, this->comedia, tuple, rtcpTuple, srtpParameters, this->disableOriginCheck);
 	}
 
 	flatbuffers::Offset<FBS::PlainTransport::GetStatsResponse> PlainTransport::FillBufferStats(
@@ -1046,7 +1052,7 @@ namespace RTC
 		}
 		// Otherwise, if RTP tuple is set, verify that it matches the origin
 		// of the packet.
-		else if (!this->tuple->Compare(tuple))
+		else if (!this->disableOriginCheck && !this->tuple->Compare(tuple))
 		{
 			MS_DEBUG_TAG(rtp, "ignoring RTP packet from unknown IP:port");
 

@@ -134,8 +134,10 @@ namespace RTC
 	public:
 		std::string appData;
 
+#ifdef TRANSCODE
 	public:
-		void FillBinLogStats(Lively::StatsBinLog* log) {}
+		void FillBinLogStats(Lively::StatsBinLog* /*log*/) override {}
+#endif
 	};
 
 	/* Inline methods. */

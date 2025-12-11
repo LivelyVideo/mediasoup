@@ -73,8 +73,18 @@ table ConsumerDump {
     current_temporal_layer: int16 = null;
 }
 
+// Lively-specific SHM writer stats
+table ShmWriterStats {
+    packet_count: uint64;
+    byte_count: uint64;
+    bitrate: uint32;
+    packet_loss_rate: float;
+    recv_jitter: uint32;
+}
+
 table GetStatsResponse {
     stats: [FBS.RtpStream.Stats] (required);
+    shm_writer_stats: ShmWriterStats;  // Optional, only present for ShmConsumer
 }
 
 // Notifications from Worker.

@@ -5,6 +5,7 @@
 #include "Channel/ChannelRequest.hpp"
 #include "Channel/ChannelSocket.hpp"
 #include "Lively.hpp"
+#include "LivelyBinLogs.hpp"
 #include "RTC/KeyFrameRequestManager.hpp"
 #include "RTC/RTCP/CompoundPacket.hpp"
 #include "RTC/RTCP/Packet.hpp"
@@ -99,6 +100,7 @@ namespace RTC
 		  const std::string& id,
 		  RTC::Producer::Listener* listener,
 		  const FBS::Transport::ProduceRequest* data,
+		  bool producerBinLogEnabled,
 		  Lively::AppData* appData = nullptr);
 		~Producer() override;
 
@@ -140,6 +142,7 @@ namespace RTC
 		void ReceiveRtcpXrDelaySinceLastRr(RTC::RTCP::DelaySinceLastRr::SsrcInfo* ssrcInfo);
 		bool GetRtcp(RTC::RTCP::CompoundPacket* packet, uint64_t nowMs);
 		void RequestKeyFrame(uint32_t mappedSsrc);
+		void FillBinLogStats();
 
 		/* Methods inherited from Channel::ChannelSocket::RequestHandler. */
 	public:
@@ -187,6 +190,10 @@ namespace RTC
 		// Passed by argument.
 		RTC::Shared* shared{ nullptr };
 		RTC::Producer::Listener* listener{ nullptr };
+		// Binary logging members
+		Lively::AppData lively;
+		Lively::StatsBinLog binLog;
+		std::map<RTC::RtpStreamRecv*, Lively::CallStatsRecordCtx*> rtpStreamBinLogRecords;
 		// Allocated by this.
 		absl::flat_hash_map<uint32_t, RTC::RtpStreamRecv*> mapSsrcRtpStream;
 		RTC::KeyFrameRequestManager* keyFrameRequestManager{ nullptr };

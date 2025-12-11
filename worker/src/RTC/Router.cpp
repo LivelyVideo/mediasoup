@@ -12,6 +12,9 @@
 #include "RTC/DirectTransport.hpp"
 #include "RTC/PipeTransport.hpp"
 #include "RTC/PlainTransport.hpp"
+#ifdef TRANSCODE
+#include "RTC/ShmTransport.hpp"
+#endif
 #include "RTC/SharedRtpPacket.hpp"
 #include "RTC/WebRtcTransport.hpp"
 
@@ -338,6 +341,33 @@ namespace RTC
 				auto dumpOffset = directTransport->FillBuffer(request->GetBufferBuilder());
 
 				request->Accept(FBS::Response::Body::DirectTransport_DumpResponse, dumpOffset);
+
+				break;
+			}
+
+			case Channel::ChannelRequest::Method::ROUTER_CREATE_SHMTRANSPORT:
+			{
+#ifdef TRANSCODE
+				const auto* body = request->data->body_as<FBS::Router::CreateShmTransportRequest>();
+				auto transportId = body->transportId()->str();
+
+				// This may throw.
+				CheckNoTransport(transportId);
+
+				auto* shmTransport =
+				  new RTC::ShmTransport(this->shared, transportId, this, body->options()->base());
+
+				// Insert into the map.
+				this->mapTransports[transportId] = shmTransport;
+
+				MS_DEBUG_DEV("ShmTransport created [transportId:%s]", transportId.c_str());
+
+				auto dumpOffset = shmTransport->FillBuffer(request->GetBufferBuilder());
+
+				request->Accept(FBS::Response::Body::ShmTransport_DumpResponse, dumpOffset);
+#else
+				MS_THROW_ERROR("ShmTransport requires TRANSCODE build flag");
+#endif
 
 				break;
 			}

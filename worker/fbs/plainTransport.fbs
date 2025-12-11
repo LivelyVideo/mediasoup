@@ -12,6 +12,7 @@ table PlainTransportOptions {
     comedia: bool;
     enable_srtp: bool;
     srtp_crypto_suite: FBS.SrtpParameters.SrtpCryptoSuite = null;
+    disable_origin_check: bool = false;
 }
 
 table ConnectRequest {
@@ -34,6 +35,7 @@ table DumpResponse {
     tuple: FBS.Transport.Tuple (required);
     rtcp_tuple: FBS.Transport.Tuple;
     srtp_parameters: FBS.SrtpParameters.SrtpParameters;
+    disable_origin_check: bool;
 }
 
 table GetStatsResponse {

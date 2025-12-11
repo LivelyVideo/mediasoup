@@ -15,7 +15,7 @@ namespace RTC
 	RTC::SrtpSession::CryptoSuite PipeTransport::srtpCryptoSuite{
 		RTC::SrtpSession::CryptoSuite::AEAD_AES_256_GCM
 	};
-	// MAster length of AEAD_AES_256_GCM.
+	// Master length of AEAD_AES_256_GCM.
 	size_t PipeTransport::srtpMasterLength{ 44 };
 
 	/* Instance methods. */
@@ -61,6 +61,12 @@ namespace RTC
 		this->listenInfo.flags.udpReusePort = options->listenInfo()->flags()->udpReusePort();
 
 		this->rtx = options->enableRtx();
+
+		// Read disableOriginCheck option
+		if (options->disableOriginCheck())
+		{
+			this->disableOriginCheck = options->disableOriginCheck();
+		}
 
 		if (options->enableSrtp())
 		{
@@ -209,7 +215,8 @@ namespace RTC
 		// Add base transport dump.
 		auto base = Transport::FillBuffer(builder);
 
-		return FBS::PipeTransport::CreateDumpResponse(builder, base, tuple, this->rtx, srtpParameters);
+		return FBS::PipeTransport::CreateDumpResponse(
+		  builder, base, tuple, this->rtx, srtpParameters, this->disableOriginCheck);
 	}
 
 	flatbuffers::Offset<FBS::PipeTransport::GetStatsResponse> PipeTransport::FillBufferStats(
@@ -691,7 +698,7 @@ namespace RTC
 		}
 
 		// Verify that the packet's tuple matches our tuple.
-		if (!this->tuple->Compare(tuple))
+		if (!this->disableOriginCheck && !this->tuple->Compare(tuple))
 		{
 			MS_DEBUG_TAG(rtp, "ignoring RTP packet from unknown IP:port");
 

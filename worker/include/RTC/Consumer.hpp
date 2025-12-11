@@ -6,6 +6,7 @@
 #include "Channel/ChannelSocket.hpp"
 #include "FBS/consumer.h"
 #include "Lively.hpp"
+#include "LivelyBinLogs.hpp"
 #include "RTC/ConsumerTypes.hpp"
 #include "RTC/RTCP/CompoundPacket.hpp"
 #include "RTC/RTCP/FeedbackRtpNack.hpp"
@@ -155,6 +156,7 @@ namespace RTC
 		virtual void ReceiveRtcpXrReceiverReferenceTime(RTC::RTCP::ReceiverReferenceTime* report) = 0;
 		virtual uint32_t GetTransmissionRate(uint64_t nowMs)                                      = 0;
 		virtual float GetRtt() const                                                              = 0;
+		virtual void FillBinLogStats(Lively::StatsBinLog* log) = 0;
 
 		/* Methods inherited from Channel::ChannelSocket::RequestHandler. */
 	public:
@@ -178,13 +180,14 @@ namespace RTC
 		// Passed by argument.
 		const std::string id;
 		const std::string producerId;
-		// Lively-specific: appData for logging
+		// Lively-specific: appData string for logging
 		std::string appData;
 
 	protected:
 		// Passed by argument.
 		RTC::Shared* shared{ nullptr };
 		RTC::Consumer::Listener* listener{ nullptr };
+		Lively::AppData lively;
 		RTC::Media::Kind kind;
 		RTC::RtpParameters rtpParameters;
 		RTC::RtpParameters::Type type;

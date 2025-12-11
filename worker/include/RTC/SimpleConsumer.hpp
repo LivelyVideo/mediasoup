@@ -62,6 +62,7 @@ namespace RTC
 		void ReceiveRtcpXrReceiverReferenceTime(RTC::RTCP::ReceiverReferenceTime* report) override;
 		uint32_t GetTransmissionRate(uint64_t nowMs) override;
 		float GetRtt() const override;
+		void FillBinLogStats(Lively::StatsBinLog* log) override;
 
 		/* Methods inherited from Channel::ChannelSocket::RequestHandler. */
 	public:
@@ -86,6 +87,8 @@ namespace RTC
 	private:
 		// Allocated by this.
 		RTC::RtpStreamSend* rtpStream{ nullptr };
+		// Binary logging member
+		Lively::CallStatsRecordCtx* rtpStreamBinLogRecord{ nullptr };
 		// Others.
 		std::vector<RTC::RtpStreamSend*> rtpStreams;
 		RTC::RtpStreamRecv* producerRtpStream{ nullptr };

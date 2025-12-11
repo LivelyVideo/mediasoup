@@ -34,19 +34,46 @@ namespace RTC
 	  const std::string& id,
 	  RTC::Producer::Listener* listener,
 	  const FBS::Transport::ProduceRequest* data,
+	  bool producerBinLogEnabled,
 	  Lively::AppData* appData)
 	  : id(id), shared(shared), listener(listener), kind(RTC::Media::Kind(data->kind()))
 	{
 		MS_TRACE();
 
 		// Lively-specific: Extract appData for logging
-		Lively::AppData lively;
 		if (appData)
 		{
-			lively = *appData;
+			this->lively = *appData;
 		}
-		lively.id = id;
-		this->appData = lively.ToStr();
+		this->lively.id = id;
+		this->appData = this->lively.ToStr();
+
+#ifdef TRANSCODE
+		// Binary log initialization
+		if (producerBinLogEnabled)
+		{
+			if (this->lively.callId.empty())
+			{
+				MS_WARN_TAG(rtp, "Missing callId, cannot init producer binlog [id: %s]",
+				            this->lively.id.c_str());
+			}
+			else
+			{
+				std::string const callId = this->lively.callId;
+				std::string const producerId = this->lively.id;
+				// Note: userId and clientReferrer not in FlatBuffers ProduceRequest schema
+				std::string userId = "0";
+				std::string clientReferrer = "";
+
+				this->binLog.InitLog([callId, producerId, userId, clientReferrer]
+				                    (uint64_t timestamp) -> std::string {
+					return Lively::ProducerFileName(callId, producerId, userId,
+					                               clientReferrer, timestamp,
+					                               BINLOG_FORMAT_VERSION);
+				});
+			}
+		}
+#endif
 
 		// This may throw.
 		this->rtpParameters = RTC::RtpParameters(data->rtpParameters());
@@ -262,6 +289,12 @@ namespace RTC
 		this->mapRtxSsrcRtpStream.clear();
 		this->mapRtpStreamMappedSsrc.clear();
 		this->mapMappedSsrcSsrc.clear();
+
+#ifdef TRANSCODE
+		// Cleanup binary logging
+		this->binLog.DeinitLog();
+		this->rtpStreamBinLogRecords.clear();
+#endif
 
 		// Delete the KeyFrameRequestManager.
 		delete this->keyFrameRequestManager;
@@ -1185,6 +1218,18 @@ namespace RTC
 		this->mapRtpStreamMappedSsrc[rtpStream]             = encodingMapping.mappedSsrc;
 		this->mapMappedSsrcSsrc[encodingMapping.mappedSsrc] = ssrc;
 
+#ifdef TRANSCODE
+		// Initialize binary log record context for this stream
+		this->rtpStreamBinLogRecords[rtpStream] = new Lively::CallStatsRecordCtx(
+		  0,
+		  rtpStream->GetSsrc(),
+		  rtpStream->GetPayloadType(),
+		  this->kind == RTC::Media::Kind::VIDEO ? 'v' : 'a',
+		  this->lively.callId,
+		  this->id,
+		  ZERO_UUID);
+#endif
+
 		// If the Producer is paused tell it to the new RtpStreamRecv.
 		if (this->paused)
 		{
@@ -1796,5 +1841,31 @@ namespace RTC
 		auto* rtpStream = it->second;
 
 		rtpStream->RequestKeyFrame();
+	}
+
+	void Producer::FillBinLogStats()
+	{
+		MS_TRACE();
+
+		if (Settings::configuration.logBinStatsDisabled || !this->binLog.IsInitialized())
+			return;
+
+		if (this->rtpStreamByEncodingIdx.size() != 1)
+		{
+			MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData, "producer %s has %zu streams",
+			    this->id.c_str(), this->rtpStreamByEncodingIdx.size());
+		}
+
+		for (auto* rtpStream : this->rtpStreamByEncodingIdx)
+		{
+			if (!rtpStream)
+				continue;
+
+			Lively::CallStatsRecordCtx* ctx = this->rtpStreamBinLogRecords.at(rtpStream);
+			if (!ctx)
+				continue;
+
+			ctx->AddStatsRecord(&this->binLog, rtpStream, !this->IsPaused());
+		}
 	}
 } // namespace RTC

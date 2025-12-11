@@ -75,6 +75,7 @@ namespace RTC
 		RTC::SrtpSession* srtpSendSession{ nullptr };
 		// Others.
 		ListenInfo listenInfo;
+		bool disableOriginCheck{ false };
 		struct sockaddr_storage remoteAddrStorage
 		{
 		};

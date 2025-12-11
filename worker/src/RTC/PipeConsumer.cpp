@@ -63,6 +63,10 @@ namespace RTC
 		}
 
 		this->rtpStreams.clear();
+#ifdef TRANSCODE
+	// Cleanup binary log records
+	this->rtpStreamBinLogRecords.clear();
+#endif
 		this->mapMappedSsrcSsrc.clear();
 		this->mapSsrcRtpStream.clear();
 		this->mapRtpStreamSyncRequired.clear();
@@ -779,6 +783,18 @@ namespace RTC
 
 			auto* rtpStream = new RTC::RtpStreamSend(this, params, this->rtpParameters.mid);
 
+#ifdef TRANSCODE
+		// Initialize binary log record context for this stream
+		this->rtpStreamBinLogRecords[rtpStream] = new Lively::CallStatsRecordCtx(
+		  1,
+		  rtpStream->GetSsrc(),
+		  rtpStream->GetPayloadType(),
+		  this->kind == RTC::Media::Kind::VIDEO ? 'v' : 'a',
+		  this->lively.callId,
+		  this->id,
+		  this->producerId);
+#endif
+
 			// If the Consumer is paused, tell the RtpStreamSend.
 			if (IsPaused() || IsProducerPaused())
 			{
@@ -861,6 +877,20 @@ namespace RTC
 		{
 			targetLayerRetransmissionBuffer.erase(targetLayerRetransmissionBuffer.begin());
 		}
+	}
+
+	void PipeConsumer::FillBinLogStats(Lively::StatsBinLog* /*log*/)
+	{
+		MS_TRACE();
+
+		// Modified by Amir Pauker on 06/11/2024 as part of the SaaS project.
+		// The pipe between SFU and transcode should not generate binary logs
+		// since otherwise they are counted toward the project billing invoice.
+		return;
+
+		// NOTE: The original implementation would iterate through rtpStreamBinLogRecords
+		// and call AddStatsRecord() for each stream, but this is intentionally disabled
+		// to prevent double-counting for billing purposes.
 	}
 
 	void PipeConsumer::OnRtpStreamScore(

@@ -8,6 +8,7 @@ table PipeTransportOptions {
     listen_info: FBS.Transport.ListenInfo (required);
     enable_rtx: bool;
     enable_srtp: bool;
+    disable_origin_check: bool = false;
 }
 
 table ConnectRequest {
@@ -25,6 +26,7 @@ table DumpResponse {
     tuple: FBS.Transport.Tuple (required);
     rtx: bool;
     srtp_parameters: FBS.SrtpParameters.SrtpParameters;
+    disable_origin_check: bool;
 }
 
 table GetStatsResponse {
