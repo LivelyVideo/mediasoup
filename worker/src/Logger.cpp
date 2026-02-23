@@ -43,10 +43,17 @@ bool Logger::MSlogopen(const FBS::Request::Request* request, RTC::Shared* shared
 
 	shared = sharedPtr;
 
-	// Extract log file name from request body
-	// TODO: Parse FBS request body for log filename when FBS schema is added
-	// For now, use default filename
-	logfilename = "/var/log/sfu/mediasoup.log";
+	// Extract log filename from FBS request body
+	const auto* body = request->body_as<FBS::Log::MslogOpenRequest>();
+	if (body && body->mslogname())
+	{
+		logfilename = body->mslogname()->str();
+	}
+	else
+	{
+		MS_WARN_DEV("MSlogopen: no mslogname in request");
+		return false;
+	}
 
 	logfd = std::fopen(logfilename.c_str(), "a");
 	if (logfd)
@@ -55,8 +62,24 @@ bool Logger::MSlogopen(const FBS::Request::Request* request, RTC::Shared* shared
 		return true;
 	}
 
-	// Failed to open
+	// Failed to open - notify Node.js
 	MS_WARN_DEV("Failed to open log file: %s, error: %s", logfilename.c_str(), strerror(errno));
+	if (shared)
+	{
+		auto notification = FBS::Log::CreateWriteFailedNotificationDirect(
+		  shared->channelNotifier->GetBufferBuilder(),
+		  "open",
+		  strerror(errno),
+		  logfilename.c_str(),
+		  "");
+
+		shared->channelNotifier->Emit(
+		  std::to_string(pid),
+		  FBS::Notification::Event::LOGGER_WRITE_FAILED,
+		  FBS::Notification::Body::Log_WriteFailedNotification,
+		  notification);
+	}
+
 	logfd = nullptr;
 	return false;
 }
@@ -77,7 +100,23 @@ void Logger::MSlogrotate()
 		}
 	}
 
+	// Failed to rotate - notify Node.js
 	MS_WARN_DEV("Failed to rotate log file: %s, error: %s", logfilename.c_str(), strerror(errno));
+	if (shared)
+	{
+		auto notification = FBS::Log::CreateWriteFailedNotificationDirect(
+		  shared->channelNotifier->GetBufferBuilder(),
+		  "rotate",
+		  strerror(errno),
+		  logfilename.c_str(),
+		  "");
+
+		shared->channelNotifier->Emit(
+		  std::to_string(pid),
+		  FBS::Notification::Event::LOGGER_WRITE_FAILED,
+		  FBS::Notification::Body::Log_WriteFailedNotification,
+		  notification);
+	}
 }
 
 void Logger::MSlogwrite(int written)

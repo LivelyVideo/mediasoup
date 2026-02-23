@@ -327,6 +327,22 @@ void Worker::HandleRequest(Channel::ChannelRequest* request)
 			break;
 		}
 
+		case Channel::ChannelRequest::Method::WORKER_MSLOG_OPEN:
+		{
+			Logger::MSlogopen(request->data, this->shared);
+			request->Accept();
+
+			break;
+		}
+
+		case Channel::ChannelRequest::Method::WORKER_MSLOG_ROTATE:
+		{
+			Logger::MSlogrotate();
+			request->Accept();
+
+			break;
+		}
+
 		case Channel::ChannelRequest::Method::WORKER_CREATE_WEBRTCSERVER:
 		{
 			try

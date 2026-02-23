@@ -38,6 +38,18 @@ absl::flat_hash_map<LogLevel, std::string> Settings::LogLevel2String =
 	{ LogLevel::LOG_NONE,  "none"  }
 };
 // clang-format on
+std::map<std::string, LogDevLevel> Settings::string2LogDevLevel =
+{
+	{ "debug", LogDevLevel::LOG_DEV_DEBUG },
+	{ "warn",  LogDevLevel::LOG_DEV_WARN  },
+	{ "none",  LogDevLevel::LOG_DEV_NONE  }
+};
+std::map<LogDevLevel, std::string> Settings::logDevLevel2String =
+{
+	{ LogDevLevel::LOG_DEV_DEBUG, "debug" },
+	{ LogDevLevel::LOG_DEV_WARN,  "warn"  },
+	{ LogDevLevel::LOG_DEV_NONE,  "none"  }
+};
 
 /* Class methods. */
 
@@ -60,6 +72,10 @@ void Settings::SetConfiguration(int argc, char* argv[])
 		{ "dtlsPrivateKeyFile",   optional_argument, nullptr, 'p' },
 		{ "libwebrtcFieldTrials", optional_argument, nullptr, 'W' },
 		{ "disableLiburing",      optional_argument, nullptr, 'd' },
+		{ "logDevLevel",          optional_argument, nullptr, 'D' },
+		{ "logTraceEnabled",      optional_argument, nullptr, 'T' },
+		{ "binStatsDisabled",     optional_argument, nullptr, 'b' },
+		{ "binStatsPath",         optional_argument, nullptr, 'B' },
 		{ nullptr,                0,                 nullptr,  0  }
 	};
 	// clang-format on
@@ -167,6 +183,46 @@ void Settings::SetConfiguration(int argc, char* argv[])
 				{
 					Settings::configuration.liburingDisabled = true;
 				}
+
+				break;
+			}
+
+			case 'D':
+			{
+				stringValue = std::string(optarg);
+				SetLogDevLevel(stringValue);
+
+				break;
+			}
+
+			case 'T':
+			{
+				stringValue = std::string(optarg);
+
+				if (stringValue == "true")
+				{
+					SetTrace(true);
+				}
+
+				break;
+			}
+
+			case 'b':
+			{
+				stringValue = std::string(optarg);
+
+				if (stringValue == "true")
+				{
+					SetDisableStats(true);
+				}
+
+				break;
+			}
+
+			case 'B':
+			{
+				stringValue = std::string(optarg);
+				SetStatsPath(stringValue);
 
 				break;
 			}
@@ -483,4 +539,40 @@ void Settings::SetDtlsCertificateAndPrivateKeyFiles()
 	{
 		MS_THROW_TYPE_ERROR("dtlsPrivateKeyFile: %s", error.what());
 	}
+}
+
+void Settings::SetLogDevLevel(std::string& devLevel)
+{
+	MS_TRACE();
+
+	// Lowcase given level.
+	Utils::String::ToLowerCase(devLevel);
+
+	if (Settings::string2LogDevLevel.find(devLevel) == Settings::string2LogDevLevel.end())
+	{
+		MS_THROW_TYPE_ERROR("invalid value '%s' for logDevLevel", devLevel.c_str());
+	}
+
+	Settings::configuration.logDevLevel = Settings::string2LogDevLevel[devLevel];
+}
+
+void Settings::SetTrace(bool trace)
+{
+	MS_TRACE();
+
+	Settings::configuration.logTraceEnabled = trace;
+}
+
+void Settings::SetDisableStats(bool disable)
+{
+	MS_TRACE();
+
+	Settings::configuration.logBinStatsDisabled = disable;
+}
+
+void Settings::SetStatsPath(std::string path)
+{
+	MS_TRACE();
+
+	Settings::configuration.logBinStatsPath = path;
 }
