@@ -4,10 +4,6 @@ table Log {
     data: string (required);
 }
 
-table MslogOpenRequest {
-    mslogname: string (required);
-}
-
 table WriteFailedNotification {
     source: string (required);
     error: string (required);

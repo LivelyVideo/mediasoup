@@ -26,12 +26,11 @@ import type { RouterRtpCodecCapability } from './rtpParametersTypes';
 import * as utils from './utils';
 import * as fbsUtils from './fbsUtils';
 import type { AppData } from './types';
-import { Event, Notification } from './fbs/notification';
+import { Event } from './fbs/notification';
 import * as FbsRequest from './fbs/request';
 import * as FbsWorker from './fbs/worker';
 import * as FbsTransport from './fbs/transport';
 import { Protocol as FbsTransportProtocol } from './fbs/transport/protocol';
-import * as FbsLog from './fbs/log';
 
 const logger = new Logger('Worker');
 const workerLogger = new Logger('Worker');
@@ -69,9 +68,6 @@ export class WorkerImpl<WorkerAppData extends AppData = AppData>
 	// Routers set.
 	readonly #routers: Set<Router> = new Set();
 
-	// Lively: log file name for this worker process.
-	readonly #mslog: string = '';
-
 	// Observer instance.
 	readonly #observer: WorkerObserver =
 		new EnhancedEventEmitter<WorkerObserverEvents>();
@@ -79,11 +75,6 @@ export class WorkerImpl<WorkerAppData extends AppData = AppData>
 	constructor({
 		logLevel,
 		logTags,
-		logFile,
-		logDevLevel,
-		logTraceEnabled,
-		binStatsDisabled,
-		binStatsPath,
 		rtcMinPort,
 		rtcMaxPort,
 		dtlsCertificateFile,
@@ -145,23 +136,6 @@ export class WorkerImpl<WorkerAppData extends AppData = AppData>
 			spawnArgs.push(`--disableLiburing=true`);
 		}
 
-		// Lively-specific spawn arguments.
-		if (typeof logDevLevel === 'string' && logDevLevel) {
-			spawnArgs.push(`--logDevLevel=${logDevLevel}`);
-		}
-
-		if (logTraceEnabled === true) {
-			spawnArgs.push('--logTraceEnabled=true');
-		}
-
-		if (binStatsDisabled === true) {
-			spawnArgs.push('--binStatsDisabled=true');
-		}
-
-		if (typeof binStatsPath === 'string' && binStatsPath) {
-			spawnArgs.push(`--binStatsPath=${binStatsPath}`);
-		}
-
 		logger.debug(`spawning worker process: ${spawnBin} ${spawnArgs.join(' ')}`);
 
 		this.#child = spawn(
@@ -193,17 +167,6 @@ export class WorkerImpl<WorkerAppData extends AppData = AppData>
 
 		this.#pid = this.#child.pid!;
 
-		// Lively: Compute log file name per worker process.
-		if (logFile !== undefined) {
-			this.#mslog = path.format({
-				dir: path.dirname(logFile),
-				name: path.basename(logFile, path.extname(logFile)) + '.' + this.#pid,
-				ext: path.extname(logFile),
-			});
-		} else {
-			this.#mslog = 'ms' + this.#pid + '.log';
-		}
-
 		this.#channel = new Channel({
 			producerSocket: this.#child.stdio[3] as Duplex,
 			consumerSocket: this.#child.stdio[4] as Duplex,
@@ -219,38 +182,11 @@ export class WorkerImpl<WorkerAppData extends AppData = AppData>
 			if (!spawnDone && event === Event.WORKER_RUNNING) {
 				spawnDone = true;
 
-				logger.debug(`worker process running [pid:${this.#pid}][log:${this.#mslog}]`);
+				logger.debug(`worker process running [pid:${this.#pid}]`);
 
 				this.emit('@success');
-
-				// Lively: Tell C++ worker to begin logging.
-				this.logOpen().catch(error => {
-					logger.error(`logOpen() failed: ${error}`);
-				});
 			}
 		});
-
-		// Lively: Listen for log write failure notifications from C++ worker.
-		this.#channel.on(
-			String(this.#pid),
-			(event: Event, notification?: Notification) => {
-				if (event === Event.LOGGER_WRITE_FAILED && notification) {
-					const body = new FbsLog.WriteFailedNotification();
-
-					notification.body(body);
-
-					const logError = {
-						source: body.source() ?? '',
-						error: body.error() ?? '',
-						file: body.file() ?? '',
-						data: body.data() ?? '',
-					};
-
-					this.safeEmit('failedlog', logError);
-					this.#observer.safeEmit('failedlog', logError);
-				}
-			}
-		);
 
 		this.#child.on('exit', (code, signal) => {
 			// If closed by ourselves, do nothing.
@@ -497,34 +433,6 @@ export class WorkerImpl<WorkerAppData extends AppData = AppData>
 			FbsRequest.Method.WORKER_UPDATE_SETTINGS,
 			FbsRequest.Body.Worker_UpdateSettingsRequest,
 			requestOffset
-		);
-	}
-
-	/**
-	 * Lively: Open the log file in the C++ worker.
-	 */
-	async logOpen(): Promise<void> {
-		logger.debug(`logOpen(): ${this.#mslog}`);
-
-		const requestOffset = new FbsLog.MslogOpenRequestT(
-			this.#mslog
-		).pack(this.#channel.bufferBuilder);
-
-		await this.#channel.request(
-			FbsRequest.Method.WORKER_MSLOG_OPEN,
-			FbsRequest.Body.Worker_MslogOpenRequest,
-			requestOffset
-		);
-	}
-
-	/**
-	 * Lively: Reopen log file (after logrotate).
-	 */
-	async logRotate(): Promise<void> {
-		logger.debug('logRotate()');
-
-		await this.#channel.request(
-			FbsRequest.Method.WORKER_MSLOG_ROTATE
 		);
 	}
 

@@ -170,7 +170,6 @@ table Options {
     shm: ShmOptions;
     log: LogOptions;
     listen_ip: ListenIp;
-    client_referrer: string;
 }
 
 enum TraceEventType: uint8 {

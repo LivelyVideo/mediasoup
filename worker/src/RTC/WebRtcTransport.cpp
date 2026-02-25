@@ -45,9 +45,6 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		// Lively: Enable binary logging for producers on WebRtcTransport.
-		producerBinLogEnabled = true;
-
 		try
 		{
 			const auto* listenIndividual = options->listen_as<FBS::WebRtcTransport::ListenIndividual>();
@@ -290,9 +287,6 @@ namespace RTC
 	    webRtcTransportListener(webRtcTransportListener), iceCandidates(iceCandidates)
 	{
 		MS_TRACE();
-
-		// Lively: Enable binary logging for producers on WebRtcTransport.
-		producerBinLogEnabled = true;
 
 		try
 		{

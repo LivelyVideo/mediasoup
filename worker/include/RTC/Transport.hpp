@@ -336,13 +336,6 @@ namespace RTC
 		size_t maxMessageSize{ 262144u };
 		// Allocated by this.
 		RTC::SctpAssociation* sctpAssociation{ nullptr };
-		// Lively-specific appData for logging context
-		Lively::AppData lively;
-		std::string appData;
-		// Binary logging infrastructure
-		TimerHandle* binLogTimer{ nullptr };
-		Lively::StatsBinLog consumersBinLog;
-		bool producerBinLogEnabled{ false };
 
 	private:
 		// Passed by argument.
@@ -379,6 +372,13 @@ namespace RTC
 		uint32_t maxOutgoingBitrate{ 0u };
 		uint32_t minOutgoingBitrate{ 0u };
 		struct TraceEventTypes traceEventTypes;
+		// Lively-specific appData for logging context
+		Lively::AppData lively;
+		std::string appData;
+		// Binary logging infrastructure
+		TimerHandle* binLogTimer{ nullptr };
+		Lively::StatsBinLog consumersBinLog;
+		bool producerBinLogEnabled{ false };
 	};
 } // namespace RTC
 

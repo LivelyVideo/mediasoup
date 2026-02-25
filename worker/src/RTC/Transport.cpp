@@ -55,11 +55,13 @@ namespace RTC
 	{
 		MS_TRACE();
 
+#ifdef TRANSCODE
 		// Initialize binary logging timer if not disabled
 		if (!Settings::configuration.logBinStatsDisabled)
 		{
 			this->binLogTimer = new TimerHandle(this);
 		}
+#endif
 
 		if (options->direct())
 		{
@@ -148,23 +150,6 @@ namespace RTC
 		MS_DEBUG_TAG(
 		  rtp, "Transport ctor [transportId: %s] [appData: %s]", this->lively.id.c_str(), this->appData.c_str());
 
-		// Lively: Initialize consumers binary log if callId is present
-		if (!this->lively.callId.empty())
-		{
-			std::string clientReferrer;
-			if (options->clientReferrer())
-			{
-				clientReferrer = options->clientReferrer()->str();
-			}
-
-			MS_DEBUG_TAG(rtp, "creating consumer bin log. lively=%s", this->lively.ToStr().c_str());
-
-			std::string const callId = this->lively.callId;
-			this->consumersBinLog.InitLog([clientReferrer, callId](uint64_t timestamp) -> std::string {
-				return Lively::ConsumerFileName(clientReferrer, callId, timestamp, BINLOG_FORMAT_VERSION);
-			});
-		}
-
 		// Create the RTCP timer.
 		this->rtcpTimer = new TimerHandle(this);
 	}
@@ -221,6 +206,7 @@ namespace RTC
 		delete this->rtcpTimer;
 		this->rtcpTimer = nullptr;
 
+#ifdef TRANSCODE
 		// Delete binary logging timer
 		if (!Settings::configuration.logBinStatsDisabled)
 		{
@@ -229,6 +215,7 @@ namespace RTC
 		}
 		// Cleanup binary log
 		this->consumersBinLog.DeinitLog();
+#endif
 	}
 
 	void Transport::CloseProducersAndConsumers()
@@ -1563,11 +1550,13 @@ namespace RTC
 		// Start the RTCP timer.
 		this->rtcpTimer->Start(static_cast<uint64_t>(RTC::RTCP::MaxVideoIntervalMs / 2));
 
+#ifdef TRANSCODE
 		// Start binary logging timer (samples every 2000ms)
 		if (!Settings::configuration.logBinStatsDisabled)
 		{
 			this->binLogTimer->Start(CALL_STATS_BIN_LOG_SAMPLING);
 		}
+#endif
 
 		// Tell the TransportCongestionControlClient.
 		if (this->tccClient)
@@ -1613,11 +1602,13 @@ namespace RTC
 		// Stop the RTCP timer.
 		this->rtcpTimer->Stop();
 
+#ifdef TRANSCODE
 		// Stop binary logging timer
 		if (!Settings::configuration.logBinStatsDisabled)
 		{
 			this->binLogTimer->Stop();
 		}
+#endif
 
 		// Tell the TransportCongestionControlClient.
 		if (this->tccClient)
@@ -3196,6 +3187,7 @@ namespace RTC
 
 			this->rtcpTimer->Start(interval);
 		}
+#ifdef TRANSCODE
 		// Binary logging timer.
 		else if (!Settings::configuration.logBinStatsDisabled && timer == this->binLogTimer)
 		{
@@ -3222,5 +3214,6 @@ namespace RTC
 			// Restart timer for next sampling interval
 			this->binLogTimer->Start(CALL_STATS_BIN_LOG_SAMPLING);
 		}
+#endif
 	}
 } // namespace RTC

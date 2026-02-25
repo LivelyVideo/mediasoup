@@ -215,17 +215,9 @@ export type WorkerDump = {
 	};
 };
 
-export type WorkerLogWriteError = {
-	source: string;
-	error: string;
-	file: string;
-	data: string;
-};
-
 export type WorkerEvents = {
 	died: [Error];
 	subprocessclose: [];
-	failedlog: [WorkerLogWriteError];
 	// Private events.
 	'@success': [];
 	'@failure': [Error];
@@ -237,7 +229,6 @@ export type WorkerObserverEvents = {
 	close: [];
 	newwebrtcserver: [WebRtcServer];
 	newrouter: [Router];
-	failedlog: [WorkerLogWriteError];
 };
 
 export interface Worker<WorkerAppData extends AppData = AppData>
