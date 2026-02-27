@@ -49,12 +49,12 @@ public:
 
 public:
 	static void SetConfiguration(int argc, char* argv[]);
-	static void SetLogLevel(std::string& level);
-	static void SetLogTags(const std::vector<std::string>& tags);
 	static void PrintConfiguration();
 	static void HandleRequest(Channel::ChannelRequest* request);
 
 private:
+	static void SetLogLevel(std::string& level);
+	static void SetLogTags(const std::vector<std::string>& tags);
 	static void SetLogDevLevel(std::string& devLevel);
 	static void SetTrace(bool trace);
 	static void SetDisableStats(bool disable);
@@ -65,10 +65,10 @@ public:
 	thread_local static struct Configuration configuration;
 
 private:
-	static std::map<std::string, LogDevLevel> string2LogDevLevel;
-	static std::map<LogDevLevel, std::string> logDevLevel2String;
-	static absl::flat_hash_map<std::string, LogLevel> String2LogLevel; // NOLINT(readability-identifier-naming)
-	static absl::flat_hash_map<LogLevel, std::string> LogLevel2String; // NOLINT(readability-identifier-naming)
+	static absl::flat_hash_map<std::string, LogDevLevel> string2LogDevLevel;
+	static absl::flat_hash_map<LogDevLevel, std::string> logDevLevel2String;
+	static absl::flat_hash_map<std::string, LogLevel> string2LogLevel;
+	static absl::flat_hash_map<LogLevel, std::string> logLevel2String;
 };
 
 #endif

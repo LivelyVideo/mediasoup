@@ -99,6 +99,7 @@
 #include "LogLevel.hpp"
 #include "Settings.hpp"
 #include "Channel/ChannelSocket.hpp"
+#include "Utils.hpp"
 #include <cstdio>  // std::snprintf(), std::fprintf(), stdout, stderr
 #include <cstdlib> // std::abort()
 #include <cstring>
@@ -158,7 +159,6 @@ namespace RTC
 class Logger
 {
 public:
-	static void ClassInit(Channel::ChannelSocket* channel);
 	// Lively binary logging functions
 	static bool MSlogopen(const FBS::Request::Request* request, RTC::Shared* shared);
 	static void MSlogrotate();
@@ -166,14 +166,18 @@ public:
 	static void MSlogwrite(int written);
 
 public:
-	static const uint64_t Pid;
-	thread_local static Channel::ChannelSocket* channel;
-	static const size_t BufferSize {50000};
+	static std::string levelPrefix;
+	static const int64_t pid;
+	static const size_t bufferSize {50000};
 	thread_local static char buffer[];
+	thread_local static std::string backupBuffer;
 	// Lively-specific: for appData logging support
 	thread_local static std::string appdataBuffer;
-	static std::string levelPrefix;
-	static uint64_t pid;
+
+	static std::string logfilename;
+	static std::FILE*  logfd;
+	static bool openLogFile;
+	static RTC::Shared *shared;
 };
 
 /* Logging macros. */
@@ -181,16 +185,16 @@ public:
 // NOLINTBEGIN
 #define _MS_LOG_SEPARATOR_CHAR_STD "\n"
 
-#ifdef MS_LOG_FILE_LINE
-	#define _MS_LOG_STR "%s:%d | %s::%s()"
-	#define _MS_LOG_STR_DESC _MS_LOG_STR " | "
-	#define _MS_FILE (std::strchr(__FILE__, '/') ? std::strchr(__FILE__, '/') + 1 : __FILE__)
-	#define _MS_LOG_ARG _MS_FILE, __LINE__, MS_CLASS, __FUNCTION__
-#else
-	#define _MS_LOG_STR "%s::%s()"
-	#define _MS_LOG_STR_DESC _MS_LOG_STR " | "
-	#define _MS_LOG_ARG MS_CLASS, __FUNCTION__
-#endif
+// TBD: disabled file line option as we really don't need it much, for ease of code changes
+//#ifdef MS_LOG_FILE_LINE
+//	#define _MS_LOG_STR "%ld: %s:%d | %s::%s()"
+//	#define _MS_LOG_STR_DESC _MS_LOG_STR " | "
+//	#define _MS_FILE (std::strchr(__FILE__, '/') ? std::strchr(__FILE__, '/') + 1 : __FILE__)
+//	#define _MS_LOG_ARG Logger::pid, _MS_FILE, __LINE__, MS_CLASS, __FUNCTION__
+//#else
+	#define _MS_LOG_STR  "%s level=\"%s\" pid=\"%ld\" message=\"%s::%s()\""
+	#define _MS_LOG_STR_DESC _MS_LOG_STR
+	#define _MS_LOG_ARG Utils::Time::currentStdTimestamp().c_str(), Logger::levelPrefix.c_str(), Logger::pid, MS_CLASS, __FUNCTION__
 
 // Lively-specific logging macros with appData support
 #define _MS_LOG_STR_LIVELYAPP "%s level=\"%s\" pid=\"%ld\" %s function=\"%s::%s()\" "
@@ -199,33 +203,28 @@ public:
 
 // NOLINTEND
 
-#ifdef MS_LOG_TRACE
-	#define MS_TRACE() \
-		do \
+#define MS_TRACE() \
+	do \
+	{ \
+		if (Settings::configuration.logLevel == LogLevel::LOG_DEBUG && Settings::configuration.logTraceEnabled) \
 		{ \
-			if (Settings::configuration.logLevel == LogLevel::LOG_DEBUG) \
-			{ \
-				Logger::levelPrefix = "trace"; \
-				const int loggerWritten = std::snprintf(Logger::buffer, Logger::BufferSize, "D(trace) " _MS_LOG_STR, _MS_LOG_ARG); \
-				Logger::MSlogwrite(loggerWritten); \
-			} \
+			Logger::levelPrefix = "trace"; \
+			const int loggerWritten = std::snprintf(Logger::buffer, Logger::bufferSize, _MS_LOG_STR, _MS_LOG_ARG); \
+			Logger::MSlogwrite(loggerWritten); \
 		} \
-		while (false)
+	} \
+	while (false)
 
-	#define MS_TRACE_STD() \
-		do \
+#define MS_TRACE_STD() \
+	do \
+	{ \
+		if (Settings::configuration.logLevel == LogLevel::LOG_DEBUG && Settings::configuration.logTraceEnabled) \
 		{ \
-			if (Settings::configuration.logLevel == LogLevel::LOG_DEBUG) \
-			{ \
-				std::fprintf(stdout, "(trace) " _MS_LOG_STR _MS_LOG_SEPARATOR_CHAR_STD, _MS_LOG_ARG); \
-				std::fflush(stdout); \
-			} \
+			std::fprintf(stdout, "(trace) " _MS_LOG_STR _MS_LOG_SEPARATOR_CHAR_STD, _MS_LOG_ARG); \
+			std::fflush(stdout); \
 		} \
-		while (false)
-#else
-	#define MS_TRACE() {}
-	#define MS_TRACE_STD() {}
-#endif
+	} \
+	while (false)
 
 #define MS_HAS_DEBUG_TAG(tag) \
 	(Settings::configuration.logLevel == LogLevel::LOG_DEBUG && _MS_TAG_ENABLED(tag))
@@ -239,7 +238,7 @@ public:
 		if (Settings::configuration.logLevel == LogLevel::LOG_DEBUG && _MS_TAG_ENABLED(tag)) \
 		{ \
 			Logger::levelPrefix = "debug"; \
-			const int loggerWritten = std::snprintf(Logger::buffer, Logger::BufferSize, "D" _MS_LOG_STR_DESC desc, _MS_LOG_ARG, ##__VA_ARGS__); \
+			const int loggerWritten = std::snprintf(Logger::buffer, Logger::bufferSize, _MS_LOG_STR_DESC desc, _MS_LOG_ARG, ##__VA_ARGS__); \
 			Logger::MSlogwrite(loggerWritten); \
 		} \
 	} \
@@ -262,7 +261,7 @@ public:
 		if (Settings::configuration.logLevel >= LogLevel::LOG_WARN && _MS_TAG_ENABLED(tag)) \
 		{ \
 			Logger::levelPrefix = "warn"; \
-			const int loggerWritten = std::snprintf(Logger::buffer, Logger::BufferSize, "W" _MS_LOG_STR_DESC desc, _MS_LOG_ARG, ##__VA_ARGS__); \
+			const int loggerWritten = std::snprintf(Logger::buffer, Logger::bufferSize, _MS_LOG_STR_DESC desc, _MS_LOG_ARG, ##__VA_ARGS__); \
 			Logger::MSlogwrite(loggerWritten); \
 		} \
 	} \
@@ -287,7 +286,7 @@ public:
 		{ \
 			Logger::levelPrefix = "debug"; \
 			Logger::appdataBuffer.assign(appdatastr); \
-			int loggerWritten = std::snprintf(Logger::buffer, Logger::BufferSize, _MS_LOG_STR_DESC_LIVELYAPP desc, _MS_LOG_ARG_LIVELYAPP, ##__VA_ARGS__); \
+			int loggerWritten = std::snprintf(Logger::buffer, Logger::bufferSize, _MS_LOG_STR_DESC_LIVELYAPP desc, _MS_LOG_ARG_LIVELYAPP, ##__VA_ARGS__); \
 			Logger::MSlogwrite(loggerWritten); \
 		} \
 	} \
@@ -300,7 +299,7 @@ public:
 		{ \
 			Logger::levelPrefix = "warn"; \
 			Logger::appdataBuffer.assign(appdatastr); \
-			int loggerWritten = std::snprintf(Logger::buffer, Logger::BufferSize, _MS_LOG_STR_DESC_LIVELYAPP desc, _MS_LOG_ARG_LIVELYAPP, ##__VA_ARGS__); \
+			int loggerWritten = std::snprintf(Logger::buffer, Logger::bufferSize, _MS_LOG_STR_DESC_LIVELYAPP desc, _MS_LOG_ARG_LIVELYAPP, ##__VA_ARGS__); \
 			Logger::MSlogwrite(loggerWritten); \
 		} \
 	} \
@@ -313,7 +312,7 @@ public:
 		{ \
 			Logger::levelPrefix = "debug"; \
 			Logger::appdataBuffer.assign(appdatastr); \
-			int loggerWritten = std::snprintf(Logger::buffer, Logger::BufferSize, _MS_LOG_STR_DESC_LIVELYAPP desc, _MS_LOG_ARG_LIVELYAPP, ##__VA_ARGS__); \
+			int loggerWritten = std::snprintf(Logger::buffer, Logger::bufferSize, _MS_LOG_STR_DESC_LIVELYAPP desc, _MS_LOG_ARG_LIVELYAPP, ##__VA_ARGS__); \
 			Logger::MSlogwrite(loggerWritten); \
 		} \
 	} \
@@ -324,7 +323,8 @@ public:
 	{ \
 		if (Settings::configuration.logLevel == LogLevel::LOG_DEBUG && _MS_TAG_ENABLED_2(tag1, tag2)) \
 		{ \
-			const int loggerWritten = std::snprintf(Logger::buffer, Logger::BufferSize, "D" _MS_LOG_STR_DESC desc, _MS_LOG_ARG, ##__VA_ARGS__); \
+			Logger::levelPrefix = "debug"; \
+			const int loggerWritten = std::snprintf(Logger::buffer, Logger::bufferSize, _MS_LOG_STR_DESC desc, _MS_LOG_ARG, ##__VA_ARGS__); \
 			Logger::MSlogwrite(loggerWritten); \
 		} \
 	} \
@@ -346,7 +346,8 @@ public:
 	{ \
 		if (Settings::configuration.logLevel >= LogLevel::LOG_WARN && _MS_TAG_ENABLED_2(tag1, tag2)) \
 		{ \
-			const int loggerWritten = std::snprintf(Logger::buffer, Logger::BufferSize, "W" _MS_LOG_STR_DESC desc, _MS_LOG_ARG, ##__VA_ARGS__); \
+			Logger::levelPrefix = "warn"; \
+			const int loggerWritten = std::snprintf(Logger::buffer, Logger::bufferSize, _MS_LOG_STR_DESC desc, _MS_LOG_ARG, ##__VA_ARGS__); \
 			Logger::MSlogwrite(loggerWritten); \
 		} \
 	} \
@@ -363,53 +364,57 @@ public:
 	} \
 	while (false)
 
-#if MS_LOG_DEV_LEVEL == 3
-	#define MS_DEBUG_DEV(desc, ...) \
-		do \
+#define MS_DEBUG_DEV(desc, ...) \
+	do \
+	{ \
+		if (Settings::configuration.logDevLevel == LogDevLevel::LOG_DEV_DEBUG) \
 		{ \
-			const int loggerWritten = std::snprintf(Logger::buffer, Logger::BufferSize, "D" _MS_LOG_STR_DESC desc, _MS_LOG_ARG, ##__VA_ARGS__); \
+			Logger::levelPrefix = "debug"; \
+			const int loggerWritten = std::snprintf(Logger::buffer, Logger::bufferSize, _MS_LOG_STR_DESC desc, _MS_LOG_ARG, ##__VA_ARGS__); \
 			Logger::MSlogwrite(loggerWritten); \
 		} \
-		while (false)
+	} \
+	while (false)
 
-	#define MS_DEBUG_DEV_STD(desc, ...) \
-		do \
+#define MS_DEBUG_DEV_STD(desc, ...) \
+	do \
+	{ \
+		if (Settings::configuration.logDevLevel == LogDevLevel::LOG_DEV_DEBUG) \
 		{ \
 			std::fprintf(stdout, _MS_LOG_STR_DESC desc _MS_LOG_SEPARATOR_CHAR_STD, _MS_LOG_ARG, ##__VA_ARGS__); \
 			std::fflush(stdout); \
 		} \
-		while (false)
-#else
-	#define MS_DEBUG_DEV(desc, ...) {}
-	#define MS_DEBUG_DEV_STD(desc, ...) {}
-#endif
+	} \
+	while (false)
 
-
-#if MS_LOG_DEV_LEVEL >= 2
-	#define MS_WARN_DEV(desc, ...) \
-		do \
+#define MS_WARN_DEV(desc, ...) \
+	do \
+	{ \
+		if (Settings::configuration.logDevLevel >= LogDevLevel::LOG_DEV_WARN) \
 		{ \
-			const int loggerWritten = std::snprintf(Logger::buffer, Logger::BufferSize, "W" _MS_LOG_STR_DESC desc, _MS_LOG_ARG, ##__VA_ARGS__); \
+			Logger::levelPrefix = "warn"; \
+			const int loggerWritten = std::snprintf(Logger::buffer, Logger::bufferSize, _MS_LOG_STR_DESC desc, _MS_LOG_ARG, ##__VA_ARGS__); \
 			Logger::MSlogwrite(loggerWritten); \
 		} \
-		while (false)
+	} \
+	while (false)
 
-	#define MS_WARN_DEV_STD(desc, ...) \
-		do \
+#define MS_WARN_DEV_STD(desc, ...) \
+	do \
+	{ \
+		if (Settings::configuration.logDevLevel >= LogDevLevel::LOG_DEV_WARN) \
 		{ \
 			std::fprintf(stderr, _MS_LOG_STR_DESC desc _MS_LOG_SEPARATOR_CHAR_STD, _MS_LOG_ARG, ##__VA_ARGS__); \
 			std::fflush(stderr); \
 		} \
-		while (false)
-#else
-	#define MS_WARN_DEV(desc, ...) {}
-	#define MS_WARN_DEV_STD(desc, ...) {}
-#endif
+	} \
+	while (false)
 
 #define MS_DUMP(desc, ...) \
 	do \
 	{ \
-		const int loggerWritten = std::snprintf(Logger::buffer, Logger::BufferSize, "X" _MS_LOG_STR_DESC desc, _MS_LOG_ARG, ##__VA_ARGS__); \
+		Logger::levelPrefix = "dump"; \
+		const int loggerWritten = std::snprintf(Logger::buffer, Logger::bufferSize, _MS_LOG_STR_DESC desc, _MS_LOG_ARG, ##__VA_ARGS__); \
 		Logger::MSlogwrite(loggerWritten); \
 	} \
 	while (false)
@@ -430,7 +435,7 @@ public:
 			((indentation == 3) ? "      " : \
 			((indentation == 4) ? "        " :\
 			((indentation == 5) ? "          " : "")))); \
-		const int loggerWritten = std::snprintf(Logger::buffer, Logger::BufferSize, "X%s" desc, spaces, ##__VA_ARGS__); \
+		const int loggerWritten = std::snprintf(Logger::buffer, Logger::bufferSize, "X%s" desc, spaces, ##__VA_ARGS__); \
 		Logger::MSlogwrite(loggerWritten); \
 	} \
 	while (false)
@@ -451,23 +456,23 @@ public:
 #define MS_DUMP_DATA(data, len) \
 	do \
 	{ \
-		Logger::levelPrefix = "dump"; \
-		const int loggerWritten = std::snprintf(Logger::buffer, Logger::BufferSize, "X" _MS_LOG_STR, _MS_LOG_ARG); \
+		Logger::levelPrefix = "data"; \
+		const int loggerWritten = std::snprintf(Logger::buffer, Logger::bufferSize, _MS_LOG_STR, _MS_LOG_ARG); \
 		Logger::MSlogwrite(loggerWritten); \
 		size_t bufferDataLen{ 0 }; \
 		for (size_t i{0}; i < len; ++i) \
 		{ \
-		  if (i % 4 == 0) \
+		  if (i % 8 == 0) \
 		  { \
 		  	if (bufferDataLen != 0) \
 		  	{ \
 		  		Logger::MSlogwrite(bufferDataLen); \
 		  		bufferDataLen = 0; \
 		  	} \
-		    const int loggerWritten = std::snprintf(Logger::buffer + bufferDataLen, Logger::BufferSize, "X%06X ", static_cast<unsigned int>(i)); \
+		    const int loggerWritten = std::snprintf(Logger::buffer + bufferDataLen, Logger::bufferSize, "\n%06X ", static_cast<unsigned int>(i)); \
 		    bufferDataLen += loggerWritten; \
 		  } \
-		  const int loggerWritten = std::snprintf(Logger::buffer + bufferDataLen, Logger::BufferSize, "%02X ", static_cast<unsigned char>(data[i])); \
+		  const int loggerWritten = std::snprintf(Logger::buffer + bufferDataLen, Logger::bufferSize, "%02X ", static_cast<unsigned char>(data[i])); \
 		  bufferDataLen += loggerWritten; \
 		} \
 		if (bufferDataLen != 0) \
@@ -492,10 +497,10 @@ public:
 		  		std::fprintf(stdout, "%s", Logger::buffer); \
 		  		bufferDataLen = 0; \
 		  	} \
-		    const int loggerWritten = std::snprintf(Logger::buffer + bufferDataLen, Logger::BufferSize, "\n%06X ", static_cast<unsigned int>(i)); \
+		    const int loggerWritten = std::snprintf(Logger::buffer + bufferDataLen, Logger::bufferSize, "\n%06X ", static_cast<unsigned int>(i)); \
 		    bufferDataLen += loggerWritten; \
 		  } \
-		  const int loggerWritten = std::snprintf(Logger::buffer + bufferDataLen, Logger::BufferSize, "%02X ", static_cast<unsigned char>(data[i])); \
+		  const int loggerWritten = std::snprintf(Logger::buffer + bufferDataLen, Logger::bufferSize, "%02X ", static_cast<unsigned char>(data[i])); \
 		  bufferDataLen += loggerWritten; \
 		} \
 		if (bufferDataLen != 0) \
@@ -512,7 +517,8 @@ public:
 	{ \
 		if (Settings::configuration.logLevel >= LogLevel::LOG_ERROR || MS_LOG_DEV_LEVEL >= 1) \
 		{ \
-			const int loggerWritten = std::snprintf(Logger::buffer, Logger::BufferSize, "E" _MS_LOG_STR_DESC desc, _MS_LOG_ARG, ##__VA_ARGS__); \
+			Logger::levelPrefix = "error"; \
+			const int loggerWritten = std::snprintf(Logger::buffer, Logger::bufferSize, _MS_LOG_STR_DESC desc, _MS_LOG_ARG, ##__VA_ARGS__); \
 			Logger::MSlogwrite(loggerWritten); \
 		} \
 	} \
@@ -535,6 +541,7 @@ public:
 	{ \
 		std::fprintf(stderr, "(ABORT) " _MS_LOG_STR_DESC desc _MS_LOG_SEPARATOR_CHAR_STD, _MS_LOG_ARG, ##__VA_ARGS__); \
 		std::fflush(stderr); \
+		Logger::MSlogclose(); \
 		std::abort(); \
 	} \
 	while (false)
@@ -544,8 +551,9 @@ public:
 	{ \
 		std::fprintf(stderr, "(ABORT) " _MS_LOG_STR_DESC desc _MS_LOG_SEPARATOR_CHAR_STD, _MS_LOG_ARG, ##__VA_ARGS__); \
 		std::fflush(stderr); \
-		char abortMessage[Logger::BufferSize]; \
-		std::snprintf(abortMessage, Logger::BufferSize, "(ABORT) " _MS_LOG_STR_DESC desc _MS_LOG_SEPARATOR_CHAR_STD, _MS_LOG_ARG, ##__VA_ARGS__); \
+		Logger::MSlogclose(); \
+		char abortMessage[Logger::bufferSize]; \
+		std::snprintf(abortMessage, Logger::bufferSize, "(ABORT) " _MS_LOG_STR_DESC desc _MS_LOG_SEPARATOR_CHAR_STD, _MS_LOG_ARG, ##__VA_ARGS__); \
 		throw std::runtime_error(abortMessage); \
 	} \
 	while (false)

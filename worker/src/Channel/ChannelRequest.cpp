@@ -85,6 +85,8 @@ namespace Channel
 		{ FBS::Request::Method::RTPOBSERVER_RESUME,                             "rtpObserver.resume"                         },
 		{ FBS::Request::Method::RTPOBSERVER_ADD_PRODUCER,                       "rtpObserver.addProducer"                    },
 		{ FBS::Request::Method::RTPOBSERVER_REMOVE_PRODUCER,                    "rtpObserver.removeProducer"                 },
+		{ FBS::Request::Method::WORKER_MSLOG_OPEN,                              "worker.mslogOpen"                           },
+		{ FBS::Request::Method::WORKER_MSLOG_ROTATE,                            "worker.mslogRotate"                         },
 	};
 	// clang-format on
 

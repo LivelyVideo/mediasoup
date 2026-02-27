@@ -17,25 +17,37 @@ extern "C"
 
 /* Static. */
 
-static std::mutex GlobalSyncMutex;
+static std::mutex globalSyncMutex;
 
 /* Class variables. */
 
 thread_local struct Settings::Configuration Settings::configuration;
 // clang-format off
-absl::flat_hash_map<std::string, LogLevel> Settings::String2LogLevel =
+absl::flat_hash_map<std::string, LogLevel> Settings::string2LogLevel =
 {
 	{ "debug", LogLevel::LOG_DEBUG },
 	{ "warn",  LogLevel::LOG_WARN  },
 	{ "error", LogLevel::LOG_ERROR },
 	{ "none",  LogLevel::LOG_NONE  }
 };
-absl::flat_hash_map<LogLevel, std::string> Settings::LogLevel2String =
+absl::flat_hash_map<LogLevel, std::string> Settings::logLevel2String =
 {
 	{ LogLevel::LOG_DEBUG, "debug" },
 	{ LogLevel::LOG_WARN,  "warn"  },
 	{ LogLevel::LOG_ERROR, "error" },
 	{ LogLevel::LOG_NONE,  "none"  }
+};
+absl::flat_hash_map<std::string, LogDevLevel> Settings::string2LogDevLevel =
+{
+	{ "debug", LogDevLevel::LOG_DEV_DEBUG },
+	{ "warn",  LogDevLevel::LOG_DEV_WARN  },
+	{ "none",  LogDevLevel::LOG_DEV_NONE  }
+};
+absl::flat_hash_map<LogDevLevel, std::string> Settings::logDevLevel2String =
+{
+	{ LogDevLevel::LOG_DEV_DEBUG, "debug" },
+	{ LogDevLevel::LOG_DEV_WARN,  "warn"  },
+	{ LogDevLevel::LOG_DEV_NONE,  "none"  }
 };
 // clang-format on
 
@@ -59,7 +71,11 @@ void Settings::SetConfiguration(int argc, char* argv[])
 		{ "dtlsCertificateFile",  optional_argument, nullptr, 'c' },
 		{ "dtlsPrivateKeyFile",   optional_argument, nullptr, 'p' },
 		{ "libwebrtcFieldTrials", optional_argument, nullptr, 'W' },
-		{ "disableLiburing",      optional_argument, nullptr, 'd' },
+		{ "disableLiburing",      optional_argument, nullptr, 'U' },
+		{ "logDevLevel",          optional_argument, nullptr, 'd' },
+		{ "logTraceEnabled",      optional_argument, nullptr, 'T' },
+		{ "binStatsDisabled",     optional_argument, nullptr, 'b' },
+		{ "binStatsPath",         optional_argument, nullptr, 'B' },
 		{ nullptr,                0,                 nullptr,  0  }
 	};
 	// clang-format on
@@ -69,7 +85,7 @@ void Settings::SetConfiguration(int argc, char* argv[])
 	/* Parse command line options. */
 
 	// getopt_long_only() is not thread-safe
-	const std::lock_guard<std::mutex> lock(GlobalSyncMutex);
+	const std::lock_guard<std::mutex> lock(globalSyncMutex);
 
 	optind = 1; // Set explicitly, otherwise subsequent runs will fail.
 	opterr = 0; // Don't allow getopt to print error messages.
@@ -159,7 +175,7 @@ void Settings::SetConfiguration(int argc, char* argv[])
 				break;
 			}
 
-			case 'd':
+			case 'U':
 			{
 				stringValue = std::string(optarg);
 
@@ -167,6 +183,38 @@ void Settings::SetConfiguration(int argc, char* argv[])
 				{
 					Settings::configuration.liburingDisabled = true;
 				}
+
+				break;
+			}
+
+			case 'd':
+			{
+				stringValue = std::string(optarg);
+				SetLogDevLevel(stringValue);
+
+				break;
+			}
+
+			case 'T':
+			{
+				stringValue = std::string(optarg);
+				SetTrace(stringValue == "true");
+
+				break;
+			}
+
+			case 'b':
+			{
+				stringValue = std::string(optarg);
+				SetDisableStats(stringValue == "true");
+
+				break;
+			}
+
+			case 'B':
+			{
+				stringValue = std::string(optarg);
+				SetStatsPath(stringValue);
 
 				break;
 			}
@@ -223,12 +271,12 @@ void Settings::SetLogLevel(std::string& level)
 	// Lowcase given level.
 	Utils::String::ToLowerCase(level);
 
-	if (Settings::String2LogLevel.find(level) == Settings::String2LogLevel.end())
+	if (Settings::string2LogLevel.find(level) == Settings::string2LogLevel.end())
 	{
 		MS_THROW_TYPE_ERROR("invalid value '%s' for logLevel", level.c_str());
 	}
 
-	Settings::configuration.logLevel = Settings::String2LogLevel[level];
+	Settings::configuration.logLevel = Settings::string2LogLevel[level];
 }
 
 void Settings::SetLogTags(const std::vector<std::string>& tags)
@@ -303,7 +351,7 @@ void Settings::SetLogTags(const std::vector<std::string>& tags)
 
 void Settings::PrintConfiguration()
 {
-	MS_TRACE();
+	MS_TRACE_STD();
 
 	std::vector<std::string> logTags;
 	std::ostringstream logTagsStream;
@@ -372,26 +420,38 @@ void Settings::PrintConfiguration()
 		logTagsStream << logTags.back();
 	}
 
-	MS_DEBUG_TAG(info, "<configuration>");
+	MS_DEBUG_TAG_STD(info, "<configuration>");
 
-	MS_DEBUG_TAG(
-	  info, "  logLevel: %s", Settings::LogLevel2String[Settings::configuration.logLevel].c_str());
-	MS_DEBUG_TAG(info, "  logTags: %s", logTagsStream.str().c_str());
-	MS_DEBUG_TAG(info, "  rtcMinPort: %" PRIu16, Settings::configuration.rtcMinPort);
-	MS_DEBUG_TAG(info, "  rtcMaxPort: %" PRIu16, Settings::configuration.rtcMaxPort);
+	MS_DEBUG_TAG_STD(
+	  info, "  logLevel: %s", Settings::logLevel2String[Settings::configuration.logLevel].c_str());
+	MS_DEBUG_TAG_STD(info, "  logTags: %s", logTagsStream.str().c_str());
+	MS_DEBUG_TAG_STD(info, "  rtcMinPort: %" PRIu16, Settings::configuration.rtcMinPort);
+	MS_DEBUG_TAG_STD(info, "  rtcMaxPort: %" PRIu16, Settings::configuration.rtcMaxPort);
 	if (!Settings::configuration.dtlsCertificateFile.empty())
 	{
-		MS_DEBUG_TAG(
+		MS_DEBUG_TAG_STD(
 		  info, "  dtlsCertificateFile: %s", Settings::configuration.dtlsCertificateFile.c_str());
-		MS_DEBUG_TAG(info, "  dtlsPrivateKeyFile: %s", Settings::configuration.dtlsPrivateKeyFile.c_str());
+		MS_DEBUG_TAG_STD(info, "  dtlsPrivateKeyFile: %s", Settings::configuration.dtlsPrivateKeyFile.c_str());
 	}
 	if (!Settings::configuration.libwebrtcFieldTrials.empty())
 	{
 		MS_DEBUG_TAG(
 		  info, "  libwebrtcFieldTrials: %s", Settings::configuration.libwebrtcFieldTrials.c_str());
 	}
+	MS_DEBUG_TAG_STD(
+	  info,
+	  "  logDevLevel: %s",
+	  Settings::logDevLevel2String[Settings::configuration.logDevLevel].c_str());
+	MS_DEBUG_TAG_STD(info, "  logTraceEnabled: %s", Settings::configuration.logTraceEnabled ? "true" : "false");
+	MS_DEBUG_TAG_STD(
+	  info, "  logBinStatsDisabled: %s", Settings::configuration.logBinStatsDisabled ? "true" : "false");
+	if (!Settings::configuration.logBinStatsPath.empty())
+	{
+		MS_DEBUG_TAG_STD(
+		  info, "  logBinStatsPath: %s", Settings::configuration.logBinStatsPath.c_str());
+	}
 
-	MS_DEBUG_TAG(info, "</configuration>");
+	MS_DEBUG_TAG_STD(info, "</configuration>");
 }
 
 void Settings::HandleRequest(Channel::ChannelRequest* request)
@@ -423,6 +483,23 @@ void Settings::HandleRequest(Channel::ChannelRequest* request)
 				}
 
 				Settings::SetLogTags(logTags);
+			}
+
+			// Update logDevLevel if requested.
+			if (flatbuffers::IsFieldPresent(body, FBS::Worker::UpdateSettingsRequest::VT_LOGDEVLEVEL))
+			{
+				auto logDevLevel = body->logDevLevel()->str();
+
+				// This may throw.
+				Settings::SetLogDevLevel(logDevLevel);
+			}
+
+			// Update logTraceEnabled if requested.
+			if (flatbuffers::IsFieldPresent(body, FBS::Worker::UpdateSettingsRequest::VT_LOGTRACEENABLED))
+			{
+				auto logTraceEnabled = body->logTraceEnabled()->str();
+
+				Settings::SetTrace(logTraceEnabled == "true");
 			}
 
 			// Print the new effective configuration.
@@ -483,4 +560,39 @@ void Settings::SetDtlsCertificateAndPrivateKeyFiles()
 	{
 		MS_THROW_TYPE_ERROR("dtlsPrivateKeyFile: %s", error.what());
 	}
+}
+
+void Settings::SetLogDevLevel(std::string& devLevel)
+{
+	MS_TRACE();
+
+	Utils::String::ToLowerCase(devLevel);
+
+	if (Settings::string2LogDevLevel.find(devLevel) == Settings::string2LogDevLevel.end())
+	{
+		MS_THROW_TYPE_ERROR("invalid value '%s' for logDevLevel", devLevel.c_str());
+	}
+
+	Settings::configuration.logDevLevel = Settings::string2LogDevLevel[devLevel];
+}
+
+void Settings::SetTrace(bool trace)
+{
+	MS_TRACE();
+
+	Settings::configuration.logTraceEnabled = trace;
+}
+
+void Settings::SetDisableStats(bool disable)
+{
+	MS_TRACE();
+
+	Settings::configuration.logBinStatsDisabled = disable;
+}
+
+void Settings::SetStatsPath(std::string path)
+{
+	MS_TRACE();
+
+	Settings::configuration.logBinStatsPath = std::move(path);
 }

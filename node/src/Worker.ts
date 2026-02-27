@@ -15,6 +15,7 @@ import type {
 	WorkerEvents,
 	WorkerObserver,
 	WorkerObserverEvents,
+	WorkerLoggerErrorType,
 } from './WorkerTypes';
 import { Channel } from './Channel';
 import type { WebRtcServer, WebRtcServerOptions } from './WebRtcServerTypes';
@@ -26,9 +27,10 @@ import type { RouterRtpCodecCapability } from './rtpParametersTypes';
 import * as utils from './utils';
 import * as fbsUtils from './fbsUtils';
 import type { AppData } from './types';
-import { Event } from './fbs/notification';
+import { Event, Notification } from './fbs/notification';
 import * as FbsRequest from './fbs/request';
 import * as FbsWorker from './fbs/worker';
+import * as FbsLog from './fbs/log';
 import * as FbsTransport from './fbs/transport';
 import { Protocol as FbsTransportProtocol } from './fbs/transport/protocol';
 
@@ -49,6 +51,9 @@ export class WorkerImpl<WorkerAppData extends AppData = AppData>
 
 	// Channel instance.
 	readonly #channel: Channel;
+
+	// Lively-specific: worker log file name (with PID inserted).
+	readonly #mslog: string;
 
 	// Closed flag.
 	#closed = false;
@@ -74,7 +79,12 @@ export class WorkerImpl<WorkerAppData extends AppData = AppData>
 
 	constructor({
 		logLevel,
+		logDevLevel,
+		logTraceEnabled,
 		logTags,
+		logFile,
+		binStatsDisabled,
+		binStatsPath,
 		rtcMinPort,
 		rtcMaxPort,
 		dtlsCertificateFile,
@@ -136,6 +146,22 @@ export class WorkerImpl<WorkerAppData extends AppData = AppData>
 			spawnArgs.push(`--disableLiburing=true`);
 		}
 
+		if (typeof logDevLevel === 'string' && logDevLevel) {
+			spawnArgs.push(`--logDevLevel=${logDevLevel}`);
+		}
+
+		if (logTraceEnabled) {
+			spawnArgs.push(`--logTraceEnabled=true`);
+		}
+
+		if (binStatsDisabled) {
+			spawnArgs.push(`--binStatsDisabled=true`);
+		}
+
+		if (typeof binStatsPath === 'string' && binStatsPath) {
+			spawnArgs.push(`--binStatsPath=${binStatsPath}`);
+		}
+
 		logger.debug(`spawning worker process: ${spawnBin} ${spawnArgs.join(' ')}`);
 
 		this.#child = spawn(
@@ -167,6 +193,20 @@ export class WorkerImpl<WorkerAppData extends AppData = AppData>
 
 		this.#pid = this.#child.pid!;
 
+		// each worker writes into its own log file: insert pid before file extension
+		if (logFile !== undefined) {
+			this.#mslog = path.format({
+				dir: path.dirname(logFile),
+				name:
+					path.basename(logFile, path.extname(logFile)) +
+					'.' +
+					this.#pid,
+				ext: path.extname(logFile),
+			});
+		} else {
+			this.#mslog = 'ms' + this.#pid + '.log';
+		}
+
 		this.#channel = new Channel({
 			producerSocket: this.#child.stdio[3] as Duplex,
 			consumerSocket: this.#child.stdio[4] as Duplex,
@@ -177,16 +217,40 @@ export class WorkerImpl<WorkerAppData extends AppData = AppData>
 
 		let spawnDone = false;
 
-		// Listen for 'running' notification.
-		this.#channel.once(String(this.#pid), (event: Event) => {
-			if (!spawnDone && event === Event.WORKER_RUNNING) {
-				spawnDone = true;
+		// Listen for worker notifications.
+		this.#channel.on(
+			String(this.#pid),
+			(event: Event, data?: Notification) => {
+				if (!spawnDone && event === Event.WORKER_RUNNING) {
+					spawnDone = true;
 
-				logger.debug(`worker process running [pid:${this.#pid}]`);
+					logger.debug(`worker process running [pid:${this.#pid}]`);
 
-				this.emit('@success');
+					this.emit('@success');
+
+					// Tell C++ worker to begin logging.
+					this.logOpen().catch((error: Error) => {
+						logger.error(`logOpen() failed: ${error}`);
+					});
+				} else if (event === Event.LOGGER_WRITE_FAILED) {
+					const notification = new FbsLog.WriteFailedNotification();
+
+					data!.body(notification);
+
+					const logError = {
+						source: (notification.source() ?? 'write') as WorkerLoggerErrorType,
+						error: notification.error() ?? '',
+						file: notification.file() ?? '',
+						data: notification.data() ?? '',
+					};
+
+					this.safeEmit('failedlog', logError);
+
+					// Emit observer event.
+					this.#observer.safeEmit('failedlog', logError);
+				}
 			}
-		});
+		);
 
 		this.#child.on('exit', (code, signal) => {
 			// If closed by ourselves, do nothing.
@@ -420,13 +484,17 @@ export class WorkerImpl<WorkerAppData extends AppData = AppData>
 	async updateSettings({
 		logLevel,
 		logTags,
+		logDevLevel,
+		logTraceEnabled,
 	}: WorkerUpdateableSettings<WorkerAppData> = {}): Promise<void> {
 		logger.debug('updateSettings()');
 
 		// Build the request.
 		const requestOffset = new FbsWorker.UpdateSettingsRequestT(
-			logLevel,
-			logTags
+			logLevel ?? null,
+			logTags ?? [],
+			logDevLevel ?? null,
+			logTraceEnabled !== undefined ? String(logTraceEnabled) : null
 		).pack(this.#channel.bufferBuilder);
 
 		await this.#channel.request(
@@ -548,6 +616,26 @@ export class WorkerImpl<WorkerAppData extends AppData = AppData>
 		this.#observer.safeEmit('newrouter', router);
 
 		return router;
+	}
+
+	async logOpen(): Promise<void> {
+		logger.debug(`logOpen(): ${this.#mslog}`);
+
+		const requestOffset = new FbsLog.MslogOpenRequestT(
+			this.#mslog
+		).pack(this.#channel.bufferBuilder);
+
+		await this.#channel.request(
+			FbsRequest.Method.WORKER_MSLOG_OPEN,
+			FbsRequest.Body.Worker_MslogOpenRequest,
+			requestOffset
+		);
+	}
+
+	async logRotate(): Promise<void> {
+		logger.debug('logRotate()');
+
+		await this.#channel.request(FbsRequest.Method.WORKER_MSLOG_ROTATE);
 	}
 
 	private workerDied(error: Error): void {

@@ -109,7 +109,7 @@ export type WorkerSettings<WorkerAppData extends AppData = AppData> = {
 
 export type WorkerUpdateableSettings<T extends AppData = AppData> = Pick<
 	WorkerSettings<T>,
-	'logLevel' | 'logTags'
+	'logLevel' | 'logTags' | 'logDevLevel' | 'logTraceEnabled'
 >;
 
 /**
@@ -215,9 +215,25 @@ export type WorkerDump = {
 	};
 };
 
+export type WorkerLoggerErrorType = 'open' | 'rotate' | 'write';
+
+export type WorkerLoggerError = {
+	/**
+	 * names a logger function or operation where error happenned
+	 */
+	source: WorkerLoggerErrorType;
+	error: string;
+	file: string;
+	/**
+	 * Content of a message failed to be written into a log, maybe empty
+	 */
+	data: string;
+};
+
 export type WorkerEvents = {
 	died: [Error];
 	subprocessclose: [];
+	failedlog: [WorkerLoggerError];
 	// Private events.
 	'@success': [];
 	'@failure': [Error];
@@ -229,6 +245,7 @@ export type WorkerObserverEvents = {
 	close: [];
 	newwebrtcserver: [WebRtcServer];
 	newrouter: [Router];
+	failedlog: [WorkerLoggerError];
 };
 
 export interface Worker<WorkerAppData extends AppData = AppData>
@@ -289,6 +306,16 @@ export interface Worker<WorkerAppData extends AppData = AppData>
 	updateSettings(
 		options?: WorkerUpdateableSettings<WorkerAppData>
 	): Promise<void>;
+
+	/**
+	 * Lively-specific: Open the worker log file.
+	 */
+	logOpen(): Promise<void>;
+
+	/**
+	 * Lively-specific: Rotate the worker log file.
+	 */
+	logRotate(): Promise<void>;
 
 	/**
 	 * Create a WebRtcServer.

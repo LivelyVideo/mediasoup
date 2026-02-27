@@ -1,3 +1,4 @@
+include "log.fbs";
 include "worker.fbs";
 include "router.fbs";
 include "transport.fbs";
@@ -80,6 +81,8 @@ enum Method: uint8 {
     RTPOBSERVER_ADD_PRODUCER,
     RTPOBSERVER_REMOVE_PRODUCER,
     TRANSPORT_CONSUME_STREAM_META,
+    WORKER_MSLOG_OPEN,
+    WORKER_MSLOG_ROTATE,
 }
 
 union Body {
@@ -124,6 +127,7 @@ union Body {
     RtpObserver_AddProducerRequest: FBS.RtpObserver.AddProducerRequest,
     RtpObserver_RemoveProducerRequest: FBS.RtpObserver.RemoveProducerRequest,
     Transport_ConsumeStreamMetaRequest: FBS.Transport.ConsumeStreamMetaRequest,
+    Worker_MslogOpenRequest: FBS.Log.MslogOpenRequest,
 }
 
 table Request {

@@ -70,9 +70,6 @@ extern "C" int mediasoup_worker_run(
 		return 40;
 	}
 
-	// Initialize the Logger.
-	// Logger::ClassInit(channel.get());
-
 	try
 	{
 		Settings::SetConfiguration(argc, argv);

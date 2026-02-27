@@ -53,7 +53,7 @@ Worker::Worker(::Channel::ChannelSocket* channel) : channel(channel)
 
 	// Tell the Node process that we are running.
 	this->shared->channelNotifier->Emit(
-	  std::to_string(Logger::Pid), FBS::Notification::Event::WORKER_RUNNING);
+	  std::to_string(Logger::pid), FBS::Notification::Event::WORKER_RUNNING);
 
 	MS_DEBUG_DEV_STD("starting libuv loop");
 	DepLibUV::RunLoop();
@@ -156,7 +156,7 @@ flatbuffers::Offset<FBS::Worker::DumpResponse> Worker::FillBuffer(
 	{
 		return FBS::Worker::CreateDumpResponseDirect(
 		  builder,
-		  Logger::Pid,
+		  static_cast<uint32_t>(Logger::pid),
 		  &webRtcServerIds,
 		  &routerIds,
 		  channelMessageHandlers,
@@ -165,11 +165,11 @@ flatbuffers::Offset<FBS::Worker::DumpResponse> Worker::FillBuffer(
 	else
 	{
 		return FBS::Worker::CreateDumpResponseDirect(
-		  builder, Logger::Pid, &webRtcServerIds, &routerIds, channelMessageHandlers);
+		  builder, static_cast<uint32_t>(Logger::pid), &webRtcServerIds, &routerIds, channelMessageHandlers);
 	}
 #else
 	return FBS::Worker::CreateDumpResponseDirect(
-	  builder, Logger::Pid, &webRtcServerIds, &routerIds, channelMessageHandlers);
+	  builder, static_cast<uint32_t>(Logger::pid), &webRtcServerIds, &routerIds, channelMessageHandlers);
 #endif
 }
 
@@ -377,9 +377,9 @@ void Worker::HandleRequest(Channel::ChannelRequest* request)
 			// Remove it from the map and delete it.
 			this->mapWebRtcServers.erase(webRtcServer->GetId());
 
-			delete webRtcServer;
+			MS_DEBUG_DEV("WebRtcServer closed [id:%s]", webRtcServer->GetId().c_str());
 
-			MS_DEBUG_DEV("WebRtcServer closed [id:%s]", webRtcServer->id.c_str());
+			delete webRtcServer;
 
 			request->Accept();
 
@@ -432,9 +432,27 @@ void Worker::HandleRequest(Channel::ChannelRequest* request)
 			// Remove it from the map and delete it.
 			this->mapRouters.erase(router->id);
 
+			MS_DEBUG_DEV("Router closed [id:%s]", router->id.c_str());
+
 			delete router;
 
-			MS_DEBUG_DEV("Router closed [id:%s]", router->id.c_str());
+			request->Accept();
+
+			break;
+		}
+
+		case Channel::ChannelRequest::Method::WORKER_MSLOG_OPEN:
+		{
+			Logger::MSlogopen(request->data, this->shared);
+
+			request->Accept();
+
+			break;
+		}
+
+		case Channel::ChannelRequest::Method::WORKER_MSLOG_ROTATE:
+		{
+			Logger::MSlogrotate();
 
 			request->Accept();
 

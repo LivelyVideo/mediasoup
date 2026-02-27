@@ -38,6 +38,8 @@ table ResourceUsageResponse {
 table UpdateSettingsRequest {
     log_level: string;
     log_tags: [string];
+    log_dev_level: string;
+    log_trace_enabled: string;
 }
 
 table CreateWebRtcServerRequest {
