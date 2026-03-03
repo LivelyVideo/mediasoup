@@ -4,6 +4,7 @@ import type {
 	Producer,
 	ProducerType,
 	ProducerScore,
+	ProducerStatEvent,
 	ProducerVideoOrientation,
 	ProducerDump,
 	ProducerStat,
@@ -387,6 +388,46 @@ export class ProducerImpl<ProducerAppData extends AppData = AppData>
 
 						// Emit observer event.
 						this.#observer.safeEmit('trace', trace);
+
+						break;
+					}
+
+					// Lively-specific: periodic producer stats (RND-568)
+					case Event.PRODUCER_STATS: {
+						const notification =
+							new FbsProducer.ProducerStatsNotification();
+
+						data!.body(notification);
+
+						const stats: ProducerStatEvent[] = [];
+
+						for (let i = 0; i < notification.entriesLength(); i++) {
+							const entry = notification.entries(i)!;
+
+							const stat: ProducerStatEvent = {
+								nowMs: Number(entry.nowMs()),
+								ssrc: entry.ssrc(),
+								bitrate: entry.bitrate(),
+							};
+
+							const width = entry.width();
+							const height = entry.height();
+							const frames = entry.frames();
+
+							if (width) {
+								stat.width = width;
+							}
+							if (height) {
+								stat.height = height;
+							}
+							if (frames) {
+								stat.frames = frames;
+							}
+
+							stats.push(stat);
+						}
+
+						this.safeEmit('producerstats', stats);
 
 						break;
 					}

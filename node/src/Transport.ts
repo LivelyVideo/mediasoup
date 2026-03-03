@@ -528,6 +528,7 @@ export abstract class TransportImpl<
 			paused,
 			keyFrameRequestDelay,
 			enableMediasoupPacketIdHeaderExtension,
+			appData,
 		});
 
 		const response = await this.channel.request(
@@ -1467,6 +1468,7 @@ function createProduceRequest({
 	paused,
 	keyFrameRequestDelay,
 	enableMediasoupPacketIdHeaderExtension,
+	appData,
 }: {
 	builder: flatbuffers.Builder;
 	producerId: string;
@@ -1476,10 +1478,22 @@ function createProduceRequest({
 	paused: boolean;
 	keyFrameRequestDelay?: number;
 	enableMediasoupPacketIdHeaderExtension?: boolean;
+	appData?: AppData;
 }): number {
 	const producerIdOffset = builder.createString(producerId);
 	const rtpParametersOffset = serializeRtpParameters(builder, rtpParameters);
 	const rtpMappingOffset = ortc.serializeRtpMapping(builder, rtpMapping);
+
+	// Lively-specific: extract userId and clientReferrer from appData for binary logs (PM-1560, PM-2288)
+	const userId = (appData as any)?.userId != null
+		? String((appData as any).userId).replace(/[^a-zA-Z0-9]/g, '_')
+		: null;
+	const clientReferrer = (appData as any)?.clientReferrer != null
+		? String((appData as any).clientReferrer)
+		: null;
+
+	const userIdOffset = userId ? builder.createString(userId) : 0;
+	const clientReferrerOffset = clientReferrer ? builder.createString(clientReferrer) : 0;
 
 	FbsTransport.ProduceRequest.startProduceRequest(builder);
 	FbsTransport.ProduceRequest.addProducerId(builder, producerIdOffset);
@@ -1498,6 +1512,13 @@ function createProduceRequest({
 		builder,
 		enableMediasoupPacketIdHeaderExtension ?? false
 	);
+
+	if (userIdOffset) {
+		FbsTransport.ProduceRequest.addUserId(builder, userIdOffset);
+	}
+	if (clientReferrerOffset) {
+		FbsTransport.ProduceRequest.addClientReferrer(builder, clientReferrerOffset);
+	}
 
 	return FbsTransport.ProduceRequest.endProduceRequest(builder);
 }

@@ -61,9 +61,32 @@ namespace RTC
 			{
 				std::string const callId = this->lively.callId;
 				std::string const producerId = this->lively.id;
-				// Note: userId and clientReferrer not in FlatBuffers ProduceRequest schema
-				std::string userId = "0";
-				std::string clientReferrer = "";
+
+				// PM-1560 adding userId for ICF binary logs
+				std::string userId;
+				if (data->userId())
+				{
+					userId = data->userId()->str();
+				}
+				if (userId.empty())
+				{
+					MS_WARN_TAG(rtp, "producer create missing appdata or user info, defaulting to 0 for userId");
+					userId = "0";
+				}
+
+				// PM-2288 adding client referrer to bin logs for Saas
+				std::string clientReferrer;
+				if (data->clientReferrer())
+				{
+					clientReferrer = data->clientReferrer()->str();
+				}
+				if (clientReferrer.empty())
+				{
+					MS_WARN_TAG(rtp, "producer create missing appdata or clientReferrer info");
+				}
+
+				MS_DEBUG_TAG(rtp, "creating producer bin log. lively=%s userId=%s clientReferrer=%s",
+				             lively.ToStr().c_str(), userId.c_str(), clientReferrer.c_str());
 
 				this->binLog.InitLog([callId, producerId, userId, clientReferrer]
 				                    (uint64_t timestamp) -> std::string {
@@ -72,6 +95,10 @@ namespace RTC
 					                               BINLOG_FORMAT_VERSION);
 				});
 			}
+		}
+		else
+		{
+			MS_DEBUG_TAG(rtp, "producer bin log is disabled. lively=%s", lively.ToStr().c_str());
 		}
 #endif
 
@@ -694,9 +721,14 @@ namespace RTC
 		{
 			MS_DEBUG_TAG(
 			  rtp,
-			  "key frame received [ssrc:%" PRIu32 ", seq:%" PRIu16 "]",
+			  "key frame received [ssrc:%" PRIu32 ", seq:%" PRIu16 ", w:%" PRIu16 ", h:%" PRIu16 "]",
 			  packet->GetSsrc(),
-			  packet->GetSequenceNumber());
+			  packet->GetSequenceNumber(),
+			  packet->GetWidth(),
+			  packet->GetHeight());
+
+			// Lively-specific: track video resolution for producer stats (RND-568)
+			rtpStream->SetWidthAndHeight(packet->GetWidth(), packet->GetHeight());
 
 			// Tell the keyFrameRequestManager.
 			if (this->keyFrameRequestManager)
@@ -1741,6 +1773,69 @@ namespace RTC
 		  this->id,
 		  FBS::Notification::Event::PRODUCER_TRACE,
 		  FBS::Notification::Body::Producer_TraceNotification,
+		  notification);
+	}
+
+	// Lively-specific: periodic producer stats emission (RND-568)
+	void Producer::EmitProducerStats() const
+	{
+		MS_TRACE();
+
+		auto& builder = this->shared->channelNotifier->GetBufferBuilder();
+		uint64_t nowMs = DepLibUV::GetTimeMs();
+
+		std::vector<flatbuffers::Offset<FBS::Producer::ProducerStatEntry>> entries;
+		std::string statsStr = "[";
+		bool first = true;
+
+		for (auto* rtpStream : this->rtpStreamByEncodingIdx)
+		{
+			if (!rtpStream)
+				continue;
+
+			uint32_t width  = 0;
+			uint32_t height = 0;
+			uint32_t frames = 0;
+
+			if (rtpStream->GetMimeType().type == RTC::RtpCodecMimeType::Type::VIDEO)
+			{
+				width  = rtpStream->GetWidth();
+				height = rtpStream->GetHeight();
+				frames = static_cast<uint32_t>(rtpStream->GetFrameCount());
+			}
+
+			uint32_t ssrc    = rtpStream->GetSsrc();
+			uint32_t bitrate = rtpStream->GetBitrate(nowMs);
+
+			entries.emplace_back(FBS::Producer::CreateProducerStatEntry(
+			  builder, nowMs, ssrc, bitrate, width, height, frames));
+
+			// Build diagnostic string replicating v3-lively data.dump()
+			if (!first) statsStr += ",";
+			first = false;
+			statsStr += "{\"bitrate\":" + std::to_string(bitrate);
+			if (frames)
+				statsStr += ",\"frames\":" + std::to_string(frames);
+			if (height)
+				statsStr += ",\"height\":" + std::to_string(height);
+			statsStr += ",\"nowMs\":" + std::to_string(nowMs);
+			statsStr += ",\"ssrc\":" + std::to_string(ssrc);
+			if (width)
+				statsStr += ",\"width\":" + std::to_string(width);
+			statsStr += "}";
+		}
+		statsStr += "]";
+
+		MS_DEBUG_TAG(rtp, "emitting producerstats. now: %" PRIu64 " id: %s data: %s",
+		             nowMs, this->id.c_str(), statsStr.c_str());
+
+		auto notification =
+		  FBS::Producer::CreateProducerStatsNotificationDirect(builder, &entries);
+
+		this->shared->channelNotifier->Emit(
+		  this->id,
+		  FBS::Notification::Event::PRODUCER_STATS,
+		  FBS::Notification::Body::Producer_ProducerStatsNotification,
 		  notification);
 	}
 

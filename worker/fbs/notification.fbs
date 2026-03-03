@@ -50,6 +50,7 @@ enum Event: uint8 {
     // Lively-specific events
     CONSUMER_IDLE_SHM,
     LOGGER_WRITE_FAILED,
+    PRODUCER_STATS,
 }
 
 union Body {
@@ -82,6 +83,7 @@ union Body {
     // Lively-specific notifications
     Consumer_IdleShmConsumerNotification: FBS.Consumer.IdleShmConsumerNotification,
     Log_WriteFailedNotification: FBS.Log.WriteFailedNotification,
+    Producer_ProducerStatsNotification: FBS.Producer.ProducerStatsNotification,
 }
 
 table Notification {

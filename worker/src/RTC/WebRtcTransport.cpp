@@ -45,6 +45,8 @@ namespace RTC
 	{
 		MS_TRACE();
 
+		producerBinLogEnabled = true;
+
 		try
 		{
 			const auto* listenIndividual = options->listen_as<FBS::WebRtcTransport::ListenIndividual>();
@@ -287,6 +289,8 @@ namespace RTC
 	    webRtcTransportListener(webRtcTransportListener), iceCandidates(iceCandidates)
 	{
 		MS_TRACE();
+
+		producerBinLogEnabled = true;
 
 		try
 		{

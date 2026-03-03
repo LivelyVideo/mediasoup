@@ -98,3 +98,17 @@ table TraceNotification {
     info: TraceInfo;
 }
 
+// Lively-specific: periodic producer stats (RND-568)
+table ProducerStatEntry {
+    now_ms: uint64;
+    ssrc: uint32;
+    bitrate: uint32;
+    width: uint32;
+    height: uint32;
+    frames: uint32;
+}
+
+table ProducerStatsNotification {
+    entries: [ProducerStatEntry] (required);
+}
+

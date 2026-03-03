@@ -441,7 +441,16 @@ export class RouterImpl<RouterAppData extends AppData = AppData>
 			),
 			maxSctpMessageSize,
 			sctpSendBufferSize,
-			true /* isDataChannel */
+			true /* isDataChannel */,
+			(appData as any)?.callId ?? null,
+			(appData as any)?.peerId ?? null,
+			(appData as any)?.mirrorId ?? null,
+			(appData as any)?.streamName ?? null,
+			undefined /* shm */,
+			undefined /* log */,
+			undefined /* listenIp */,
+			(appData as any)?.clientReferrer ?? null,
+			(appData as any)?.producerStats ?? false
 		);
 
 		const webRtcTransportOptions =
@@ -594,7 +603,16 @@ export class RouterImpl<RouterAppData extends AppData = AppData>
 			),
 			maxSctpMessageSize,
 			sctpSendBufferSize,
-			false /* isDataChannel */
+			false /* isDataChannel */,
+			(appData as any)?.callId ?? null,
+			(appData as any)?.peerId ?? null,
+			(appData as any)?.mirrorId ?? null,
+			(appData as any)?.streamName ?? null,
+			undefined /* shm */,
+			undefined /* log */,
+			undefined /* listenIp */,
+			(appData as any)?.clientReferrer ?? null,
+			(appData as any)?.producerStats ?? false
 		);
 
 		const plainTransportOptions = new FbsPlainTransport.PlainTransportOptionsT(
@@ -749,7 +767,16 @@ export class RouterImpl<RouterAppData extends AppData = AppData>
 			),
 			maxSctpMessageSize,
 			sctpSendBufferSize,
-			false /* isDataChannel */
+			false /* isDataChannel */,
+			(appData as any)?.callId ?? null,
+			(appData as any)?.peerId ?? null,
+			(appData as any)?.mirrorId ?? null,
+			(appData as any)?.streamName ?? null,
+			undefined /* shm */,
+			undefined /* log */,
+			undefined /* listenIp */,
+			(appData as any)?.clientReferrer ?? null,
+			(appData as any)?.producerStats ?? false
 		);
 
 		const pipeTransportOptions = new FbsPipeTransport.PipeTransportOptionsT(
@@ -859,7 +886,16 @@ export class RouterImpl<RouterAppData extends AppData = AppData>
 			undefined /* numSctpStreams */,
 			undefined /* maxSctpMessageSize */,
 			undefined /* sctpSendBufferSize */,
-			undefined /* isDataChannel */
+			undefined /* isDataChannel */,
+			(appData as any)?.callId ?? null,
+			(appData as any)?.peerId ?? null,
+			(appData as any)?.mirrorId ?? null,
+			(appData as any)?.streamName ?? null,
+			undefined /* shm */,
+			undefined /* log */,
+			undefined /* listenIp */,
+			(appData as any)?.clientReferrer ?? null,
+			(appData as any)?.producerStats ?? false
 		);
 
 		const directTransportOptions =
@@ -997,7 +1033,9 @@ export class RouterImpl<RouterAppData extends AppData = AppData>
 			new FbsTransport.ListenIpT(
 				normalizedListenIp.ip,
 				normalizedListenIp.announcedIp
-			)
+			),
+			(appData as any)?.clientReferrer ?? null,
+			(appData as any)?.producerStats ?? false
 		);
 
 		const shmTransportOptions = new FbsShmTransport.ShmTransportOptionsT(

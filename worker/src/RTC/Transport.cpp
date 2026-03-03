@@ -147,6 +147,43 @@ namespace RTC
 		this->lively.id = id;
 		this->appData   = this->lively.ToStr();
 
+		// Lively-specific: extract clientReferrer for binary log file naming (PM-2288)
+		std::string clientReferrer;
+		if (options->clientReferrer())
+		{
+			clientReferrer.assign(options->clientReferrer()->str());
+		}
+
+		// Initialize shared consumer binary log (Lively-specific)
+		if (!this->lively.callId.empty())
+		{
+			if (clientReferrer.empty())
+			{
+				MS_WARN_TAG(rtp, "transport create missing appdata or clientReferrer info");
+			}
+
+			MS_DEBUG_TAG(rtp, "creating consumer bin log. lively=%s", lively.ToStr().c_str());
+
+			std::string const callId = this->lively.callId;
+			this->consumersBinLog.InitLog(
+			  [clientReferrer, callId](uint64_t timestamp) -> std::string
+			  { return Lively::ConsumerFileName(clientReferrer, callId, timestamp, BINLOG_FORMAT_VERSION); });
+		}
+		else
+		{
+			MS_WARN_TAG(
+			  rtp,
+			  "Missing callId, cannot init consumers binlog [transportId: %s] [appData: %s]",
+			  this->lively.id.c_str(),
+			  this->appData.c_str());
+		}
+
+		// Lively-specific: enable periodic producer stats emission (RND-568)
+		if (options->producerStats())
+		{
+			this->lastProducerStatsReport = DepLibUV::GetTimeMs();
+		}
+
 		MS_DEBUG_TAG(
 		  rtp, "Transport ctor [transportId: %s] [appData: %s]", this->lively.id.c_str(), this->appData.c_str());
 
@@ -3186,6 +3223,17 @@ namespace RTC
 			interval *= static_cast<float>(Utils::Crypto::GetRandomUInt(10, 15)) / 10;
 
 			this->rtcpTimer->Start(interval);
+
+			// Added by Amir Pauker 02/27/2024 RND-568
+			if (this->lastProducerStatsReport && (this->lastProducerStatsReport + 10000 < nowMs))
+			{
+				for (auto& kv : this->mapProducers)
+				{
+					auto* producer = kv.second;
+					producer->EmitProducerStats();
+				}
+				this->lastProducerStatsReport = nowMs;
+			}
 		}
 #ifdef TRANSCODE
 		// Binary logging timer.

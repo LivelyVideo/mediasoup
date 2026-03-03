@@ -135,9 +135,20 @@ export type ProducerTraceEventData = {
 	info: Record<string, unknown>;
 };
 
+// Lively-specific: periodic producer stats (RND-568)
+export type ProducerStatEvent = {
+	nowMs: number;
+	ssrc: number;
+	bitrate: number;
+	frames?: number;
+	height?: number;
+	width?: number;
+};
+
 export type ProducerEvents = {
 	transportclose: [];
 	score: [ProducerScore[]];
+	producerstats: [ProducerStatEvent[]];
 	videoorientationchange: [ProducerVideoOrientation];
 	trace: [ProducerTraceEventData];
 	// Private events.

@@ -143,6 +143,7 @@ namespace RTC
 		bool GetRtcp(RTC::RTCP::CompoundPacket* packet, uint64_t nowMs);
 		void RequestKeyFrame(uint32_t mappedSsrc);
 		void FillBinLogStats();
+		void EmitProducerStats() const;
 
 		/* Methods inherited from Channel::ChannelSocket::RequestHandler. */
 	public:

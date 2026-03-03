@@ -49,6 +49,9 @@ table ProduceRequest {
     paused: bool = false;
     key_frame_request_delay: uint32;
     enable_mediasoup_packet_id_header_extension: bool = false;
+    // Lively-specific: binary log fields (PM-1560, PM-2288)
+    user_id: string;
+    client_referrer: string;
 }
 
 table ProduceResponse {
@@ -170,6 +173,12 @@ table Options {
     shm: ShmOptions;
     log: LogOptions;
     listen_ip: ListenIp;
+
+    // Lively-specific: client referrer for binary log file naming (PM-2288)
+    client_referrer: string;
+
+    // Lively-specific: enable periodic producer stats emission (RND-568)
+    producer_stats: bool = false;
 }
 
 enum TraceEventType: uint8 {

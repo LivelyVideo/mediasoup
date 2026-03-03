@@ -81,6 +81,15 @@ namespace RTC
 		{
 			return this->useRtpInactivityCheck;
 		}
+		// Lively-specific: video resolution tracking for producer stats (RND-568)
+		void SetWidthAndHeight(uint16_t width, uint16_t height)
+		{
+			this->width = width;
+			this->height = height;
+		}
+		uint16_t GetWidth() const { return this->width; }
+		uint16_t GetHeight() const { return this->height; }
+		size_t GetFrameCount() { return this->mediaTransmissionCounter.GetFrameCount(); }
 
 	private:
 		void CalculateJitter(uint32_t rtpTimestamp);
@@ -137,6 +146,9 @@ namespace RTC
 		RTC::RtpDataCounter mediaTransmissionCounter;
 		// Template dependency structure for Dependency Descriptor.
 		std::unique_ptr<RTC::Codecs::DependencyDescriptor::TemplateDependencyStructure> templateDependencyStructure;
+		// Lively-specific: video resolution tracking (RND-568)
+		uint16_t width{ 0 };
+		uint16_t height{ 0 };
 	};
 } // namespace RTC
 
