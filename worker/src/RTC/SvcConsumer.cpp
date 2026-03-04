@@ -7,6 +7,7 @@
 #include "MediaSoupErrors.hpp"
 #include "Utils.hpp"
 #include "RTC/Codecs/Tools.hpp"
+#include "FbsToJson.hpp"
 #ifdef MS_RTC_LOGGER_RTP
 #include "RTC/RtcLogger.hpp"
 #endif
@@ -81,6 +82,9 @@ namespace RTC
 
 		// Create the encoding context.
 		const auto* mediaCodec = this->rtpParameters.GetCodecForEncoding(encoding);
+
+		auto dataStr = Lively::FbsToJson(data, FBS::Transport::ConsumeRequestTypeTable());
+		MS_DEBUG_TAG_LIVELYAPP(svc, this->appData, "SvcConsumer ctor() data [%s] media codec [%s]", dataStr.c_str(), mediaCodec->mimeType.ToString().c_str());
 
 		if (!RTC::Codecs::Tools::IsValidTypeForCodec(this->type, mediaCodec->mimeType))
 		{

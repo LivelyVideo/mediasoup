@@ -7,6 +7,7 @@
 #include "MediaSoupErrors.hpp"
 #include "Utils.hpp"
 #include "RTC/Codecs/Tools.hpp"
+#include "FbsToJson.hpp"
 #ifdef MS_RTC_LOGGER_RTP
 #include "RTC/RtcLogger.hpp"
 #endif
@@ -100,6 +101,16 @@ namespace RTC
 		// Create the encoding context.
 		const auto* mediaCodec = this->rtpParameters.GetCodecForEncoding(encoding);
 
+		{
+			auto dataStr = Lively::FbsToJson(data, FBS::Transport::ConsumeRequestTypeTable());
+			MS_DEBUG_TAG_LIVELYAPP(simulcast, this->appData,
+			  "SimulcastConsumer ctor() data [%s] media codec [%s] encoding.spatialLayers=%" PRIu8 " encoding.temporalLayers=%" PRIu8,
+			  dataStr.c_str(),
+			  mediaCodec->mimeType.ToString().c_str(),
+			  encoding.spatialLayers,
+			  encoding.temporalLayers);
+		}
+
 		if (!RTC::Codecs::Tools::IsValidTypeForCodec(this->type, mediaCodec->mimeType))
 		{
 			MS_THROW_TYPE_ERROR(
@@ -122,6 +133,11 @@ namespace RTC
 		this->encodingContext.reset(RTC::Codecs::Tools::GetEncodingContext(mediaCodec->mimeType, params));
 
 		MS_ASSERT(this->encodingContext, "no encoding context for this codec");
+
+		MS_DEBUG_TAG_LIVELYAPP(simulcast, this->appData,
+		  "encodingContext spatialLayers=%" PRIu8 " temporalLayers=%" PRIu8,
+		  this->encodingContext->GetSpatialLayers(),
+		  this->encodingContext->GetTemporalLayers());
 
 		// Create RtpStreamSend instance for sending a single stream to the remote.
 		CreateRtpStream();
@@ -611,12 +627,19 @@ namespace RTC
 		// No higher active layers found.
 		if (!requiredBitrate)
 		{
+			MS_DEBUG_TAG_LIVELYAPP(simulcast, this->appData, "No higher active layers found");
+
 			return 0u;
 		}
 
 		// No luck.
 		if (requiredBitrate > virtualBitrate)
 		{
+			MS_DEBUG_TAG_LIVELYAPP(simulcast, this->appData,
+			  "required bitrate:%" PRIu32 " above virtual bitrate:%" PRIu32,
+			  requiredBitrate,
+			  virtualBitrate);
+
 			return 0u;
 		}
 

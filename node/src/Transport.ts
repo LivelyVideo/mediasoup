@@ -1486,7 +1486,7 @@ function createProduceRequest({
 
 	// Lively-specific: extract userId and clientReferrer from appData for binary logs (PM-1560, PM-2288)
 	const userId = (appData as any)?.userId != null
-		? String((appData as any).userId).replace(/[^a-zA-Z0-9]/g, '_')
+		? String((appData as any).userId).replace(/[^a-zA-Z0-9-]/g, '-')
 		: null;
 	const clientReferrer = (appData as any)?.clientReferrer != null
 		? String((appData as any).clientReferrer)

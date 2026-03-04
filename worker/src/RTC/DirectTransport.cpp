@@ -105,7 +105,7 @@ namespace RTC
 
 				if (len > RTC::Consts::MtuSize + 100)
 				{
-					MS_WARN_TAG(rtp, "given RTCP packet exceeds maximum size [len:%i]", len);
+					MS_WARN_TAG_LIVELYAPP(rtp, this->appData, "given RTCP packet exceeds maximum size [len:%i]", len);
 
 					return;
 				}
@@ -114,7 +114,7 @@ namespace RTC
 
 				if (!packet)
 				{
-					MS_WARN_TAG(rtcp, "received data is not a valid RTCP compound or single packet");
+					MS_WARN_TAG_LIVELYAPP(rtcp, this->appData, "received data is not a valid RTCP compound or single packet");
 
 					return;
 				}
@@ -145,7 +145,7 @@ namespace RTC
 
 		if (!consumer)
 		{
-			MS_WARN_TAG(rtp, "cannot send RTP packet not associated to a Consumer");
+			MS_WARN_TAG_LIVELYAPP(rtp, this->appData, "cannot send RTP packet not associated to a Consumer");
 
 			if (cb)
 			{

@@ -7,6 +7,7 @@
 #include "MediaSoupErrors.hpp"
 #include "Utils.hpp"
 #include "RTC/Codecs/Tools.hpp"
+#include "FbsToJson.hpp"
 #include "RTC/Consts.hpp"
 #include "RTC/RTCP/Feedback.hpp"
 #include "RTC/RTCP/XrReceiverReferenceTime.hpp"
@@ -54,8 +55,9 @@ namespace RTC
 		{
 			if (this->lively.callId.empty())
 			{
-				MS_WARN_TAG(rtp, "Missing callId, cannot init producer binlog [id: %s]",
-				            this->lively.id.c_str());
+				auto dataStr = Lively::FbsToJson(data, FBS::Transport::ProduceRequestTypeTable());
+				MS_WARN_TAG(rtp, "Missing callId, cannot init producer binlog [id: %s] [data: %s]",
+				            this->lively.id.c_str(), dataStr.c_str());
 			}
 			else
 			{
@@ -104,6 +106,9 @@ namespace RTC
 
 		// This may throw.
 		this->rtpParameters = RTC::RtpParameters(data->rtpParameters());
+
+		auto rtpParamsStr = Lively::FbsToJson(data->rtpParameters(), FBS::RtpParameters::RtpParametersTypeTable());
+		MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData, "Producer ctor RtpParameters: [%s]", rtpParamsStr.c_str());
 
 		// Evaluate type.
 		auto type = RTC::RtpParameters::GetType(this->rtpParameters);

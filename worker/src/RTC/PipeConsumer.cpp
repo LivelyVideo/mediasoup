@@ -806,6 +806,11 @@ namespace RTC
 			if (rtxCodec && encoding.hasRtx)
 			{
 				rtpStream->SetRtx(rtxCodec->payloadType, encoding.rtx.ssrc);
+				MS_DEBUG_2TAGS_LIVELYAPP(rtp, rtcp, this->appData, "RTX set up");
+			}
+			else
+			{
+				MS_DEBUG_2TAGS_LIVELYAPP(rtp, rtcp, this->appData, "RTX is NOT set up");
 			}
 
 			this->rtpStreams.push_back(rtpStream);
@@ -823,6 +828,13 @@ namespace RTC
 			  new RTC::SeqManager<uint16_t>(initialOutputSeq));
 
 			this->mapRtpStreamTargetLayerRetransmissionBuffer[rtpStream];
+
+			MS_WARN_TAG_LIVELYAPP(
+				rtp,
+				this->appData,
+				"pipeConsumer call_id %s id %s",
+				this->lively.callId.c_str(),
+				this->id.c_str());
 		}
 	}
 

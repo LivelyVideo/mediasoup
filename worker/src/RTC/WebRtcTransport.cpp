@@ -697,8 +697,8 @@ namespace RTC
 				)
 				// clang-format on
 				{
-					MS_DEBUG_TAG(
-					  dtls, "transition from DTLS local role 'auto' to 'server' and running DTLS transport");
+					MS_DEBUG_TAG_LIVELYAPP(
+					  dtls, this->appData, "transition from DTLS local role 'auto' to 'server' and running DTLS transport");
 
 					this->dtlsRole = RTC::DtlsTransport::Role::SERVER;
 					this->dtlsTransport->Run(RTC::DtlsTransport::Role::SERVER);
@@ -723,7 +723,7 @@ namespace RTC
 				)
 				// clang-format on
 				{
-					MS_DEBUG_TAG(dtls, "running DTLS transport in local role 'client'");
+					MS_DEBUG_TAG_LIVELYAPP(dtls, this->appData, "running DTLS transport in local role 'client'");
 
 					this->dtlsTransport->Run(RTC::DtlsTransport::Role::CLIENT);
 				}
@@ -742,7 +742,7 @@ namespace RTC
 				)
 				// clang-format on
 				{
-					MS_DEBUG_TAG(dtls, "running DTLS transport in local role 'server'");
+					MS_DEBUG_TAG_LIVELYAPP(dtls, this->appData, "running DTLS transport in local role 'server'");
 
 					this->dtlsTransport->Run(RTC::DtlsTransport::Role::SERVER);
 				}
@@ -850,7 +850,7 @@ namespace RTC
 		// Ensure there is sending SRTP session.
 		if (!this->srtpSendSession)
 		{
-			MS_WARN_TAG(rtcp, "ignoring RTCP compound packet due to non sending SRTP session");
+			MS_WARN_TAG_LIVELYAPP(rtcp, this->appData, "ignoring RTCP compound packet due to non sending SRTP session");
 
 			return;
 		}
@@ -881,7 +881,7 @@ namespace RTC
 		// clang-format on
 		if (!IsConnected())
 		{
-			MS_WARN_TAG(sctp, "DTLS not connected, cannot send SCTP data");
+			MS_WARN_TAG_LIVELYAPP(sctp, this->appData, "DTLS not connected, cannot send SCTP data");
 
 			return;
 		}
@@ -989,7 +989,7 @@ namespace RTC
 		// Ensure it comes from a valid tuple.
 		if (!this->iceServer->IsValidTuple(tuple))
 		{
-			MS_WARN_TAG(dtls, "ignoring DTLS data coming from an invalid tuple");
+			MS_WARN_TAG_LIVELYAPP(dtls, this->appData, "ignoring DTLS data coming from an invalid tuple");
 
 			return;
 		}
@@ -1008,7 +1008,7 @@ namespace RTC
 		}
 		else
 		{
-			MS_WARN_TAG(dtls, "Transport is not 'connecting' or 'connected', ignoring received DTLS data");
+			MS_WARN_TAG_LIVELYAPP(dtls, this->appData, "Transport is not 'connecting' or 'connected', ignoring received DTLS data");
 
 			return;
 		}
@@ -1022,7 +1022,7 @@ namespace RTC
 		// Ensure DTLS is connected.
 		if (this->dtlsTransport->GetState() != RTC::DtlsTransport::DtlsState::CONNECTED)
 		{
-			MS_DEBUG_2TAGS(dtls, rtp, "ignoring RTP packet while DTLS not connected");
+			MS_DEBUG_2TAGS_LIVELYAPP(dtls, rtp, this->appData, "ignoring RTP packet while DTLS not connected");
 
 			return;
 		}
@@ -1030,7 +1030,7 @@ namespace RTC
 		// Ensure there is receiving SRTP session.
 		if (!this->srtpRecvSession)
 		{
-			MS_DEBUG_TAG(srtp, "ignoring RTP packet due to non receiving SRTP session");
+			MS_DEBUG_TAG_LIVELYAPP(srtp, this->appData, "ignoring RTP packet due to non receiving SRTP session");
 
 			return;
 		}
@@ -1038,7 +1038,7 @@ namespace RTC
 		// Ensure it comes from a valid tuple.
 		if (!this->iceServer->IsValidTuple(tuple))
 		{
-			MS_WARN_TAG(rtp, "ignoring RTP packet coming from an invalid tuple");
+			MS_WARN_TAG_LIVELYAPP(rtp, this->appData, "ignoring RTP packet coming from an invalid tuple");
 
 			return;
 		}
@@ -1050,12 +1050,12 @@ namespace RTC
 
 			if (!packet)
 			{
-				MS_WARN_TAG(srtp, "DecryptSrtp() failed due to an invalid RTP packet");
+				MS_WARN_TAG_LIVELYAPP(srtp, this->appData, "DecryptSrtp() failed due to an invalid RTP packet");
 			}
 			else
 			{
-				MS_WARN_TAG(
-				  srtp,
+				MS_WARN_TAG_LIVELYAPP(
+				  srtp, this->appData,
 				  "DecryptSrtp() failed [ssrc:%" PRIu32 ", payloadType:%" PRIu8 ", seq:%" PRIu16 "]",
 				  packet->GetSsrc(),
 				  packet->GetPayloadType(),
@@ -1071,7 +1071,7 @@ namespace RTC
 
 		if (!packet)
 		{
-			MS_WARN_TAG(rtp, "received data is not a valid RTP packet");
+			MS_WARN_TAG_LIVELYAPP(rtp, this->appData, "received data is not a valid RTP packet");
 
 			return;
 		}
@@ -1091,7 +1091,7 @@ namespace RTC
 		// Ensure DTLS is connected.
 		if (this->dtlsTransport->GetState() != RTC::DtlsTransport::DtlsState::CONNECTED)
 		{
-			MS_DEBUG_2TAGS(dtls, rtcp, "ignoring RTCP packet while DTLS not connected");
+			MS_DEBUG_2TAGS_LIVELYAPP(dtls, rtcp, this->appData, "ignoring RTCP packet while DTLS not connected");
 
 			return;
 		}
@@ -1099,7 +1099,7 @@ namespace RTC
 		// Ensure there is receiving SRTP session.
 		if (!this->srtpRecvSession)
 		{
-			MS_DEBUG_TAG(srtp, "ignoring RTCP packet due to non receiving SRTP session");
+			MS_DEBUG_TAG_LIVELYAPP(srtp, this->appData, "ignoring RTCP packet due to non receiving SRTP session");
 
 			return;
 		}
@@ -1107,7 +1107,7 @@ namespace RTC
 		// Ensure it comes from a valid tuple.
 		if (!this->iceServer->IsValidTuple(tuple))
 		{
-			MS_WARN_TAG(rtcp, "ignoring RTCP packet coming from an invalid tuple");
+			MS_WARN_TAG_LIVELYAPP(rtcp, this->appData, "ignoring RTCP packet coming from an invalid tuple");
 
 			return;
 		}
@@ -1122,7 +1122,7 @@ namespace RTC
 
 		if (!packet)
 		{
-			MS_WARN_TAG(rtcp, "received data is not a valid RTCP compound or single packet");
+			MS_WARN_TAG_LIVELYAPP(rtcp, this->appData, "received data is not a valid RTCP compound or single packet");
 
 			return;
 		}
@@ -1237,7 +1237,7 @@ namespace RTC
 		 * on any candidates provided for that component.
 		 */
 
-		MS_DEBUG_TAG(ice, "ICE selected tuple");
+		MS_DEBUG_TAG_LIVELYAPP(ice, this->appData, "ICE selected tuple");
 
 		// Notify the Node WebRtcTransport.
 		auto tuple = this->iceServer->GetSelectedTuple()->FillBuffer(
@@ -1257,7 +1257,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		MS_DEBUG_TAG(ice, "ICE connected");
+		MS_DEBUG_TAG_LIVELYAPP(ice, this->appData, "ICE connected");
 
 		// Notify the Node WebRtcTransport.
 		auto iceStateChangeOffset = FBS::WebRtcTransport::CreateIceStateChangeNotification(
@@ -1283,7 +1283,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		MS_DEBUG_TAG(ice, "ICE completed");
+		MS_DEBUG_TAG_LIVELYAPP(ice, this->appData, "ICE completed");
 
 		// Notify the Node WebRtcTransport.
 		auto iceStateChangeOffset = FBS::WebRtcTransport::CreateIceStateChangeNotification(
@@ -1309,7 +1309,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		MS_DEBUG_TAG(ice, "ICE disconnected");
+		MS_DEBUG_TAG_LIVELYAPP(ice, this->appData, "ICE disconnected");
 
 		// Notify the Node WebRtcTransport.
 		auto iceStateChangeOffset = FBS::WebRtcTransport::CreateIceStateChangeNotification(
@@ -1333,7 +1333,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		MS_DEBUG_TAG(dtls, "DTLS connecting");
+		MS_DEBUG_TAG_LIVELYAPP(dtls, this->appData, "DTLS connecting");
 
 		// Notify the Node WebRtcTransport.
 		auto dtlsStateChangeOffset = FBS::WebRtcTransport::CreateDtlsStateChangeNotification(
@@ -1357,7 +1357,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		MS_DEBUG_TAG(dtls, "DTLS connected");
+		MS_DEBUG_TAG_LIVELYAPP(dtls, this->appData, "DTLS connected");
 
 		// Close it if it was already set and update it.
 		delete this->srtpSendSession;
@@ -1409,7 +1409,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		MS_WARN_TAG(dtls, "DTLS failed");
+		MS_WARN_TAG_LIVELYAPP(dtls, this->appData, "DTLS failed");
 
 		// Notify the Node WebRtcTransport.
 		auto dtlsStateChangeOffset = FBS::WebRtcTransport::CreateDtlsStateChangeNotification(
@@ -1426,7 +1426,7 @@ namespace RTC
 	{
 		MS_TRACE();
 
-		MS_WARN_TAG(dtls, "DTLS remotely closed");
+		MS_DEBUG_TAG_LIVELYAPP(dtls, this->appData, "DTLS remotely closed");
 
 		// Notify the Node WebRtcTransport.
 		auto dtlsStateChangeOffset = FBS::WebRtcTransport::CreateDtlsStateChangeNotification(
@@ -1449,7 +1449,7 @@ namespace RTC
 
 		if (!this->iceServer->GetSelectedTuple())
 		{
-			MS_WARN_TAG(dtls, "no selected tuple set, cannot send DTLS packet");
+			MS_WARN_TAG_LIVELYAPP(dtls, this->appData, "no selected tuple set, cannot send DTLS packet");
 
 			return;
 		}
