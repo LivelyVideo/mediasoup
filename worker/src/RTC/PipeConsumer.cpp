@@ -63,10 +63,8 @@ namespace RTC
 		}
 
 		this->rtpStreams.clear();
-#ifdef TRANSCODE
-	// Cleanup binary log records
-	this->rtpStreamBinLogRecords.clear();
-#endif
+		// Cleanup binary log records
+		this->rtpStreamBinLogRecords.clear();
 		this->mapMappedSsrcSsrc.clear();
 		this->mapSsrcRtpStream.clear();
 		this->mapRtpStreamSyncRequired.clear();
@@ -783,7 +781,6 @@ namespace RTC
 
 			auto* rtpStream = new RTC::RtpStreamSend(this, params, this->rtpParameters.mid);
 
-#ifdef TRANSCODE
 		// Initialize binary log record context for this stream
 		this->rtpStreamBinLogRecords[rtpStream] = new Lively::CallStatsRecordCtx(
 		  1,
@@ -793,7 +790,6 @@ namespace RTC
 		  this->lively.callId,
 		  this->id,
 		  this->producerId);
-#endif
 
 			// If the Consumer is paused, tell the RtpStreamSend.
 			if (IsPaused() || IsProducerPaused())

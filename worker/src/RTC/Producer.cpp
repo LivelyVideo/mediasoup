@@ -49,7 +49,6 @@ namespace RTC
 		this->lively.id = id;
 		this->appData = this->lively.ToStr();
 
-#ifdef TRANSCODE
 		// Binary log initialization
 		if (producerBinLogEnabled)
 		{
@@ -102,7 +101,6 @@ namespace RTC
 		{
 			MS_DEBUG_TAG(rtp, "producer bin log is disabled. lively=%s", lively.ToStr().c_str());
 		}
-#endif
 
 		// This may throw.
 		this->rtpParameters = RTC::RtpParameters(data->rtpParameters());
@@ -322,11 +320,9 @@ namespace RTC
 		this->mapRtpStreamMappedSsrc.clear();
 		this->mapMappedSsrcSsrc.clear();
 
-#ifdef TRANSCODE
 		// Cleanup binary logging
 		this->binLog.DeinitLog();
 		this->rtpStreamBinLogRecords.clear();
-#endif
 
 		// Delete the KeyFrameRequestManager.
 		delete this->keyFrameRequestManager;
@@ -1255,7 +1251,6 @@ namespace RTC
 		this->mapRtpStreamMappedSsrc[rtpStream]             = encodingMapping.mappedSsrc;
 		this->mapMappedSsrcSsrc[encodingMapping.mappedSsrc] = ssrc;
 
-#ifdef TRANSCODE
 		// Initialize binary log record context for this stream
 		this->rtpStreamBinLogRecords[rtpStream] = new Lively::CallStatsRecordCtx(
 		  0,
@@ -1265,7 +1260,6 @@ namespace RTC
 		  this->lively.callId,
 		  this->id,
 		  ZERO_UUID);
-#endif
 
 		// If the Producer is paused tell it to the new RtpStreamRecv.
 		if (this->paused)
