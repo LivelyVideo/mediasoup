@@ -6,6 +6,49 @@ You are coordinating an upstream merge from `versatica/mediasoup` into the Livel
 
 ---
 
+## Phase 0: Permission Request (REQUIRED FIRST STEP)
+
+Before running a comprehensive audit, request batch permission for read-only operations.
+
+### Permission Request Dialog
+
+Use `AskUserQuestion` with the following:
+
+```
+This audit will run many read-only commands (grep, git show, git diff, etc.).
+Would you like to allow all read-only analysis commands for this audit session?
+
+Options:
+1. "Yes, allow all read-only commands" (Recommended) — No confirmations for grep, git show, diff, etc.
+2. "No, ask me each time" — Confirm each command individually
+```
+
+### Commands That Will Run Without Confirmation (if approved)
+
+| Category | Commands |
+|----------|----------|
+| Search | `grep`, `rg`, `ag`, `find` |
+| Read | `cat`, `head`, `tail`, `less`, `wc` |
+| Compare | `diff`, `sort`, `uniq`, `cut` |
+| Git (read) | `git show`, `git log`, `git diff`, `git status`, `git branch`, `git fetch` |
+| File info | `ls`, `stat`, `file` |
+
+### Commands That Will ALWAYS Require Confirmation
+
+| Category | Commands |
+|----------|----------|
+| File changes | `rm`, `mv`, `cp`, `mkdir` |
+| Git (write) | `git add`, `git commit`, `git push`, `git reset`, `git checkout` |
+| Build | `make`, `npm`, `meson`, `ninja` |
+| System | `sudo`, `chmod`, `chown` |
+
+### Implementation
+
+When user selects "Yes, allow all read-only commands", proceed directly with all audit phases.
+When user selects "No", pause for confirmation on each bash command.
+
+---
+
 ## Pre-Flight: Lively File Manifest
 
 Before starting any audit, verify coverage of ALL these files.
@@ -138,7 +181,7 @@ grep "lively.callId" worker/src/RTC/Transport.cpp
 
 ## Orchestration Workflow
 
-### Phase 1: Pre-Merge Assessment
+### Phase 1: Pre-Merge Assessment (after Phase 0 approval)
 
 1. **Run Pre-Flight Commands** (above)
 2. **Check off Tier 1 files** that appear in changed list

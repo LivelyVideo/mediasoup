@@ -1,39 +1,34 @@
 # Claude Merge Skills
 
-This folder contains reference documentation for AI-assisted upstream merge auditing. These files guide Claude (or similar AI assistants) through the process of auditing Lively-specific features after merging upstream changes from versatica/mediasoup.
+This folder contains **reference documentation** for AI-assisted upstream merge auditing. These files guide Claude through the process of auditing Lively-specific features after merging upstream changes from versatica/mediasoup.
 
-## Key Design Principles
+## New: Idiomatic Agent-Skill System
 
-### Mechanical Checklists Over Prose
+The documentation in this folder has been formalized into an idiomatic Claude Code agent-skill system:
 
-Each skill file contains **mechanical audit checklists** with:
-- Explicit bash commands to run
-- Expected output for each command
-- Checkbox items to verify
-- No ambiguity about what "audited" means
+### Agent
+- **Location**: `.claude/agents/merge-auditor.md`
+- **Invocation**: `/merge-audit` (full audit) or `/merge-audit <skill>` (focused)
+- **Persona**: Lively Mediasoup Merge Audit Team
 
-This design prevents the failure mode where an audit reports "PASS" based on component existence without verifying activation chains.
+### Skills
+- **Location**: `.claude/skills/merge-audit/`
+- **Available Skills**:
 
-### Silent Failure Modes
+| Skill | Invocation | Purpose |
+|-------|------------|---------|
+| `audit-binlogs` | `/merge-audit binlogs` | Verify binary stats logging activation chain |
+| `audit-stats` | `/merge-audit stats` | Verify periodic producer stats (RND-568) |
+| `audit-textlogs` | `/merge-audit textlogs` | Verify text logging system |
+| `audit-appdata` | `/merge-audit appdata` | Verify appData field extraction |
+| `audit-transcode-guards` | `/merge-audit guards` | Verify TRANSCODE guard correctness |
+| `audit-fbs-schema` | `/merge-audit fbs` | Verify FBS schema completeness |
+| `compare-v3-lively` | `/merge-audit compare` | Compare against v3-lively baseline |
+| `trace-data-flow` | `/merge-audit dataflow` | Trace field values from source to destination |
 
-Each feature expert documents **Silent Failure Modes** — conditions that cause features to fail without producing any error messages. The audit must explicitly verify these failure modes don't exist.
+## Documentation Files (This Folder)
 
-Example failure modes:
-- Timer created but never started → no binlog files
-- FBS field defined but not populated → empty values in C++
-- Guard added to production code → feature disabled silently
-
-## Usage
-
-When performing an upstream merge audit:
-
-1. Start with `upstream-merge-orchestrator.md` — it coordinates the full audit
-2. Use the **Pre-Flight File Manifest** to identify all files requiring audit
-3. Run checklists in parallel where possible (use **Parallel Execution Strategy**)
-4. For each feature expert, verify against documented **Silent Failure Modes**
-5. Use **Coverage Verification** at the end to ensure no gaps
-
-## File Organization
+The files in this folder serve as **detailed reference documentation** that the agent and skills draw from:
 
 ### Orchestrator
 - `upstream-merge-orchestrator.md` — Coordinates merge audits, parallel execution, coverage verification
@@ -52,9 +47,67 @@ When performing an upstream merge audit:
 - `transcode-features-expert.md` — ShmTransport guards with 6 Silent Failure Modes
 - `mediasoup-lively-features-expert.md` — Catch-all with cross-feature verification
 
+---
+
+## Key Design Principles
+
+### Mechanical Checklists Over Prose
+
+Each skill file contains **mechanical audit checklists** with:
+- Explicit bash commands to run
+- Expected output for each command
+- Checkbox items to verify
+- No ambiguity about what "audited" means
+
+This design prevents the failure mode where an audit reports "PASS" based on component existence without verifying activation chains.
+
+### Silent Failure Modes
+
+Each feature expert documents **Silent Failure Modes** — conditions that cause features to fail without producing any error messages. The audit must explicitly verify these failure modes don't exist.
+
+Example failure modes:
+- Timer created but never started -> no binlog files
+- FBS field defined but not populated -> empty values in C++
+- Guard added to production code -> feature disabled silently
+
+### Activation Chain Verification
+
+Checking that a component exists is NOT sufficient. Every audit must trace:
+1. Configuration -> Is the feature enabled?
+2. Initialization -> Is it set up correctly?
+3. Execution -> Is it called at runtime?
+4. Output -> Does data reach its destination?
+
+---
+
+## Usage
+
+### Quick Start (Agent-Based)
+
+```
+# Full audit
+/merge-audit
+
+# Focused audit
+/merge-audit binlogs
+/merge-audit guards
+```
+
+### Manual Procedure
+
+When performing an upstream merge audit manually:
+
+1. Start with `upstream-merge-orchestrator.md` — it coordinates the full audit
+2. Use the **Pre-Flight File Manifest** to identify all files requiring audit
+3. Run checklists in parallel where possible (use **Parallel Execution Strategy**)
+4. For each feature expert, verify against documented **Silent Failure Modes**
+5. Use **Coverage Verification** at the end to ensure no gaps
+
+---
+
 ## Checklist Structure
 
-Each skill file follows this structure:
+Each documentation file follows this structure:
 
 ```markdown
 # Feature Name Expert
@@ -77,6 +130,8 @@ Each skill file follows this structure:
 **Expected**: <what output should show>
 - [ ] Checkbox item to verify
 ```
+
+---
 
 ## Relationship to CLAUDE.md
 

@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(for file in Transport.cpp Producer.cpp WebRtcTransport.cpp PlainTransport.cpp PipeTransport.cpp Router.cpp SimpleConsumer.cpp SimulcastConsumer.cpp SvcConsumer.cpp PipeConsumer.cpp ShmTransport.cpp ShmConsumer.cpp LivelyBinLogs.cpp)",
+      "Bash(do echo '=== V3-LIVELY: $file ===' git show origin/v3-lively:worker/src/RTC/$file)",
+      "Bash(for file in SimpleConsumer.cpp SimulcastConsumer.cpp SvcConsumer.cpp PipeConsumer.cpp)",
+      "Bash(do echo '=== LOCAL $file ===' grep -n TRANSCODE /Users/mariat/workspace/LivelyTV/mediasoup/worker/src/RTC/$file)",
+      "Bash(do echo '=== V3-LIVELY $file ===' git show origin/v3-lively:worker/src/RTC/$file)",
+      "Bash(__NEW_LINE_41b573b5859dea65__ echo \"=== Searching for CallStatsRecordCtx in all local files ===\")",
+      "Bash(__NEW_LINE_cd28155412bfc9db__ echo \"=== Checking Transport.hpp ===\" grep -n \"TRANSCODE\" /Users/mariat/workspace/LivelyTV/mediasoup/worker/include/RTC/Transport.hpp)",
+      "Bash(__NEW_LINE_9c847b114cd34db8__ echo \"=== Final verification: Transport.cpp guarded debug messages in v3-lively ===\" echo \"\" echo \"v3-lively line 2669-2672:\" git show origin/v3-lively:worker/src/RTC/Transport.cpp)",
+      "Bash(__NEW_LINE_8bbe87c550f5f048__ echo \"v3-lively line 2668-2673:\" git show origin/v3-lively:worker/src/RTC/Transport.cpp)",
+      "Bash(git diff:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(git fetch:*)",
+      "Skill(base-agents:agent-generator)",
+      "Bash(git grep:*)"
+    ]
+  }
+}
