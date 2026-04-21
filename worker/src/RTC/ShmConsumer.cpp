@@ -735,7 +735,7 @@ namespace RTC
 	    auto* sdesChunk = this->rtpStream->GetRtcpSdesChunk();
 
 	    // Get delay since last RR SsrcInfo
-	    auto* delaySinceLastRrSsrcInfo = this->rtpStream->GetRtcpXrDelaySinceLastRrSsrcInfo(nowMs);
+	    auto* delaySinceLastRrSsrcInfo = this->rtpStream->GetRtcpXrDelaySinceLastRr(nowMs);
 
 	    // RTCP Compound packet buffer cannot hold the data.
 	    if (!packet->Add(senderReport, sdesChunk, delaySinceLastRrSsrcInfo))

@@ -215,11 +215,17 @@ namespace RTC
 		EmitScore();
 	}
 
-	void SimpleConsumer::ProducerRtcpSenderReport(RTC::RtpStreamRecv* /*rtpStream*/, bool /*first*/)
+	void SimpleConsumer::ProducerRtcpSenderReport(RTC::RtpStreamRecv* rtpStream, bool first)
 	{
 		MS_TRACE();
 
-		// Do nothing.
+#if MS_LOG_DEV_LEVEL >= 3
+		MS_DEBUG_DEV("SR-IN [ssrc:%" PRIu32 ", ntpMs:%" PRIu64 ", rtpTs:%" PRIu32 ", first:%d]",
+		  rtpStream->GetSsrc(),
+		  rtpStream->GetSenderReportNtpMs(),
+		  rtpStream->GetSenderReportTs(),
+		  first ? 1 : 0);
+#endif
 	}
 
 	uint8_t SimpleConsumer::GetBitratePriority() const
@@ -473,6 +479,15 @@ namespace RTC
 			// Send the packet.
 			this->listener->OnConsumerSendRtpPacket(this, packet);
 
+#if MS_LOG_DEV_LEVEL >= 3
+			MS_DEBUG_DEV("RTP [ssrc:%" PRIu32 ", seq:%" PRIu16 ", ts:%" PRIu32 ", marker:%d, pt:%" PRIu8 "]",
+			  packet->GetSsrc(),
+			  packet->GetSequenceNumber(),
+			  packet->GetTimestamp(),
+			  packet->HasMarker() ? 1 : 0,
+			  packet->GetPayloadType());
+#endif
+
 			// May emit 'trace' event.
 			EmitTraceEventRtpAndKeyFrameTypes(packet);
 		}
@@ -560,17 +575,37 @@ namespace RTC
 			return true;
 		}
 
-		auto* senderReport = this->rtpStream->GetRtcpSenderReport(nowMs);
+		// Get producer SR data for lip-sync accurate SR generation
+		uint64_t producerNtpMs = 0;
+		uint32_t producerRtpTs = 0;
+
+		if (this->producerRtpStream && this->producerRtpStream->GetSenderReportNtpMs() != 0)
+		{
+			producerNtpMs = this->producerRtpStream->GetSenderReportNtpMs();
+			producerRtpTs = this->producerRtpStream->GetSenderReportTs();
+		}
+
+		auto* senderReport = this->rtpStream->GetRtcpSenderReport(nowMs, producerNtpMs, producerRtpTs);
 
 		if (!senderReport)
 		{
 			return true;
 		}
 
+#if MS_LOG_DEV_LEVEL >= 3
+		MS_DEBUG_DEV("SR-OUT [ssrc:%" PRIu32 ", ntpSec:%" PRIu32 ", ntpFrac:%" PRIu32 ", rtpTs:%" PRIu32 ", packetCount:%" PRIu32 ", octetCount:%" PRIu32 "]",
+		  senderReport->GetSsrc(),
+		  senderReport->GetNtpSec(),
+		  senderReport->GetNtpFrac(),
+		  senderReport->GetRtpTs(),
+		  senderReport->GetPacketCount(),
+		  senderReport->GetOctetCount());
+#endif
+
 		// Build SDES chunk for this sender.
 		auto* sdesChunk = this->rtpStream->GetRtcpSdesChunk();
 
-		auto* delaySinceLastRrSsrcInfo = this->rtpStream->GetRtcpXrDelaySinceLastRrSsrcInfo(nowMs);
+		auto* delaySinceLastRrSsrcInfo = this->rtpStream->GetRtcpXrDelaySinceLastRr(nowMs);
 
 		// RTCP Compound packet buffer cannot hold the data.
 		if (!packet->Add(senderReport, sdesChunk, delaySinceLastRrSsrcInfo))

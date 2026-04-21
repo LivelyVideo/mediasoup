@@ -45,8 +45,10 @@ namespace RTC
 		void ReceiveKeyFrameRequest(RTC::RTCP::FeedbackPs::MessageType messageType);
 		void ReceiveRtcpReceiverReport(RTC::RTCP::ReceiverReport* report);
 		void ReceiveRtcpXrReceiverReferenceTime(RTC::RTCP::ReceiverReferenceTime* report);
+		RTC::RTCP::SenderReport* GetRtcpSenderReport(
+		  uint64_t nowMs, uint64_t producerNtpMs, uint32_t producerRtpTs);
 		RTC::RTCP::SenderReport* GetRtcpSenderReport(uint64_t nowMs);
-		RTC::RTCP::DelaySinceLastRr::SsrcInfo* GetRtcpXrDelaySinceLastRrSsrcInfo(uint64_t nowMs);
+		RTC::RTCP::DelaySinceLastRr::SsrcInfo* GetRtcpXrDelaySinceLastRr(uint64_t nowMs);
 		RTC::RTCP::SdesChunk* GetRtcpSdesChunk();
 		void Pause() override;
 		void Resume() override;

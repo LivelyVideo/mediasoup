@@ -329,6 +329,39 @@ namespace RTC
 		this->lastRrTimestamp += report->GetNtpFrac() >> 16;
 	}
 
+	RTC::RTCP::SenderReport* RtpStreamSend::GetRtcpSenderReport(
+	  uint64_t nowMs, uint64_t producerNtpMs, uint32_t producerRtpTs)
+	{
+		MS_TRACE();
+
+		if (this->transmissionCounter.GetPacketCount() == 0u)
+		{
+			return nullptr;
+		}
+
+		// If no producer SR data available, do not generate SR - wait for producer SR
+		if (producerNtpMs == 0)
+		{
+			return nullptr;
+		}
+
+		auto* report = new RTC::RTCP::SenderReport();
+		auto ntp = Utils::Time::TimeMs2Ntp(producerNtpMs);
+
+		report->SetSsrc(GetSsrc());
+		report->SetPacketCount(this->transmissionCounter.GetPacketCount());
+		report->SetOctetCount(this->transmissionCounter.GetBytes());
+		report->SetNtpSec(ntp.seconds);
+		report->SetNtpFrac(ntp.fractions);
+		report->SetRtpTs(producerRtpTs);
+
+		// Update info about last Sender Report.
+		this->lastSenderReportNtpMs = producerNtpMs;
+		this->lastSenderReportTs    = producerRtpTs;
+
+		return report;
+	}
+
 	RTC::RTCP::SenderReport* RtpStreamSend::GetRtcpSenderReport(uint64_t nowMs)
 	{
 		MS_TRACE();
@@ -359,7 +392,7 @@ namespace RTC
 		return report;
 	}
 
-	RTC::RTCP::DelaySinceLastRr::SsrcInfo* RtpStreamSend::GetRtcpXrDelaySinceLastRrSsrcInfo(uint64_t nowMs)
+	RTC::RTCP::DelaySinceLastRr::SsrcInfo* RtpStreamSend::GetRtcpXrDelaySinceLastRr(uint64_t nowMs)
 	{
 		MS_TRACE();
 
@@ -706,8 +739,21 @@ namespace RTC
 		packetsRepaired = this->packetsRepaired;
 		nackCount = this->nackCount;
 		nackPacketCount = this->nackPacketCount;
-		kfCount = this->pliCount + this->firCount; // Key frame requests
+		kfCount = this->pliCount + this->firCount;
 		rtt = this->rtt;
-		maxPacketTs = this->maxPacketTs;
+
+		// Convert RTP time to unix timestamp in ms using the RTCP sender report.
+		uint32_t clock_rate = this->GetClockRate();
+		if (!clock_rate)
+		{
+			maxPacketTs = 0xFFFFFFFF;
+		}
+		else
+		{
+			int delta_rtp = ((int)this->maxPacketTs - (int)this->lastSenderReportTs);
+			delta_rtp     = delta_rtp * 1000 / (int)clock_rate;
+
+			maxPacketTs = (uint32_t)((int)this->lastSenderReportNtpMs + delta_rtp);
+		}
 	}
 } // namespace RTC
