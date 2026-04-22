@@ -2,140 +2,149 @@
 // #define MS_LOG_DEV_LEVEL 3
 
 #include "Logger.hpp"
+#include "RTC/Shared.hpp"
+#include "FBS/log.h"
 #include <uv.h>
-#include "Channel/ChannelNotifier.hpp"
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
 
 /* Class variables. */
+
 std::string Logger::levelPrefix;
 const int64_t Logger::pid{ static_cast<int64_t>(uv_os_getpid()) };
 thread_local char Logger::buffer[Logger::bufferSize];
 thread_local std::string Logger::backupBuffer = "";
+// Lively-specific: for appData logging support
 thread_local std::string Logger::appdataBuffer = "";
 std::string Logger::logfilename = "";
 std::FILE* Logger::logfd {nullptr};
 bool Logger::openLogFile {false};
 RTC::Shared* Logger::shared {nullptr};
 
+/* Lively binary logging implementations */
 
-/* Class methods. */
-
-/*
-  {mslogname: "path_to_mslog"};
-*/
-bool Logger::MSlogopen(json& data, RTC::Shared* shared)
+bool Logger::MSlogopen(const FBS::Request::Request* request, RTC::Shared* sharedPtr)
 {
-	Logger::shared = shared;
+	MS_TRACE();
 
-	auto jsonLognameIt = data.find("mslogname");
-	if (jsonLognameIt != data.end() && jsonLognameIt->is_string())
-	{
-		Logger::logfilename = jsonLognameIt->get<std::string>();
-		Logger::logfd = std::fopen(Logger::logfilename.c_str(), "a");
-		if (Logger::logfd)
-		{
-			Logger::openLogFile = true;
-			return true;
-		}
-		// tell nodejs
-		json msg = json::object();
-		msg["source"] = "open";
-		msg["error"] = strerror(errno);
-		msg["file"] = Logger::logfilename;
-		msg["data"] = data.dump();
+	Logger::shared = sharedPtr;
 
-		if (Logger::shared)
-			Logger::shared->channelNotifier->Emit(std::to_string(Logger::pid), "failedlog", msg);
-	}
-	else
+	// Extract log file name from request body
+	const auto* body = request->body_as<FBS::Log::MslogOpenRequest>();
+	Logger::logfilename = body->mslogname()->str();
+
+	Logger::logfd = std::fopen(Logger::logfilename.c_str(), "a");
+	if (Logger::logfd)
 	{
-		json msg = json::object();
-		msg["source"] = "open";
-		msg["error"] = "no valid mslogname";
-		msg["file"] = "";
-		msg["data"] = data.dump();
-	
-		if (Logger::shared)
-			Logger::shared->channelNotifier->Emit(std::to_string(Logger::pid), "failedlog", msg);
+		Logger::openLogFile = true;
+		return true;
 	}
-	// unsuccessful 
+
+	// Failed to open
+	MS_WARN_DEV("Failed to open log file: %s, error: %s", Logger::logfilename.c_str(), strerror(errno));
+
+	if (Logger::shared)
+	{
+		auto notification = FBS::Log::CreateWriteFailedNotificationDirect(
+		  Logger::shared->channelNotifier->GetBufferBuilder(),
+		  "open",
+		  strerror(errno),
+		  Logger::logfilename.c_str(),
+		  "");
+
+		Logger::shared->channelNotifier->Emit(
+		  std::to_string(pid),
+		  FBS::Notification::Event::LOGGER_WRITE_FAILED,
+		  FBS::Notification::Body::Log_WriteFailedNotification,
+		  notification);
+	}
+
 	Logger::logfd = nullptr;
 	return false;
 }
 
-
-/*
-* Log rotation: on external signal
-* or in case MSlogwrite() failed.
-*/
 void Logger::MSlogrotate()
 {
 	MS_TRACE_STD();
-	
+
 	if (Logger::openLogFile)
 	{
-		// close and reopen to refresh fd
-		Logger::MSlogclose();
+		// Close and reopen to refresh fd
+		MSlogclose();
 
 		Logger::logfd = std::fopen(Logger::logfilename.c_str(), "a");
-		if(Logger::logfd)
+		if (Logger::logfd)
 		{
 			return;
 		}
 	}
 
-	// tell nodejs
-	json data = json::object();
-	data["source"] = "rotate";
-	data["error"] = strerror(errno);
-	data["file"] = Logger::logfilename;
-	data["data"] = Logger::openLogFile ? "failed logrotate" : "skip logrotate";
+	MS_WARN_DEV("Failed to rotate log file: %s, error: %s", Logger::logfilename.c_str(), strerror(errno));
 
 	if (Logger::shared)
-		Logger::shared->channelNotifier->Emit(std::to_string(Logger::pid), "failedlog", data);
-}
+	{
+		auto notification = FBS::Log::CreateWriteFailedNotificationDirect(
+		  Logger::shared->channelNotifier->GetBufferBuilder(),
+		  "rotate",
+		  strerror(errno),
+		  Logger::logfilename.c_str(),
+		  "");
 
+		Logger::shared->channelNotifier->Emit(
+		  std::to_string(pid),
+		  FBS::Notification::Event::LOGGER_WRITE_FAILED,
+		  FBS::Notification::Body::Log_WriteFailedNotification,
+		  notification);
+	}
+}
 
 void Logger::MSlogwrite(int written)
 {
 	// Write backed up buffer first, the one that we failed to write on a previous attempt.
 	if (!Logger::backupBuffer.empty())
 	{
-		if (!Logger::openLogFile
-			|| !Logger::logfd 
-			|| (EOF == std::fputs(Logger::backupBuffer.c_str(), Logger::logfd)) 
-			|| (EOF == std::fputc('\n', Logger::logfd)))
+		if (!Logger::openLogFile || !Logger::logfd ||
+		    (EOF == std::fputs(Logger::backupBuffer.c_str(), Logger::logfd)) ||
+		    (EOF == std::fputc('\n', Logger::logfd)))
 		{
-			// If failed to write previously saved log msg, send it to nodejs and tell we failed
-			json data = json::object();
-			data["source"] = "write";
-			data["error"] = strerror(errno);
-			data["file"] = Logger::logfilename;
-			data["data"] = Logger::backupBuffer;
+			// If failed to write previously saved log msg, send notification to Node.js
+			if (Logger::shared)
+			{
+				auto notification = FBS::Log::CreateWriteFailedNotificationDirect(
+				  Logger::shared->channelNotifier->GetBufferBuilder(),
+				  "write",
+				  strerror(errno),
+				  Logger::logfilename.c_str(),
+				  Logger::backupBuffer.c_str());
+
+				Logger::shared->channelNotifier->Emit(
+				  std::to_string(pid),
+				  FBS::Notification::Event::LOGGER_WRITE_FAILED,
+				  FBS::Notification::Body::Log_WriteFailedNotification,
+				  notification);
+			}
 
 			// Back up a new log msg, try writing it out next time
 			Logger::backupBuffer.assign(Logger::buffer, written);
-
-			if (Logger::shared)
-				Logger::shared->channelNotifier->Emit(std::to_string(Logger::pid), "failedlog", data);
 			return;
 		}
 
-		Logger::backupBuffer.erase();
+		Logger::backupBuffer.clear();
 	}
+
 	// Write a new log message. If failed, save it for another time
-	if (!Logger::openLogFile
-		|| !Logger::logfd 
-		|| (EOF == std::fputs(Logger::buffer, Logger::logfd)) 
-		|| (EOF == std::fputs("\"\n", Logger::logfd)))
+	if (!Logger::openLogFile || !Logger::logfd ||
+	    (EOF == std::fputs(Logger::buffer, Logger::logfd)) ||
+	    (EOF == std::fputs("\"\n", Logger::logfd)))
 	{
-	  Logger::backupBuffer.assign(Logger::buffer, written);
-		
+		Logger::backupBuffer.assign(Logger::buffer, written);
+
 		// Try refreshing file descriptor and hope file write succeeds next time
 		if (!Logger::logfilename.empty())
-			Logger::MSlogrotate();
+			MSlogrotate();
 	}
 }
-
 
 void Logger::MSlogclose()
 {

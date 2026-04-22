@@ -5,12 +5,11 @@
 #include "Logger.hpp"
 #include "MediaSoupErrors.hpp"
 #include "Utils.hpp"
+#include <flatbuffers/flatbuffers.h>
 #include <cctype>   // isprint()
 #include <iterator> // std::ostream_iterator
 #include <mutex>
-#include <nlohmann/json.hpp>
 #include <sstream> // std::ostringstream
-#include <stdexcept>
 extern "C"
 {
 #include <getopt.h>
@@ -38,13 +37,13 @@ absl::flat_hash_map<LogLevel, std::string> Settings::logLevel2String =
 	{ LogLevel::LOG_ERROR, "error" },
 	{ LogLevel::LOG_NONE,  "none"  }
 };
-std::map<std::string, LogDevLevel> Settings::string2LogDevLevel =
-{                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+absl::flat_hash_map<std::string, LogDevLevel> Settings::string2LogDevLevel =
+{
 	{ "debug", LogDevLevel::LOG_DEV_DEBUG },
 	{ "warn",  LogDevLevel::LOG_DEV_WARN  },
 	{ "none",  LogDevLevel::LOG_DEV_NONE  }
 };
-std::map<LogDevLevel, std::string> Settings::logDevLevel2String =
+absl::flat_hash_map<LogDevLevel, std::string> Settings::logDevLevel2String =
 {
 	{ LogDevLevel::LOG_DEV_DEBUG, "debug" },
 	{ LogDevLevel::LOG_DEV_WARN,  "warn"  },
@@ -65,18 +64,19 @@ void Settings::SetConfiguration(int argc, char* argv[])
 	// clang-format off
 	struct option options[] =
 	{
-		{ "logLevel",            optional_argument, nullptr, 'l' },
-		{ "logTags",             optional_argument, nullptr, 't' },
-		{ "logDevLevel",         optional_argument, nullptr, 'd' },
-		{ "logTraceEnabled",     optional_argument, nullptr, 'T' },
-		{ "binStatsDisabled",    optional_argument, nullptr, 'b' },
-		{ "binStatsPath",        optional_argument, nullptr, 'B' },
-		{ "rtcMinPort",          optional_argument, nullptr, 'm' },
-		{ "rtcMaxPort",          optional_argument, nullptr, 'M' },
-		{ "dtlsCertificateFile", optional_argument, nullptr, 'c' },
-		{ "dtlsPrivateKeyFile",  optional_argument, nullptr, 'p' },
+		{ "logLevel",             optional_argument, nullptr, 'l' },
+		{ "logTags",              optional_argument, nullptr, 't' },
+		{ "rtcMinPort",           optional_argument, nullptr, 'm' },
+		{ "rtcMaxPort",           optional_argument, nullptr, 'M' },
+		{ "dtlsCertificateFile",  optional_argument, nullptr, 'c' },
+		{ "dtlsPrivateKeyFile",   optional_argument, nullptr, 'p' },
 		{ "libwebrtcFieldTrials", optional_argument, nullptr, 'W' },
-		{ nullptr, 0, nullptr, 0 }
+		{ "disableLiburing",      optional_argument, nullptr, 'U' },
+		{ "logDevLevel",          optional_argument, nullptr, 'd' },
+		{ "logTraceEnabled",      optional_argument, nullptr, 'T' },
+		{ "binStatsDisabled",     optional_argument, nullptr, 'b' },
+		{ "binStatsPath",         optional_argument, nullptr, 'B' },
+		{ nullptr,                0,                 nullptr,  0  }
 	};
 	// clang-format on
 	std::string stringValue;
@@ -85,14 +85,17 @@ void Settings::SetConfiguration(int argc, char* argv[])
 	/* Parse command line options. */
 
 	// getopt_long_only() is not thread-safe
-	std::lock_guard<std::mutex> lock(globalSyncMutex);
+	const std::lock_guard<std::mutex> lock(globalSyncMutex);
 
 	optind = 1; // Set explicitly, otherwise subsequent runs will fail.
 	opterr = 0; // Don't allow getopt to print error messages.
+
 	while ((c = getopt_long_only(argc, argv, "", options, &optionIdx)) != -1)
 	{
 		if (!optarg)
-			MS_THROW_TYPE_ERROR("unknown configuration parameter: %s", optarg);
+		{
+			MS_THROW_TYPE_ERROR("missing value in command line argument in option '%c'", c);
+		}
 
 		switch (c)
 		{
@@ -109,36 +112,6 @@ void Settings::SetConfiguration(int argc, char* argv[])
 				stringValue = std::string(optarg);
 				logTags.push_back(stringValue);
 
-				break;
-			}
-
-			case 'd':
-			{
-				stringValue = std::string(optarg);
-				SetLogDevLevel(stringValue);
-
-				break;
-			}
-
-			case 'T':
-			{
-				stringValue = std::string(optarg);
-				SetTrace(stringValue == "true" ? true : false);
-
-				break;                                                                  
-			}
-
-			case 'b':
-			{
-				stringValue = std::string(optarg);
-				SetDisableStats(stringValue == "true" ? true : false);
-				break;
-			}
-
-			case 'B':
-			{
-				stringValue = std::string(optarg);
-				SetStatsPath(stringValue);
 				break;
 			}
 
@@ -202,13 +175,61 @@ void Settings::SetConfiguration(int argc, char* argv[])
 				break;
 			}
 
+			case 'U':
+			{
+				stringValue = std::string(optarg);
+
+				if (stringValue == "true")
+				{
+					Settings::configuration.liburingDisabled = true;
+				}
+
+				break;
+			}
+
+			case 'd':
+			{
+				stringValue = std::string(optarg);
+				SetLogDevLevel(stringValue);
+
+				break;
+			}
+
+			case 'T':
+			{
+				stringValue = std::string(optarg);
+				SetTrace(stringValue == "true");
+
+				break;
+			}
+
+			case 'b':
+			{
+				stringValue = std::string(optarg);
+				SetDisableStats(stringValue == "true");
+
+				break;
+			}
+
+			case 'B':
+			{
+				stringValue = std::string(optarg);
+				SetStatsPath(stringValue);
+
+				break;
+			}
+
 			// Invalid option.
 			case '?':
 			{
 				if (isprint(optopt) != 0)
+				{
 					MS_THROW_TYPE_ERROR("invalid option '-%c'", (char)optopt);
+				}
 				else
+				{
 					MS_THROW_TYPE_ERROR("unknown long option given as argument");
+				}
 			}
 
 			// Valid option, but it requires and argument that is not given.
@@ -229,14 +250,103 @@ void Settings::SetConfiguration(int argc, char* argv[])
 
 	// Set logTags.
 	if (!logTags.empty())
+	{
 		Settings::SetLogTags(logTags);
+	}
 
 	// Validate RTC ports.
 	if (Settings::configuration.rtcMaxPort < Settings::configuration.rtcMinPort)
+	{
 		MS_THROW_TYPE_ERROR("rtcMaxPort cannot be less than rtcMinPort");
+	}
 
 	// Set DTLS certificate files (if provided),
 	Settings::SetDtlsCertificateAndPrivateKeyFiles();
+}
+
+void Settings::SetLogLevel(std::string& level)
+{
+	MS_TRACE();
+
+	// Lowcase given level.
+	Utils::String::ToLowerCase(level);
+
+	if (Settings::string2LogLevel.find(level) == Settings::string2LogLevel.end())
+	{
+		MS_THROW_TYPE_ERROR("invalid value '%s' for logLevel", level.c_str());
+	}
+
+	Settings::configuration.logLevel = Settings::string2LogLevel[level];
+}
+
+void Settings::SetLogTags(const std::vector<std::string>& tags)
+{
+	MS_TRACE();
+
+	// Reset logTags.
+	struct LogTags logTags;
+
+	for (const auto& tag : tags)
+	{
+		if (tag == "info")
+		{
+			logTags.info = true;
+		}
+		else if (tag == "ice")
+		{
+			logTags.ice = true;
+		}
+		else if (tag == "dtls")
+		{
+			logTags.dtls = true;
+		}
+		else if (tag == "rtp")
+		{
+			logTags.rtp = true;
+		}
+		else if (tag == "srtp")
+		{
+			logTags.srtp = true;
+		}
+		else if (tag == "rtcp")
+		{
+			logTags.rtcp = true;
+		}
+		else if (tag == "rtx")
+		{
+			logTags.rtx = true;
+		}
+		else if (tag == "bwe")
+		{
+			logTags.bwe = true;
+		}
+		else if (tag == "score")
+		{
+			logTags.score = true;
+		}
+		else if (tag == "simulcast")
+		{
+			logTags.simulcast = true;
+		}
+		else if (tag == "svc")
+		{
+			logTags.svc = true;
+		}
+		else if (tag == "sctp")
+		{
+			logTags.sctp = true;
+		}
+		else if (tag == "xcode")
+		{
+			logTags.xcode = true;
+		}
+		else if (tag == "message")
+		{
+			logTags.message = true;
+		}
+	}
+
+	Settings::configuration.logTags = logTags;
 }
 
 void Settings::PrintConfiguration()
@@ -247,33 +357,61 @@ void Settings::PrintConfiguration()
 	std::ostringstream logTagsStream;
 
 	if (Settings::configuration.logTags.info)
+	{
 		logTags.emplace_back("info");
+	}
 	if (Settings::configuration.logTags.ice)
+	{
 		logTags.emplace_back("ice");
+	}
 	if (Settings::configuration.logTags.dtls)
+	{
 		logTags.emplace_back("dtls");
+	}
 	if (Settings::configuration.logTags.rtp)
+	{
 		logTags.emplace_back("rtp");
+	}
 	if (Settings::configuration.logTags.srtp)
+	{
 		logTags.emplace_back("srtp");
+	}
 	if (Settings::configuration.logTags.rtcp)
+	{
 		logTags.emplace_back("rtcp");
+	}
 	if (Settings::configuration.logTags.rtx)
+	{
 		logTags.emplace_back("rtx");
+	}
 	if (Settings::configuration.logTags.bwe)
+	{
 		logTags.emplace_back("bwe");
+	}
 	if (Settings::configuration.logTags.score)
+	{
 		logTags.emplace_back("score");
+	}
 	if (Settings::configuration.logTags.simulcast)
+	{
 		logTags.emplace_back("simulcast");
+	}
 	if (Settings::configuration.logTags.svc)
+	{
 		logTags.emplace_back("svc");
+	}
 	if (Settings::configuration.logTags.sctp)
+	{
 		logTags.emplace_back("sctp");
+	}
 	if (Settings::configuration.logTags.xcode)
+	{
 		logTags.emplace_back("xcode");
+	}
 	if (Settings::configuration.logTags.message)
+	{
 		logTags.emplace_back("message");
+	}
 
 	if (!logTags.empty())
 	{
@@ -285,32 +423,32 @@ void Settings::PrintConfiguration()
 	MS_DEBUG_TAG_STD(info, "<configuration>");
 
 	MS_DEBUG_TAG_STD(
-	  info,
-	  "  logLevel             : %s",
-	  Settings::logLevel2String[Settings::configuration.logLevel].c_str());
-	MS_DEBUG_TAG_STD(
-		info,
-	  "  logDevLevel         : %s",
-	  Settings::logDevLevel2String[Settings::configuration.logDevLevel].c_str());
-	MS_DEBUG_TAG_STD(info, "  logTags             : %s", logTagsStream.str().c_str());
-	MS_DEBUG_TAG_STD(info, "  logTraceEnabled     : %s", Settings::configuration.logTraceEnabled ? "true" : "false");
-
-	MS_DEBUG_TAG_STD(info, "  logBinStatsDisabled : %s", Settings::configuration.logBinStatsDisabled ? "true" : "false");
-	MS_DEBUG_TAG_STD(info, "  logBinStatsPath     : %s", Settings::configuration.logBinStatsPath.c_str());
-
-	MS_DEBUG_TAG_STD(info, "  rtcMinPort          : %" PRIu16, Settings::configuration.rtcMinPort);
-	MS_DEBUG_TAG_STD(info, "  rtcMaxPort          : %" PRIu16, Settings::configuration.rtcMaxPort);
+	  info, "  logLevel: %s", Settings::logLevel2String[Settings::configuration.logLevel].c_str());
+	MS_DEBUG_TAG_STD(info, "  logTags: %s", logTagsStream.str().c_str());
+	MS_DEBUG_TAG_STD(info, "  rtcMinPort: %" PRIu16, Settings::configuration.rtcMinPort);
+	MS_DEBUG_TAG_STD(info, "  rtcMaxPort: %" PRIu16, Settings::configuration.rtcMaxPort);
 	if (!Settings::configuration.dtlsCertificateFile.empty())
 	{
 		MS_DEBUG_TAG_STD(
-		  info, "  dtlsCertificateFile : %s", Settings::configuration.dtlsCertificateFile.c_str());
-		MS_DEBUG_TAG_STD(
-		  info, "  dtlsPrivateKeyFile  : %s", Settings::configuration.dtlsPrivateKeyFile.c_str());
+		  info, "  dtlsCertificateFile: %s", Settings::configuration.dtlsCertificateFile.c_str());
+		MS_DEBUG_TAG_STD(info, "  dtlsPrivateKeyFile: %s", Settings::configuration.dtlsPrivateKeyFile.c_str());
 	}
 	if (!Settings::configuration.libwebrtcFieldTrials.empty())
 	{
 		MS_DEBUG_TAG(
-		  info, "  libwebrtcFieldTrials : %s", Settings::configuration.libwebrtcFieldTrials.c_str());
+		  info, "  libwebrtcFieldTrials: %s", Settings::configuration.libwebrtcFieldTrials.c_str());
+	}
+	MS_DEBUG_TAG_STD(
+	  info,
+	  "  logDevLevel: %s",
+	  Settings::logDevLevel2String[Settings::configuration.logDevLevel].c_str());
+	MS_DEBUG_TAG_STD(info, "  logTraceEnabled: %s", Settings::configuration.logTraceEnabled ? "true" : "false");
+	MS_DEBUG_TAG_STD(
+	  info, "  logBinStatsDisabled: %s", Settings::configuration.logBinStatsDisabled ? "true" : "false");
+	if (!Settings::configuration.logBinStatsPath.empty())
+	{
+		MS_DEBUG_TAG_STD(
+		  info, "  logBinStatsPath: %s", Settings::configuration.logBinStatsPath.c_str());
 	}
 
 	MS_DEBUG_TAG_STD(info, "</configuration>");
@@ -320,51 +458,48 @@ void Settings::HandleRequest(Channel::ChannelRequest* request)
 {
 	MS_TRACE();
 
-	switch (request->methodId)
+	switch (request->method)
 	{
-		case Channel::ChannelRequest::MethodId::WORKER_UPDATE_SETTINGS:
+		case Channel::ChannelRequest::Method::WORKER_UPDATE_SETTINGS:
 		{
-			auto jsonLogLevelIt = request->data.find("logLevel");
-			auto jsonLogTagsIt  = request->data.find("logTags");
-			auto jsonLogTraceEnabledIt = request->data.find("logTraceEnabled");
-			auto jsonLogDevLevelIt = request->data.find("logDevLevel");
+			const auto* body = request->data->body_as<FBS::Worker::UpdateSettingsRequest>();
 
-			// Update logLevel if requested.
-			if (jsonLogLevelIt != request->data.end() && jsonLogLevelIt->is_string())
+			if (flatbuffers::IsFieldPresent(body, FBS::Worker::UpdateSettingsRequest::VT_LOGLEVEL))
 			{
-				std::string logLevel = *jsonLogLevelIt;
+				auto logLevel = body->logLevel()->str();
 
 				// This may throw.
 				Settings::SetLogLevel(logLevel);
 			}
 
 			// Update logTags if requested.
-			if (jsonLogTagsIt != request->data.end() && jsonLogTagsIt->is_array())
+			if (flatbuffers::IsFieldPresent(body, FBS::Worker::UpdateSettingsRequest::VT_LOGTAGS))
 			{
 				std::vector<std::string> logTags;
 
-				for (const auto& logTag : *jsonLogTagsIt)
+				for (const auto& logTag : *body->logTags())
 				{
-					if (logTag.is_string())
-						logTags.push_back(logTag);
+					logTags.push_back(logTag->str());
 				}
 
 				Settings::SetLogTags(logTags);
 			}
 
-			// Update tracing if requested.
-			if (jsonLogTraceEnabledIt != request->data.end() && jsonLogTagsIt->is_boolean())
+			// Update logDevLevel if requested.
+			if (flatbuffers::IsFieldPresent(body, FBS::Worker::UpdateSettingsRequest::VT_LOGDEVLEVEL))
 			{
-				bool trace = *jsonLogTraceEnabledIt;
+				auto logDevLevel = body->logDevLevel()->str();
 
-				Settings::SetTrace(trace);
+				// This may throw.
+				Settings::SetLogDevLevel(logDevLevel);
 			}
 
-			if (jsonLogDevLevelIt != request->data.end() && jsonLogDevLevelIt->is_string())
+			// Update logTraceEnabled if requested.
+			if (flatbuffers::IsFieldPresent(body, FBS::Worker::UpdateSettingsRequest::VT_LOGTRACEENABLED))
 			{
-				std::string logDevLevel = *jsonLogDevLevelIt;
-				
-				Settings::SetLogDevLevel(logDevLevel);
+				auto logTraceEnabled = body->logTraceEnabled()->str();
+
+				Settings::SetTrace(logTraceEnabled == "true");
 			}
 
 			// Print the new effective configuration.
@@ -377,98 +512,9 @@ void Settings::HandleRequest(Channel::ChannelRequest* request)
 
 		default:
 		{
-			MS_THROW_ERROR("unknown method '%s'", request->method.c_str());
+			MS_THROW_ERROR("unknown method '%s'", request->methodCStr);
 		}
 	}
-}
-
-void Settings::SetTrace(bool trace)
-{
-	MS_TRACE();
-
-	Settings::configuration.logTraceEnabled = trace;
-}
-
-void Settings::SetDisableStats(bool disable)
-{
-	MS_TRACE();
-
-	Settings::configuration.logBinStatsDisabled = disable;
-}
-
-void Settings::SetStatsPath(std::string path)
-{
-	MS_TRACE();
-	
-	Settings::configuration.logBinStatsPath = path;
-}
-
-void Settings::SetLogDevLevel(std::string& devLevel)
-{
-	MS_TRACE();
-
-	// Lowcase given level.
-	Utils::String::ToLowerCase(devLevel);
-
-	if (Settings::string2LogDevLevel.find(devLevel) == Settings::string2LogDevLevel.end())
-		MS_THROW_TYPE_ERROR("invalid value '%s' for logDevLevel", devLevel.c_str());
-
-	Settings::configuration.logDevLevel = Settings::string2LogDevLevel[devLevel];
-}
-
-void Settings::SetLogLevel(std::string& level)
-{
-	MS_TRACE();
-
-	// Lowcase given level.
-	Utils::String::ToLowerCase(level);
-
-	if (Settings::string2LogLevel.find(level) == Settings::string2LogLevel.end())
-		MS_THROW_TYPE_ERROR("invalid value '%s' for logLevel", level.c_str());
-
-	Settings::configuration.logLevel = Settings::string2LogLevel[level];
-}
-
-void Settings::SetLogTags(const std::vector<std::string>& tags)
-{
-	MS_TRACE();
-
-	// Reset logTags.
-	struct LogTags newLogTags;
-
-	for (const auto& tag : tags)
-	{
-		if (tag == "info")
-			newLogTags.info = true;
-		else if (tag == "ice")
-			newLogTags.ice = true;
-		else if (tag == "dtls")
-			newLogTags.dtls = true;
-		else if (tag == "rtp")
-			newLogTags.rtp = true;
-		else if (tag == "srtp")
-			newLogTags.srtp = true;
-		else if (tag == "rtcp")
-			newLogTags.rtcp = true;
-		else if (tag == "rtx")
-			newLogTags.rtx = true;
-		else if (tag == "bwe")
-			newLogTags.bwe = true;
-		else if (tag == "score")
-			newLogTags.score = true;
-		else if (tag == "simulcast")
-			newLogTags.simulcast = true;
-		else if (tag == "svc")
-			newLogTags.svc = true;
-		else if (tag == "sctp")
-			newLogTags.sctp = true;
-		else if (tag == "message")
-			newLogTags.message = true;
-		else if (tag == "xcode")
-			newLogTags.xcode = true;
-	}
-
-	Settings::configuration.logTags = newLogTags;
 }
 
 void Settings::SetDtlsCertificateAndPrivateKeyFiles()
@@ -514,4 +560,39 @@ void Settings::SetDtlsCertificateAndPrivateKeyFiles()
 	{
 		MS_THROW_TYPE_ERROR("dtlsPrivateKeyFile: %s", error.what());
 	}
+}
+
+void Settings::SetLogDevLevel(std::string& devLevel)
+{
+	MS_TRACE();
+
+	Utils::String::ToLowerCase(devLevel);
+
+	if (Settings::string2LogDevLevel.find(devLevel) == Settings::string2LogDevLevel.end())
+	{
+		MS_THROW_TYPE_ERROR("invalid value '%s' for logDevLevel", devLevel.c_str());
+	}
+
+	Settings::configuration.logDevLevel = Settings::string2LogDevLevel[devLevel];
+}
+
+void Settings::SetTrace(bool trace)
+{
+	MS_TRACE();
+
+	Settings::configuration.logTraceEnabled = trace;
+}
+
+void Settings::SetDisableStats(bool disable)
+{
+	MS_TRACE();
+
+	Settings::configuration.logBinStatsDisabled = disable;
+}
+
+void Settings::SetStatsPath(std::string path)
+{
+	MS_TRACE();
+
+	Settings::configuration.logBinStatsPath = std::move(path);
 }

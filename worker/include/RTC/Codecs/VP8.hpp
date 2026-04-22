@@ -37,13 +37,47 @@ namespace RTC
 		public:
 			struct PayloadDescriptor : public RTC::Codecs::PayloadDescriptor
 			{
-				/* Pure virtual methods inherited from RTC::Codecs::PayloadDescriptor. */
-				~PayloadDescriptor() = default;
+				struct EncodingData
+				{
+					uint16_t pictureId;
+					uint8_t tl0PictureIndex;
+				};
 
-				void Dump() const override;
+				struct Encoder : public RTC::Codecs::PayloadDescriptor::Encoder
+				{
+					~Encoder() override = default;
+					explicit Encoder(EncodingData encodingData) : encodingData(encodingData)
+					{
+					}
+					void Encode(uint8_t* data, const VP8::PayloadDescriptor* payloadDescriptor) const;
+
+					EncodingData encodingData;
+				};
+
+				/* Pure virtual methods inherited from RTC::Codecs::PayloadDescriptor. */
+				~PayloadDescriptor() override = default;
+
+				void Dump(int indentation = 0) const override;
 				// Rewrite the buffer with the given pictureId and tl0PictureIndex values.
 				void Encode(uint8_t* data, uint16_t pictureId, uint8_t tl0PictureIndex) const;
+				void Encode(uint8_t* data) const;
 				void Restore(uint8_t* data) const;
+				std::unique_ptr<Codecs::PayloadDescriptor::Encoder> GetEncoder() const
+				{
+					if (this->encoder.has_value())
+					{
+						return std::make_unique<Encoder>(this->encoder.value());
+					}
+					else
+					{
+						return nullptr;
+					}
+				}
+
+				void CreateEncoder(EncodingData encodingData)
+				{
+					this->encoder = Encoder(encodingData);
+				}
 
 				// Mandatory fields.
 				uint8_t extended : 1;
@@ -69,17 +103,14 @@ namespace RTC
 				bool hasTl0PictureIndex{ false };
 				bool hasTlIndex{ false };
 
-                // Added by Amir Pauker 02/27/2024 RND-568
-                uint16_t width {0};
-                uint16_t height {0};
+				std::optional<Encoder> encoder{ std::nullopt };
+				// Added by Amir Pauker 02/27/2024 RND-568
+				uint16_t width{ 0 };
+				uint16_t height{ 0 };
 			};
 
 		public:
-			static VP8::PayloadDescriptor* Parse(
-			  const uint8_t* data,
-			  size_t len,
-			  RTC::RtpPacket::FrameMarking* frameMarking = nullptr,
-			  uint8_t frameMarkingLen                    = 0);
+			static VP8::PayloadDescriptor* Parse(const uint8_t* data, size_t len);
 			static void ProcessRtpPacket(RTC::RtpPacket* packet);
 
 		public:
@@ -110,15 +141,22 @@ namespace RTC
 			{
 			public:
 				explicit PayloadDescriptorHandler(PayloadDescriptor* payloadDescriptor);
-				~PayloadDescriptorHandler() = default;
+				~PayloadDescriptorHandler() override = default;
 
 			public:
-				void Dump() const override
+				void Dump(int indentation = 0) const override
 				{
-					this->payloadDescriptor->Dump();
+					this->payloadDescriptor->Dump(indentation);
 				}
-				bool Process(RTC::Codecs::EncodingContext* encodingContext, uint8_t* data, bool& marker) override;
-				void Restore(uint8_t* data) override;
+				bool Process(
+				  RTC::Codecs::EncodingContext* encodingContext, RTC::RtpPacket* packet, bool& marker) override;
+				void RtpPacketCloned(RtpPacket* packet) override{};
+				std::unique_ptr<RTC::Codecs::PayloadDescriptor::Encoder> GetEncoder() const override
+				{
+					return this->payloadDescriptor->GetEncoder();
+				}
+				void Encode(RtpPacket* packet, Codecs::PayloadDescriptor::Encoder* encoder) override;
+				void Restore(RtpPacket* packet) override;
 				uint8_t GetSpatialLayer() const override
 				{
 					return 0u;
@@ -132,18 +170,8 @@ namespace RTC
 					return this->payloadDescriptor->isKeyFrame;
 				}
 
-				// Added by Amir Pauker 02/27/2024 RND-568
-				uint16_t GetWidth() const override
-				{
-				    return this->payloadDescriptor->width;
-				}
-				uint16_t GetHeight() const override
-				{
-				    return this->payloadDescriptor->height;
-				}
-
 			private:
-				std::unique_ptr<PayloadDescriptor> payloadDescriptor;
+				std::unique_ptr<VP8::PayloadDescriptor> payloadDescriptor;
 			};
 		};
 	} // namespace Codecs

@@ -2,45 +2,148 @@
 // #define MS_LOG_DEV_LEVEL 3
 
 #include "Logger.hpp"
-#include "Utils.hpp"
 #include "RTC/RtpDictionaries.hpp"
 
 namespace RTC
 {
-	/* Class variables. */
-
-	// clang-format off
-	absl::flat_hash_map<std::string, RtpHeaderExtensionUri::Type> RtpHeaderExtensionUri::string2Type =
-	{
-		{ "urn:ietf:params:rtp-hdrext:sdes:mid",                                       RtpHeaderExtensionUri::Type::MID                    },
-		{ "urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id",                             RtpHeaderExtensionUri::Type::RTP_STREAM_ID          },
-		{ "urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id",                    RtpHeaderExtensionUri::Type::REPAIRED_RTP_STREAM_ID },
-		{ "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time",                RtpHeaderExtensionUri::Type::ABS_SEND_TIME          },
-		{ "http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01", RtpHeaderExtensionUri::Type::TRANSPORT_WIDE_CC_01   },
-		// NOTE: Remove this once framemarking draft becomes RFC.
-		{ "http://tools.ietf.org/html/draft-ietf-avtext-framemarking-07",              RtpHeaderExtensionUri::Type::FRAME_MARKING_07       },
-		{ "urn:ietf:params:rtp-hdrext:framemarking",                                   RtpHeaderExtensionUri::Type::FRAME_MARKING          },
-		{ "urn:ietf:params:rtp-hdrext:ssrc-audio-level",                               RtpHeaderExtensionUri::Type::SSRC_AUDIO_LEVEL       },
-		{ "urn:3gpp:video-orientation",                                                RtpHeaderExtensionUri::Type::VIDEO_ORIENTATION      },
-		{ "urn:ietf:params:rtp-hdrext:toffset",                                        RtpHeaderExtensionUri::Type::TOFFSET                },
-		{ "http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time",             RtpHeaderExtensionUri::Type::ABS_CAPTURE_TIME       },
-	};
-	// clang-format on
-
 	/* Class methods. */
 
-	RtpHeaderExtensionUri::Type RtpHeaderExtensionUri::GetType(std::string& uri)
+	RtpHeaderExtensionUri::Type RtpHeaderExtensionUri::TypeFromFbs(
+	  FBS::RtpParameters::RtpHeaderExtensionUri uri)
 	{
-		MS_TRACE();
+		switch (uri)
+		{
+			case FBS::RtpParameters::RtpHeaderExtensionUri::Mid:
+			{
+				return RtpHeaderExtensionUri::Type::MID;
+			}
 
-		// Force lowcase names.
-		Utils::String::ToLowerCase(uri);
+			case FBS::RtpParameters::RtpHeaderExtensionUri::RtpStreamId:
+			{
+				return RtpHeaderExtensionUri::Type::RTP_STREAM_ID;
+			}
 
-		auto it = RtpHeaderExtensionUri::string2Type.find(uri);
+			case FBS::RtpParameters::RtpHeaderExtensionUri::RepairRtpStreamId:
+			{
+				return RtpHeaderExtensionUri::Type::REPAIRED_RTP_STREAM_ID;
+			}
 
-		if (it != RtpHeaderExtensionUri::string2Type.end())
-			return it->second;
+			case FBS::RtpParameters::RtpHeaderExtensionUri::AbsSendTime:
+			{
+				return RtpHeaderExtensionUri::Type::ABS_SEND_TIME;
+			}
 
-		return RtpHeaderExtensionUri::Type::UNKNOWN;
+			case FBS::RtpParameters::RtpHeaderExtensionUri::TransportWideCcDraft01:
+			{
+				return RtpHeaderExtensionUri::Type::TRANSPORT_WIDE_CC_01;
+			}
+
+			case FBS::RtpParameters::RtpHeaderExtensionUri::SsrcAudioLevel:
+			{
+				return RtpHeaderExtensionUri::Type::SSRC_AUDIO_LEVEL;
+			}
+
+			case FBS::RtpParameters::RtpHeaderExtensionUri::VideoOrientation:
+			{
+				return RtpHeaderExtensionUri::Type::VIDEO_ORIENTATION;
+			}
+
+			case FBS::RtpParameters::RtpHeaderExtensionUri::TimeOffset:
+			{
+				return RtpHeaderExtensionUri::Type::TIME_OFFSET;
+			}
+
+			case FBS::RtpParameters::RtpHeaderExtensionUri::PlayoutDelay:
+			{
+				return RtpHeaderExtensionUri::Type::PLAYOUT_DELAY;
+			}
+
+			case FBS::RtpParameters::RtpHeaderExtensionUri::AbsCaptureTime:
+			{
+				return RtpHeaderExtensionUri::Type::ABS_CAPTURE_TIME;
+			}
+
+			case FBS::RtpParameters::RtpHeaderExtensionUri::DependencyDescriptor:
+			{
+				return RtpHeaderExtensionUri::Type::DEPENDENCY_DESCRIPTOR;
+			}
+
+			case FBS::RtpParameters::RtpHeaderExtensionUri::MediasoupPacketId:
+			{
+				return RtpHeaderExtensionUri::Type::MEDIASOUP_PACKET_ID;
+			}
+
+				NO_DEFAULT_GCC();
+		}
 	}
+
+	FBS::RtpParameters::RtpHeaderExtensionUri RtpHeaderExtensionUri::TypeToFbs(
+	  RtpHeaderExtensionUri::Type uri)
+	{
+		switch (uri)
+		{
+			case RtpHeaderExtensionUri::Type::MID:
+			{
+				return FBS::RtpParameters::RtpHeaderExtensionUri::Mid;
+			}
+
+			case RtpHeaderExtensionUri::Type::RTP_STREAM_ID:
+			{
+				return FBS::RtpParameters::RtpHeaderExtensionUri::RtpStreamId;
+			}
+
+			case RtpHeaderExtensionUri::Type::REPAIRED_RTP_STREAM_ID:
+			{
+				return FBS::RtpParameters::RtpHeaderExtensionUri::RepairRtpStreamId;
+			}
+
+			case RtpHeaderExtensionUri::Type::ABS_SEND_TIME:
+			{
+				return FBS::RtpParameters::RtpHeaderExtensionUri::AbsSendTime;
+			}
+
+			case RtpHeaderExtensionUri::Type::TRANSPORT_WIDE_CC_01:
+			{
+				return FBS::RtpParameters::RtpHeaderExtensionUri::TransportWideCcDraft01;
+			}
+
+			case RtpHeaderExtensionUri::Type::SSRC_AUDIO_LEVEL:
+			{
+				return FBS::RtpParameters::RtpHeaderExtensionUri::SsrcAudioLevel;
+			}
+
+			case RtpHeaderExtensionUri::Type::DEPENDENCY_DESCRIPTOR:
+			{
+				return FBS::RtpParameters::RtpHeaderExtensionUri::DependencyDescriptor;
+			}
+
+			case RtpHeaderExtensionUri::Type::VIDEO_ORIENTATION:
+			{
+				return FBS::RtpParameters::RtpHeaderExtensionUri::VideoOrientation;
+			}
+
+			case RtpHeaderExtensionUri::Type::TIME_OFFSET:
+			{
+				return FBS::RtpParameters::RtpHeaderExtensionUri::TimeOffset;
+			}
+
+			case RtpHeaderExtensionUri::Type::ABS_CAPTURE_TIME:
+			{
+				return FBS::RtpParameters::RtpHeaderExtensionUri::AbsCaptureTime;
+			}
+
+			case RtpHeaderExtensionUri::Type::PLAYOUT_DELAY:
+			{
+				return FBS::RtpParameters::RtpHeaderExtensionUri::PlayoutDelay;
+			}
+
+			case RtpHeaderExtensionUri::Type::MEDIASOUP_PACKET_ID:
+			{
+				return FBS::RtpParameters::RtpHeaderExtensionUri::MediasoupPacketId;
+			}
+
+				NO_DEFAULT_GCC();
+		}
+	}
+
 } // namespace RTC

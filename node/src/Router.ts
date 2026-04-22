@@ -1,139 +1,109 @@
-import { v4 as uuidv4 } from 'uuid';
 import { Logger } from './Logger';
-import { EnhancedEventEmitter } from './EnhancedEventEmitter';
+import { EnhancedEventEmitter } from './enhancedEvents';
 import * as ortc from './ortc';
 import { InvalidStateError } from './errors';
-import { Channel } from './Channel';
-import { PayloadChannel } from './PayloadChannel';
-import { Transport, TransportListenIp } from './Transport';
-import { WebRtcTransport, WebRtcTransportOptions } from './WebRtcTransport';
-import { PlainTransport, PlainTransportOptions } from './PlainTransport';
-import { PipeTransport, PipeTransportOptions } from './PipeTransport';
-import { DirectTransport, DirectTransportOptions } from './DirectTransport';
-import { Producer } from './Producer';
-import { Consumer } from './Consumer';
-import { DataProducer } from './DataProducer';
-import { DataConsumer } from './DataConsumer';
-import { RtpObserver } from './RtpObserver';
-import { ActiveSpeakerObserver, ActiveSpeakerObserverOptions } from './ActiveSpeakerObserver';
-import { AudioLevelObserver, AudioLevelObserverOptions } from './AudioLevelObserver';
-import { RtpCapabilities, RtpCodecCapability } from './RtpParameters';
-import { NumSctpStreams } from './SctpParameters';
-import { ShmTransport, ShmTransportOptions } from './ShmTransport';
-import { AppData } from './types';
+import type { Channel } from './Channel';
+import type {
+	Router,
+	PipeToRouterOptions,
+	PipeToRouterResult,
+	PipeTransportPair,
+	RouterDump,
+	RouterEvents,
+	RouterObserver,
+	RouterObserverEvents,
+} from './RouterTypes';
+import type {
+	Transport,
+	TransportListenIp,
+	TransportProtocol,
+} from './TransportTypes';
+import { portRangeToFbs, socketFlagsToFbs } from './Transport';
+import type {
+	WebRtcTransport,
+	WebRtcTransportOptions,
+} from './WebRtcTransportTypes';
+import {
+	WebRtcTransportImpl,
+	parseWebRtcTransportDumpResponse,
+} from './WebRtcTransport';
+import type {
+	PlainTransport,
+	PlainTransportOptions,
+} from './PlainTransportTypes';
+import {
+	PlainTransportImpl,
+	parsePlainTransportDumpResponse,
+} from './PlainTransport';
+import type { PipeTransport, PipeTransportOptions } from './PipeTransportTypes';
+import {
+	PipeTransportImpl,
+	parsePipeTransportDumpResponse,
+} from './PipeTransport';
+import type {
+	DirectTransport,
+	DirectTransportOptions,
+} from './DirectTransportTypes';
+import {
+	DirectTransportImpl,
+	parseDirectTransportDumpResponse,
+} from './DirectTransport';
+import type {
+	ShmTransport,
+	ShmTransportOptions,
+} from './ShmTransport';
+import { ShmTransport as ShmTransportImpl } from './ShmTransport';
+import * as FbsShmTransport from './fbs/shm-transport';
+import type { Producer } from './ProducerTypes';
+import type { Consumer } from './ConsumerTypes';
+import type { DataProducer } from './DataProducerTypes';
+import type { DataConsumer } from './DataConsumerTypes';
+import type { RtpObserver } from './RtpObserverTypes';
+import type {
+	ActiveSpeakerObserver,
+	ActiveSpeakerObserverOptions,
+} from './ActiveSpeakerObserverTypes';
+import { ActiveSpeakerObserverImpl } from './ActiveSpeakerObserver';
+import type {
+	AudioLevelObserver,
+	AudioLevelObserverOptions,
+} from './AudioLevelObserverTypes';
+import { AudioLevelObserverImpl } from './AudioLevelObserver';
+import type {
+	RtpCapabilities,
+	RouterRtpCodecCapability,
+} from './rtpParametersTypes';
+import { cryptoSuiteToFbs } from './srtpParametersFbsUtils';
+import type { AppData } from './types';
+import * as utils from './utils';
+import * as fbsUtils from './fbsUtils';
+import * as FbsActiveSpeakerObserver from './fbs/active-speaker-observer';
+import * as FbsAudioLevelObserver from './fbs/audio-level-observer';
+import * as FbsRequest from './fbs/request';
+import * as FbsWorker from './fbs/worker';
+import * as FbsRouter from './fbs/router';
+import * as FbsTransport from './fbs/transport';
+import { Protocol as FbsTransportProtocol } from './fbs/transport/protocol';
+import * as FbsWebRtcTransport from './fbs/web-rtc-transport';
+import * as FbsPlainTransport from './fbs/plain-transport';
+import * as FbsPipeTransport from './fbs/pipe-transport';
+import * as FbsDirectTransport from './fbs/direct-transport';
+import * as FbsSctpParameters from './fbs/sctp-parameters';
 
-export type RouterOptions<RouterAppData extends AppData = AppData> =
-	{
-		/**
-		 * Router media codecs.
-		 */
-		mediaCodecs?: RtpCodecCapability[];
+export type RouterInternal = {
+	routerId: string;
+};
 
-		/**
-		 * Custom application data.
-		 */
-		appData?: RouterAppData;
-	};
-
-export type PipeToRouterOptions =
-	{
-		/**
-		 * The id of the Producer to consume.
-		 */
-		producerId?: string;
-
-		/**
-		 * The id of the DataProducer to consume.
-		 */
-		dataProducerId?: string;
-
-		/**
-		 * Target Router instance.
-		 */
-		router: Router;
-
-		/**
-		 * IP used in the PipeTransport pair. Default '127.0.0.1'.
-		 */
-		listenIp?: TransportListenIp | string;
-
-		/**
-		 * Create a SCTP association. Default true.
-		 */
-		enableSctp?: boolean;
-
-		/**
-		 * SCTP streams number.
-		 */
-		numSctpStreams?: NumSctpStreams;
-
-		/**
-		 * Enable RTX and NACK for RTP retransmission.
-		 */
-		enableRtx?: boolean;
-
-		/**
-		 * Enable SRTP.
-		 */
-		enableSrtp?: boolean;
-	};
-
-export type PipeToRouterResult =
-	{
-		/**
-		 * The Consumer created in the current Router.
-		 */
-		pipeConsumer?: Consumer;
-
-		/**
-		 * The Producer created in the target Router.
-		 */
-		pipeProducer?: Producer;
-
-		/**
-		 * The DataConsumer created in the current Router.
-		 */
-		pipeDataConsumer?: DataConsumer;
-
-		/**
-		 * The DataProducer created in the target Router.
-		 */
-		pipeDataProducer?: DataProducer;
-	};
-
-type PipeTransportPair =
-	{
-		[key: string]: PipeTransport;
-	};
-
-export type RouterEvents =
-	{
-		workerclose: [];
-		// Private events.
-		'@close': [];
-	};
-
-export type RouterObserverEvents =
-	{
-		close: [];
-		newtransport: [Transport];
-		newrtpobserver: [RtpObserver];
-	};
-
-export type RouterInternal =
-	{
-		routerId: string;
-	};
-
-type RouterData =
-	{
-		rtpCapabilities: RtpCapabilities;
-	};
+type RouterData = {
+	rtpCapabilities: RtpCapabilities;
+};
 
 const logger = new Logger('Router');
 
-export class Router<RouterAppData extends AppData = AppData>
-	extends EnhancedEventEmitter<RouterEvents> {
+export class RouterImpl<RouterAppData extends AppData = AppData>
+	extends EnhancedEventEmitter<RouterEvents>
+	implements Router
+{
 	// Internal data.
 	readonly #internal: RouterInternal;
 
@@ -142,9 +112,6 @@ export class Router<RouterAppData extends AppData = AppData>
 
 	// Channel instance.
 	readonly #channel: Channel;
-
-	// PayloadChannel instance.
-	readonly #payloadChannel: PayloadChannel;
 
 	// Closed flag.
 	#closed = false;
@@ -166,31 +133,26 @@ export class Router<RouterAppData extends AppData = AppData>
 
 	// Map of PipeTransport pair Promises indexed by the id of the Router in
 	// which pipeToRouter() was called.
-	readonly #mapRouterPairPipeTransportPairPromise:
-		Map<string, Promise<PipeTransportPair>> = new Map();
+	readonly #mapRouterPairPipeTransportPairPromise: Map<
+		string,
+		Promise<PipeTransportPair>
+	> = new Map();
 
 	// Observer instance.
-	readonly #observer = new EnhancedEventEmitter<RouterObserverEvents>();
+	readonly #observer: RouterObserver =
+		new EnhancedEventEmitter<RouterObserverEvents>();
 
-	/**
-	 * @private
-	 */
-	constructor(
-		{
-			internal,
-			data,
-			channel,
-			payloadChannel,
-			appData
-		}:
-			{
-				internal: RouterInternal;
-				data: RouterData;
-				channel: Channel;
-				payloadChannel: PayloadChannel;
-				appData?: RouterAppData;
-			}
-	) {
+	constructor({
+		internal,
+		data,
+		channel,
+		appData,
+	}: {
+		internal: RouterInternal;
+		data: RouterData;
+		channel: Channel;
+		appData?: RouterAppData;
+	}) {
 		super();
 
 		logger.debug('constructor()');
@@ -198,63 +160,44 @@ export class Router<RouterAppData extends AppData = AppData>
 		this.#internal = internal;
 		this.#data = data;
 		this.#channel = channel;
-		this.#payloadChannel = payloadChannel;
-		this.#appData = appData || {} as RouterAppData;
+		this.#appData = appData ?? ({} as RouterAppData);
+
+		this.handleListenerError();
 	}
 
-	/**
-	 * Router id.
-	 */
 	get id(): string {
 		return this.#internal.routerId;
 	}
 
-	/**
-	 * Whether the Router is closed.
-	 */
 	get closed(): boolean {
 		return this.#closed;
 	}
 
-	/**
-	 * RTP capabilities of the Router.
-	 */
 	get rtpCapabilities(): RtpCapabilities {
 		return this.#data.rtpCapabilities;
 	}
 
-	/**
-	 * App custom data.
-	 */
 	get appData(): RouterAppData {
 		return this.#appData;
 	}
 
-	/**
-	 * App custom data setter.
-	 */
 	set appData(appData: RouterAppData) {
 		this.#appData = appData;
 	}
 
-	/**
-	 * Observer.
-	 */
-	get observer(): EnhancedEventEmitter<RouterObserverEvents> {
+	get observer(): RouterObserver {
 		return this.#observer;
 	}
 
 	/**
-	 * @private
 	 * Just for testing purposes.
+	 *
+	 * @private
 	 */
 	get transportsForTesting(): Map<string, Transport> {
 		return this.#transports;
 	}
 
-	/**
-	 * Close the Router.
-	 */
 	close(): void {
 		if (this.#closed) {
 			return;
@@ -264,10 +207,17 @@ export class Router<RouterAppData extends AppData = AppData>
 
 		this.#closed = true;
 
-		const reqData = { routerId: this.#internal.routerId };
+		const requestOffset = new FbsWorker.CloseRouterRequestT(
+			this.#internal.routerId
+		).pack(this.#channel.bufferBuilder);
 
-		this.#channel.request('worker.closeRouter', undefined, reqData)
-			.catch(() => { });
+		this.#channel
+			.request(
+				FbsRequest.Method.WORKER_CLOSE_ROUTER,
+				FbsRequest.Body.Worker_CloseRouterRequest,
+				requestOffset
+			)
+			.catch(() => {});
 
 		// Close every Transport.
 		for (const transport of this.#transports.values()) {
@@ -293,11 +243,6 @@ export class Router<RouterAppData extends AppData = AppData>
 		this.#observer.safeEmit('close');
 	}
 
-	/**
-	 * Worker was closed.
-	 *
-	 * @private
-	 */
 	workerClosed(): void {
 		if (this.#closed) {
 			return;
@@ -331,115 +276,255 @@ export class Router<RouterAppData extends AppData = AppData>
 		this.#observer.safeEmit('close');
 	}
 
-	/**
-	 * Dump Router.
-	 */
-	async dump(): Promise<any> {
+	async dump(): Promise<RouterDump> {
 		logger.debug('dump()');
 
-		return this.#channel.request('router.dump', this.#internal.routerId);
+		// Send the request and wait for the response.
+		const response = await this.#channel.request(
+			FbsRequest.Method.ROUTER_DUMP,
+			undefined,
+			undefined,
+			this.#internal.routerId
+		);
+
+		/* Decode Response. */
+		const dump = new FbsRouter.DumpResponse();
+
+		response.body(dump);
+
+		return parseRouterDumpResponse(dump);
 	}
 
-	/**
-	 * Create a WebRtcTransport.
-	 */
-	async createWebRtcTransport<WebRtcTransportAppData extends AppData = AppData>(
-		{
-			webRtcServer,
-			listenIps,
-			port,
-			enableUdp = true,
-			enableTcp = false,
-			preferUdp = false,
-			preferTcp = false,
-			initialAvailableOutgoingBitrate = 600000,
-			enableSctp = false,
-			numSctpStreams = { OS: 1024, MIS: 1024 },
-			maxSctpMessageSize = 262144,
-			sctpSendBufferSize = 262144,
-			appData
-		}: WebRtcTransportOptions<WebRtcTransportAppData>
-	): Promise<WebRtcTransport<WebRtcTransportAppData>> {
+	async createWebRtcTransport<
+		WebRtcTransportAppData extends AppData = AppData,
+	>({
+		webRtcServer,
+		listenInfos,
+		listenIps,
+		port,
+		enableUdp,
+		enableTcp,
+		preferUdp = false,
+		preferTcp = false,
+		initialAvailableOutgoingBitrate = 600000,
+		enableSctp = false,
+		numSctpStreams = { OS: 1024, MIS: 1024 },
+		maxSctpMessageSize = 262144,
+		sctpSendBufferSize = 262144,
+		iceConsentTimeout = 30,
+		appData,
+	}: WebRtcTransportOptions<WebRtcTransportAppData>): Promise<
+		WebRtcTransport<WebRtcTransportAppData>
+	> {
 		logger.debug('createWebRtcTransport()');
 
-		if (!webRtcServer && !Array.isArray(listenIps)) {
-			throw new TypeError('missing webRtcServer and listenIps (one of them is mandatory)');
-		}
-		else if (appData && typeof appData !== 'object') {
+		if (
+			!webRtcServer &&
+			!Array.isArray(listenInfos) &&
+			!Array.isArray(listenIps)
+		) {
+			throw new TypeError(
+				'missing webRtcServer, listenInfos and listenIps (one of them is mandatory)'
+			);
+		} else if (webRtcServer && listenInfos && listenIps) {
+			throw new TypeError(
+				'only one of webRtcServer, listenInfos and listenIps must be given'
+			);
+		} else if (
+			numSctpStreams &&
+			(typeof numSctpStreams.OS !== 'number' ||
+				typeof numSctpStreams.MIS !== 'number')
+		) {
+			throw new TypeError('if given, numSctpStreams must contain OS and MIS');
+		} else if (appData && typeof appData !== 'object') {
 			throw new TypeError('if given, appData must be an object');
 		}
 
-		if (listenIps) {
-			listenIps = listenIps.map((listenIp) => {
-				if (typeof listenIp === 'string' && listenIp) {
-					return { ip: listenIp };
-				}
-				else if (typeof listenIp === 'object') {
-					return {
-						ip: listenIp.ip,
-						announcedIp: listenIp.announcedIp || undefined
-					};
-				}
-				else {
-					throw new TypeError('wrong listenIp');
-				}
-			});
+		// If webRtcServer is given, then do not force default values for enableUdp
+		// and enableTcp. Otherwise set them if unset.
+		if (webRtcServer) {
+			enableUdp ??= true;
+			enableTcp ??= true;
+		} else {
+			enableUdp ??= true;
+			enableTcp ??= false;
 		}
 
-		const reqData =
-		{
-			transportId: uuidv4(),
-			webRtcServerId: webRtcServer ? webRtcServer.id : undefined,
-			listenIps,
-			port,
-			enableUdp,
-			enableTcp,
-			preferUdp,
-			preferTcp,
+		// Convert deprecated TransportListenIps to TransportListenInfos.
+		if (listenIps) {
+			// Normalize IP strings to TransportListenIp objects.
+			listenIps = listenIps.map(listenIp => {
+				if (typeof listenIp === 'string') {
+					return { ip: listenIp };
+				} else {
+					return listenIp;
+				}
+			});
+
+			listenInfos = [];
+
+			const orderedProtocols: TransportProtocol[] = [];
+
+			if (enableUdp && (preferUdp || !enableTcp || !preferTcp)) {
+				orderedProtocols.push('udp');
+
+				if (enableTcp) {
+					orderedProtocols.push('tcp');
+				}
+			} else if (enableTcp && ((preferTcp && !preferUdp) || !enableUdp)) {
+				orderedProtocols.push('tcp');
+
+				if (enableUdp) {
+					orderedProtocols.push('udp');
+				}
+			}
+
+			for (const listenIp of listenIps as TransportListenIp[]) {
+				for (const protocol of orderedProtocols) {
+					listenInfos.push({
+						protocol: protocol,
+						ip: listenIp.ip,
+						announcedAddress: listenIp.announcedIp,
+						port: port,
+					});
+				}
+			}
+		}
+
+		const transportId = utils.generateUUIDv4();
+
+		/* Build Request. */
+		let webRtcTransportListenServer:
+			| FbsWebRtcTransport.ListenServerT
+			| undefined;
+		let webRtcTransportListenIndividual:
+			| FbsWebRtcTransport.ListenIndividualT
+			| undefined;
+
+		if (webRtcServer) {
+			webRtcTransportListenServer = new FbsWebRtcTransport.ListenServerT(
+				webRtcServer.id
+			);
+		} else {
+			const fbsListenInfos: FbsTransport.ListenInfoT[] = [];
+
+			for (const listenInfo of listenInfos!) {
+				fbsListenInfos.push(
+					new FbsTransport.ListenInfoT(
+						listenInfo.protocol === 'udp'
+							? FbsTransportProtocol.UDP
+							: FbsTransportProtocol.TCP,
+						listenInfo.ip,
+						listenInfo.announcedAddress ?? listenInfo.announcedIp,
+						Boolean(listenInfo.exposeInternalIp),
+						listenInfo.port,
+						portRangeToFbs(listenInfo.portRange),
+						socketFlagsToFbs(listenInfo.flags),
+						listenInfo.sendBufferSize,
+						listenInfo.recvBufferSize
+					)
+				);
+			}
+
+			webRtcTransportListenIndividual =
+				new FbsWebRtcTransport.ListenIndividualT(fbsListenInfos);
+		}
+
+		const baseTransportOptions = new FbsTransport.OptionsT(
+			undefined /* direct */,
+			undefined /* maxMessageSize */,
 			initialAvailableOutgoingBitrate,
 			enableSctp,
-			numSctpStreams,
+			new FbsSctpParameters.NumSctpStreamsT(
+				numSctpStreams.OS,
+				numSctpStreams.MIS
+			),
 			maxSctpMessageSize,
 			sctpSendBufferSize,
-			appData,
-			isDataChannel: true
-		};
+			true /* isDataChannel */,
+			(appData as any)?.callId ?? null,
+			(appData as any)?.peerId ?? null,
+			(appData as any)?.mirrorId ?? null,
+			(appData as any)?.streamName ?? null,
+			undefined /* shm */,
+			undefined /* log */,
+			undefined /* listenIp */,
+			(appData as any)?.clientReferrer ?? null,
+			(appData as any)?.producerStats ?? false
+		);
 
-		const data = webRtcServer
-			? await this.#channel.request('router.createWebRtcTransportWithServer', this.#internal.routerId, reqData)
-			: await this.#channel.request('router.createWebRtcTransport', this.#internal.routerId, reqData);
+		const webRtcTransportOptions =
+			new FbsWebRtcTransport.WebRtcTransportOptionsT(
+				baseTransportOptions,
+				webRtcServer
+					? FbsWebRtcTransport.Listen.ListenServer
+					: FbsWebRtcTransport.Listen.ListenIndividual,
+				webRtcServer
+					? webRtcTransportListenServer
+					: webRtcTransportListenIndividual,
+				enableUdp,
+				enableTcp,
+				preferUdp,
+				preferTcp,
+				iceConsentTimeout
+			);
 
-		const transport = new WebRtcTransport<WebRtcTransportAppData>(
-			{
-				internal:
-				{
+		const requestOffset = new FbsRouter.CreateWebRtcTransportRequestT(
+			transportId,
+			webRtcTransportOptions
+		).pack(this.#channel.bufferBuilder);
+
+		const response = await this.#channel.request(
+			webRtcServer
+				? FbsRequest.Method.ROUTER_CREATE_WEBRTCTRANSPORT_WITH_SERVER
+				: FbsRequest.Method.ROUTER_CREATE_WEBRTCTRANSPORT,
+			FbsRequest.Body.Router_CreateWebRtcTransportRequest,
+			requestOffset,
+			this.#internal.routerId
+		);
+
+		/* Decode Response. */
+		const data = new FbsWebRtcTransport.DumpResponse();
+
+		response.body(data);
+
+		const webRtcTransportData = parseWebRtcTransportDumpResponse(data);
+
+		const transport: WebRtcTransport<WebRtcTransportAppData> =
+			new WebRtcTransportImpl({
+				internal: {
 					...this.#internal,
-					transportId: reqData.transportId
+					transportId: transportId,
 				},
-				data,
+				data: webRtcTransportData,
 				channel: this.#channel,
-				payloadChannel: this.#payloadChannel,
 				appData,
-				getRouterRtpCapabilities: (): RtpCapabilities => this.#data.rtpCapabilities,
-				getProducerById: (producerId: string): Producer | undefined => (
-					this.#producers.get(producerId)
-				),
-				getDataProducerById: (dataProducerId: string): DataProducer | undefined => (
-					this.#dataProducers.get(dataProducerId)
-				)
+				getRouterRtpCapabilities: (): RtpCapabilities =>
+					this.#data.rtpCapabilities,
+				getProducerById: (producerId: string): Producer | undefined =>
+					this.#producers.get(producerId),
+				getDataProducerById: (
+					dataProducerId: string
+				): DataProducer | undefined => this.#dataProducers.get(dataProducerId),
 			});
 
 		this.#transports.set(transport.id, transport);
 		transport.on('@close', () => this.#transports.delete(transport.id));
-		transport.on('@listenserverclose', () => this.#transports.delete(transport.id));
-		transport.on('@newproducer', (producer: Producer) => this.#producers.set(producer.id, producer));
-		transport.on('@producerclose', (producer: Producer) => this.#producers.delete(producer.id));
-		transport.on('@newdataproducer', (dataProducer: DataProducer) => (
+		transport.on('@listenserverclose', () =>
+			this.#transports.delete(transport.id)
+		);
+		transport.on('@newproducer', (producer: Producer) =>
+			this.#producers.set(producer.id, producer)
+		);
+		transport.on('@producerclose', (producer: Producer) =>
+			this.#producers.delete(producer.id)
+		);
+		transport.on('@newdataproducer', (dataProducer: DataProducer) =>
 			this.#dataProducers.set(dataProducer.id, dataProducer)
-		));
-		transport.on('@dataproducerclose', (dataProducer: DataProducer) => (
+		);
+		transport.on('@dataproducerclose', (dataProducer: DataProducer) =>
 			this.#dataProducers.delete(dataProducer.id)
-		));
+		);
 
 		// Emit observer event.
 		this.#observer.safeEmit('newtransport', transport);
@@ -451,100 +536,175 @@ export class Router<RouterAppData extends AppData = AppData>
 		return transport;
 	}
 
-	/**
-	 * Create a PlainTransport.
-	 */
-	async createPlainTransport<PlainTransportAppData extends AppData = AppData>(
-		{
-			listenIp,
-			port,
-			rtcpMux = true,
-			comedia = false,
-			disableOriginCheck = false,
-			enableSctp = false,
-			numSctpStreams = { OS: 1024, MIS: 1024 },
-			maxSctpMessageSize = 262144,
-			sctpSendBufferSize = 262144,
-			enableSrtp = false,
-			srtpCryptoSuite = 'AES_CM_128_HMAC_SHA1_80',
-			appData
-		}: PlainTransportOptions<PlainTransportAppData>
-	): Promise<PlainTransport<PlainTransportAppData>> {
+	async createPlainTransport<PlainTransportAppData extends AppData = AppData>({
+		listenInfo,
+		rtcpListenInfo,
+		listenIp,
+		port,
+		rtcpMux = true,
+		comedia = false,
+		enableSctp = false,
+		numSctpStreams = { OS: 1024, MIS: 1024 },
+		maxSctpMessageSize = 262144,
+		sctpSendBufferSize = 262144,
+		enableSrtp = false,
+		srtpCryptoSuite = 'AES_CM_128_HMAC_SHA1_80',
+		appData,
+	}: PlainTransportOptions<PlainTransportAppData>): Promise<
+		PlainTransport<PlainTransportAppData>
+	> {
 		logger.debug('createPlainTransport()');
 
-		if (!listenIp) {
-			throw new TypeError('missing listenIp');
-		}
-		else if (appData && typeof appData !== 'object') {
+		if (!listenInfo && !listenIp) {
+			throw new TypeError(
+				'missing listenInfo and listenIp (one of them is mandatory)'
+			);
+		} else if (listenInfo && listenIp) {
+			throw new TypeError('only one of listenInfo and listenIp must be given');
+		} else if (appData && typeof appData !== 'object') {
 			throw new TypeError('if given, appData must be an object');
 		}
 
-		if (typeof listenIp === 'string' && listenIp) {
-			listenIp = { ip: listenIp };
-		}
-		else if (typeof listenIp === 'object') {
-			listenIp =
-			{
-				ip: listenIp.ip,
-				announcedIp: listenIp.announcedIp || undefined
-			};
-		}
-		else {
-			throw new TypeError('wrong listenIp');
+		// If rtcpMux is enabled, ignore rtcpListenInfo.
+		if (rtcpMux && rtcpListenInfo) {
+			logger.warn(
+				'createPlainTransport() | ignoring rtcpMux since rtcpListenInfo is given'
+			);
+
+			rtcpMux = false;
 		}
 
-		const reqData =
-		{
-			transportId: uuidv4(),
-			listenIp,
-			port,
+		// Convert deprecated TransportListenIps to TransportListenInfos.
+		if (listenIp) {
+			// Normalize IP string to TransportListenIp object.
+			if (typeof listenIp === 'string') {
+				listenIp = { ip: listenIp };
+			}
+
+			listenInfo = {
+				protocol: 'udp',
+				ip: listenIp.ip,
+				announcedAddress: listenIp.announcedIp,
+				port: port,
+			};
+		}
+
+		const transportId = utils.generateUUIDv4();
+
+		/* Build Request. */
+		const baseTransportOptions = new FbsTransport.OptionsT(
+			undefined /* direct */,
+			undefined /* maxMessageSize */,
+			undefined /* initialAvailableOutgoingBitrate */,
+			enableSctp,
+			new FbsSctpParameters.NumSctpStreamsT(
+				numSctpStreams.OS,
+				numSctpStreams.MIS
+			),
+			maxSctpMessageSize,
+			sctpSendBufferSize,
+			false /* isDataChannel */,
+			(appData as any)?.callId ?? null,
+			(appData as any)?.peerId ?? null,
+			(appData as any)?.mirrorId ?? null,
+			(appData as any)?.streamName ?? null,
+			undefined /* shm */,
+			undefined /* log */,
+			undefined /* listenIp */,
+			(appData as any)?.clientReferrer ?? null,
+			(appData as any)?.producerStats ?? false
+		);
+
+		const plainTransportOptions = new FbsPlainTransport.PlainTransportOptionsT(
+			baseTransportOptions,
+			new FbsTransport.ListenInfoT(
+				listenInfo!.protocol === 'udp'
+					? FbsTransportProtocol.UDP
+					: FbsTransportProtocol.TCP,
+				listenInfo!.ip,
+				listenInfo!.announcedAddress ?? listenInfo!.announcedIp,
+				Boolean(listenInfo!.exposeInternalIp),
+				listenInfo!.port,
+				portRangeToFbs(listenInfo!.portRange),
+				socketFlagsToFbs(listenInfo!.flags),
+				listenInfo!.sendBufferSize,
+				listenInfo!.recvBufferSize
+			),
+			rtcpListenInfo
+				? new FbsTransport.ListenInfoT(
+						rtcpListenInfo.protocol === 'udp'
+							? FbsTransportProtocol.UDP
+							: FbsTransportProtocol.TCP,
+						rtcpListenInfo.ip,
+						rtcpListenInfo.announcedAddress ?? rtcpListenInfo.announcedIp,
+						Boolean(rtcpListenInfo.exposeInternalIp),
+						rtcpListenInfo.port,
+						portRangeToFbs(rtcpListenInfo.portRange),
+						socketFlagsToFbs(rtcpListenInfo.flags),
+						rtcpListenInfo.sendBufferSize,
+						rtcpListenInfo.recvBufferSize
+					)
+				: undefined,
 			rtcpMux,
 			comedia,
-			disableOriginCheck,
-			enableSctp,
-			numSctpStreams,
-			maxSctpMessageSize,
-			sctpSendBufferSize,
-			isDataChannel: false,
 			enableSrtp,
-			srtpCryptoSuite,
-			appData,
-		};
+			cryptoSuiteToFbs(srtpCryptoSuite)
+		);
 
-		const data =
-			await this.#channel.request('router.createPlainTransport', this.#internal.routerId, reqData);
+		const requestOffset = new FbsRouter.CreatePlainTransportRequestT(
+			transportId,
+			plainTransportOptions
+		).pack(this.#channel.bufferBuilder);
 
-		const transport = new PlainTransport<PlainTransportAppData>(
-			{
-				internal:
-				{
+		const response = await this.#channel.request(
+			FbsRequest.Method.ROUTER_CREATE_PLAINTRANSPORT,
+			FbsRequest.Body.Router_CreatePlainTransportRequest,
+			requestOffset,
+			this.#internal.routerId
+		);
+
+		/* Decode Response. */
+		const data = new FbsPlainTransport.DumpResponse();
+
+		response.body(data);
+
+		const plainTransportData = parsePlainTransportDumpResponse(data);
+
+		const transport: PlainTransport<PlainTransportAppData> =
+			new PlainTransportImpl({
+				internal: {
 					...this.#internal,
-					transportId: reqData.transportId
+					transportId: transportId,
 				},
-				data,
+				data: plainTransportData,
 				channel: this.#channel,
-				payloadChannel: this.#payloadChannel,
 				appData,
-				getRouterRtpCapabilities: (): RtpCapabilities => this.#data.rtpCapabilities,
-				getProducerById: (producerId: string): Producer | undefined => (
-					this.#producers.get(producerId)
-				),
-				getDataProducerById: (dataProducerId: string): DataProducer | undefined => (
-					this.#dataProducers.get(dataProducerId)
-				)
+				getRouterRtpCapabilities: (): RtpCapabilities =>
+					this.#data.rtpCapabilities,
+				getProducerById: (producerId: string): Producer | undefined =>
+					this.#producers.get(producerId),
+				getDataProducerById: (
+					dataProducerId: string
+				): DataProducer | undefined => this.#dataProducers.get(dataProducerId),
 			});
 
 		this.#transports.set(transport.id, transport);
 		transport.on('@close', () => this.#transports.delete(transport.id));
-		transport.on('@listenserverclose', () => this.#transports.delete(transport.id));
-		transport.on('@newproducer', (producer: Producer) => this.#producers.set(producer.id, producer));
-		transport.on('@producerclose', (producer: Producer) => this.#producers.delete(producer.id));
-		transport.on('@newdataproducer', (dataProducer: DataProducer) => (
+		transport.on('@listenserverclose', () =>
+			this.#transports.delete(transport.id)
+		);
+		transport.on('@newproducer', (producer: Producer) =>
+			this.#producers.set(producer.id, producer)
+		);
+		transport.on('@producerclose', (producer: Producer) =>
+			this.#producers.delete(producer.id)
+		);
+		transport.on('@newdataproducer', (dataProducer: DataProducer) =>
 			this.#dataProducers.set(dataProducer.id, dataProducer)
-		));
-		transport.on('@dataproducerclose', (dataProducer: DataProducer) => (
+		);
+		transport.on('@dataproducerclose', (dataProducer: DataProducer) =>
 			this.#dataProducers.delete(dataProducer.id)
-		));
+		);
 
 		// Emit observer event.
 		this.#observer.safeEmit('newtransport', transport);
@@ -552,96 +712,146 @@ export class Router<RouterAppData extends AppData = AppData>
 		return transport;
 	}
 
-	/**
-	 * Create a PipeTransport.
-	 */
-	async createPipeTransport<PipeTransportAppData extends AppData = AppData>(
-		{
-			listenIp,
-			disableOriginCheck = false,
-			port,
-			enableSctp = false,
-			numSctpStreams = { OS: 1024, MIS: 1024 },
-			maxSctpMessageSize = 268435456,
-			sctpSendBufferSize = 268435456,
-			enableRtx = false,
-			enableSrtp = false,
-			appData
-		}: PipeTransportOptions<PipeTransportAppData>
-	): Promise<PipeTransport<PipeTransportAppData>> {
-		logger.debug('createPipeTransport() listenIp:[%o] enableRtx:[%o] appData:[%o]', listenIp, enableRtx, appData);
+	async createPipeTransport<PipeTransportAppData extends AppData = AppData>({
+		listenInfo,
+		listenIp,
+		port,
+		enableSctp = false,
+		numSctpStreams = { OS: 1024, MIS: 1024 },
+		maxSctpMessageSize = 268435456,
+		sctpSendBufferSize = 268435456,
+		enableRtx = false,
+		enableSrtp = false,
+		appData,
+	}: PipeTransportOptions<PipeTransportAppData>): Promise<
+		PipeTransport<PipeTransportAppData>
+	> {
+		logger.debug('createPipeTransport()');
 
-		if (!listenIp) {
-			throw new TypeError('missing listenIp');
-		}
-		else if (appData && typeof appData !== 'object') {
+		if (!listenInfo && !listenIp) {
+			throw new TypeError(
+				'missing listenInfo and listenIp (one of them is mandatory)'
+			);
+		} else if (listenInfo && listenIp) {
+			throw new TypeError('only one of listenInfo and listenIp must be given');
+		} else if (appData && typeof appData !== 'object') {
 			throw new TypeError('if given, appData must be an object');
 		}
 
-		if (typeof listenIp === 'string' && listenIp) {
-			listenIp = { ip: listenIp };
-		}
-		else if (typeof listenIp === 'object') {
-			listenIp =
-			{
+		// Convert deprecated TransportListenIps to TransportListenInfos.
+		if (listenIp) {
+			// Normalize IP string to TransportListenIp object.
+			if (typeof listenIp === 'string') {
+				listenIp = { ip: listenIp };
+			}
+
+			listenInfo = {
+				protocol: 'udp',
 				ip: listenIp.ip,
-				announcedIp: listenIp.announcedIp || undefined
+				announcedAddress: listenIp.announcedIp,
+				port: port,
 			};
 		}
-		else {
-			throw new TypeError('wrong listenIp');
-		}
 
-		const reqData =
-		{
-			transportId: uuidv4(),
-			listenIp,
-			disableOriginCheck,
-			port,
+		const transportId = utils.generateUUIDv4();
+
+		/* Build Request. */
+		const baseTransportOptions = new FbsTransport.OptionsT(
+			undefined /* direct */,
+			undefined /* maxMessageSize */,
+			undefined /* initialAvailableOutgoingBitrate */,
 			enableSctp,
-			numSctpStreams,
+			new FbsSctpParameters.NumSctpStreamsT(
+				numSctpStreams.OS,
+				numSctpStreams.MIS
+			),
 			maxSctpMessageSize,
 			sctpSendBufferSize,
-			isDataChannel: false,
+			false /* isDataChannel */,
+			(appData as any)?.callId ?? null,
+			(appData as any)?.peerId ?? null,
+			(appData as any)?.mirrorId ?? null,
+			(appData as any)?.streamName ?? null,
+			undefined /* shm */,
+			undefined /* log */,
+			undefined /* listenIp */,
+			(appData as any)?.clientReferrer ?? null,
+			(appData as any)?.producerStats ?? false
+		);
+
+		const pipeTransportOptions = new FbsPipeTransport.PipeTransportOptionsT(
+			baseTransportOptions,
+			new FbsTransport.ListenInfoT(
+				listenInfo!.protocol === 'udp'
+					? FbsTransportProtocol.UDP
+					: FbsTransportProtocol.TCP,
+				listenInfo!.ip,
+				listenInfo!.announcedAddress ?? listenInfo!.announcedIp,
+				Boolean(listenInfo!.exposeInternalIp),
+				listenInfo!.port,
+				portRangeToFbs(listenInfo!.portRange),
+				socketFlagsToFbs(listenInfo!.flags),
+				listenInfo!.sendBufferSize,
+				listenInfo!.recvBufferSize
+			),
 			enableRtx,
-			enableSrtp,
-			appData,
-		};
+			enableSrtp
+		);
 
-		const data =
-			await this.#channel.request('router.createPipeTransport', this.#internal.routerId, reqData);
+		const requestOffset = new FbsRouter.CreatePipeTransportRequestT(
+			transportId,
+			pipeTransportOptions
+		).pack(this.#channel.bufferBuilder);
 
-		const transport = new PipeTransport<PipeTransportAppData>(
-			{
-				internal:
-				{
+		const response = await this.#channel.request(
+			FbsRequest.Method.ROUTER_CREATE_PIPETRANSPORT,
+			FbsRequest.Body.Router_CreatePipeTransportRequest,
+			requestOffset,
+			this.#internal.routerId
+		);
+
+		/* Decode Response. */
+		const data = new FbsPipeTransport.DumpResponse();
+
+		response.body(data);
+
+		const pipeTransportData = parsePipeTransportDumpResponse(data);
+
+		const transport: PipeTransport<PipeTransportAppData> =
+			new PipeTransportImpl({
+				internal: {
 					...this.#internal,
-					transportId: reqData.transportId
+					transportId,
 				},
-				data,
+				data: pipeTransportData,
 				channel: this.#channel,
-				payloadChannel: this.#payloadChannel,
 				appData,
-				getRouterRtpCapabilities: (): RtpCapabilities => this.#data.rtpCapabilities,
-				getProducerById: (producerId: string): Producer | undefined => (
-					this.#producers.get(producerId)
-				),
-				getDataProducerById: (dataProducerId: string): DataProducer | undefined => (
-					this.#dataProducers.get(dataProducerId)
-				)
+				getRouterRtpCapabilities: (): RtpCapabilities =>
+					this.#data.rtpCapabilities,
+				getProducerById: (producerId: string): Producer | undefined =>
+					this.#producers.get(producerId),
+				getDataProducerById: (
+					dataProducerId: string
+				): DataProducer | undefined => this.#dataProducers.get(dataProducerId),
 			});
 
 		this.#transports.set(transport.id, transport);
 		transport.on('@close', () => this.#transports.delete(transport.id));
-		transport.on('@listenserverclose', () => this.#transports.delete(transport.id));
-		transport.on('@newproducer', (producer: Producer) => this.#producers.set(producer.id, producer));
-		transport.on('@producerclose', (producer: Producer) => this.#producers.delete(producer.id));
-		transport.on('@newdataproducer', (dataProducer: DataProducer) => (
+		transport.on('@listenserverclose', () =>
+			this.#transports.delete(transport.id)
+		);
+		transport.on('@newproducer', (producer: Producer) =>
+			this.#producers.set(producer.id, producer)
+		);
+		transport.on('@producerclose', (producer: Producer) =>
+			this.#producers.delete(producer.id)
+		);
+		transport.on('@newdataproducer', (dataProducer: DataProducer) =>
 			this.#dataProducers.set(dataProducer.id, dataProducer)
-		));
-		transport.on('@dataproducerclose', (dataProducer: DataProducer) => (
+		);
+		transport.on('@dataproducerclose', (dataProducer: DataProducer) =>
 			this.#dataProducers.delete(dataProducer.id)
-		));
+		);
 
 		// Emit observer event.
 		this.#observer.safeEmit('newtransport', transport);
@@ -649,63 +859,102 @@ export class Router<RouterAppData extends AppData = AppData>
 		return transport;
 	}
 
-	/**
-	 * Create a DirectTransport.
-	 */
 	async createDirectTransport<DirectTransportAppData extends AppData = AppData>(
 		{
 			maxMessageSize = 262144,
-			appData
-		}: DirectTransportOptions<DirectTransportAppData> =
-			{
-				maxMessageSize: 262144
-			}
+			appData,
+		}: DirectTransportOptions<DirectTransportAppData> = {
+			maxMessageSize: 262144,
+		}
 	): Promise<DirectTransport<DirectTransportAppData>> {
 		logger.debug('createDirectTransport()');
 
-		const internal = { ...this.#internal, transportId: uuidv4() };
-		const reqData =
-		{
-			transportId: uuidv4(),
-			direct: true,
+		if (typeof maxMessageSize !== 'number' || maxMessageSize < 0) {
+			throw new TypeError('if given, maxMessageSize must be a positive number');
+		} else if (appData && typeof appData !== 'object') {
+			throw new TypeError('if given, appData must be an object');
+		}
+
+		const transportId = utils.generateUUIDv4();
+
+		/* Build Request. */
+		const baseTransportOptions = new FbsTransport.OptionsT(
+			true /* direct */,
 			maxMessageSize,
-			appData,
-		};
+			undefined /* initialAvailableOutgoingBitrate */,
+			undefined /* enableSctp */,
+			undefined /* numSctpStreams */,
+			undefined /* maxSctpMessageSize */,
+			undefined /* sctpSendBufferSize */,
+			undefined /* isDataChannel */,
+			(appData as any)?.callId ?? null,
+			(appData as any)?.peerId ?? null,
+			(appData as any)?.mirrorId ?? null,
+			(appData as any)?.streamName ?? null,
+			undefined /* shm */,
+			undefined /* log */,
+			undefined /* listenIp */,
+			(appData as any)?.clientReferrer ?? null,
+			(appData as any)?.producerStats ?? false
+		);
 
-		const data =
-			await this.#channel.request('router.createDirectTransport', this.#internal.routerId, reqData);
+		const directTransportOptions =
+			new FbsDirectTransport.DirectTransportOptionsT(baseTransportOptions);
 
-		const transport = new DirectTransport<DirectTransportAppData>(
-			{
-				internal:
-				{
+		const requestOffset = new FbsRouter.CreateDirectTransportRequestT(
+			transportId,
+			directTransportOptions
+		).pack(this.#channel.bufferBuilder);
+
+		const response = await this.#channel.request(
+			FbsRequest.Method.ROUTER_CREATE_DIRECTTRANSPORT,
+			FbsRequest.Body.Router_CreateDirectTransportRequest,
+			requestOffset,
+			this.#internal.routerId
+		);
+
+		/* Decode Response. */
+		const data = new FbsDirectTransport.DumpResponse();
+
+		response.body(data);
+
+		const directTransportData = parseDirectTransportDumpResponse(data);
+
+		const transport: DirectTransport<DirectTransportAppData> =
+			new DirectTransportImpl({
+				internal: {
 					...this.#internal,
-					transportId: reqData.transportId
+					transportId: transportId,
 				},
-				data,
+				data: directTransportData,
 				channel: this.#channel,
-				payloadChannel: this.#payloadChannel,
 				appData,
-				getRouterRtpCapabilities: (): RtpCapabilities => this.#data.rtpCapabilities,
-				getProducerById: (producerId: string): Producer | undefined => (
-					this.#producers.get(producerId)
-				),
-				getDataProducerById: (dataProducerId: string): DataProducer | undefined => (
-					this.#dataProducers.get(dataProducerId)
-				)
+				getRouterRtpCapabilities: (): RtpCapabilities =>
+					this.#data.rtpCapabilities,
+				getProducerById: (producerId: string): Producer | undefined =>
+					this.#producers.get(producerId),
+				getDataProducerById: (
+					dataProducerId: string
+				): DataProducer | undefined => this.#dataProducers.get(dataProducerId),
 			});
 
 		this.#transports.set(transport.id, transport);
 		transport.on('@close', () => this.#transports.delete(transport.id));
-		transport.on('@listenserverclose', () => this.#transports.delete(transport.id));
-		transport.on('@newproducer', (producer: Producer) => this.#producers.set(producer.id, producer));
-		transport.on('@producerclose', (producer: Producer) => this.#producers.delete(producer.id));
-		transport.on('@newdataproducer', (dataProducer: DataProducer) => (
+		transport.on('@listenserverclose', () =>
+			this.#transports.delete(transport.id)
+		);
+		transport.on('@newproducer', (producer: Producer) =>
+			this.#producers.set(producer.id, producer)
+		);
+		transport.on('@producerclose', (producer: Producer) =>
+			this.#producers.delete(producer.id)
+		);
+		transport.on('@newdataproducer', (dataProducer: DataProducer) =>
 			this.#dataProducers.set(dataProducer.id, dataProducer)
-		));
-		transport.on('@dataproducerclose', (dataProducer: DataProducer) => (
+		);
+		transport.on('@dataproducerclose', (dataProducer: DataProducer) =>
 			this.#dataProducers.delete(dataProducer.id)
-		));
+		);
 
 		// Emit observer event.
 		this.#observer.safeEmit('newtransport', transport);
@@ -713,105 +962,152 @@ export class Router<RouterAppData extends AppData = AppData>
 		return transport;
 	}
 
-	/**
-	 * Create a ShmTransport.
-	 *
-	 * @param {String|Object} listenIp - Listen IP string or an object with ip and
-	 *   optional announcedIp string.
-	 * @param {Object} shm - shared memory file name
-	 * @param {Object} [appData={}] - Custom app data.
-	 *
-	 * @async
-	 * @returns {ShmTransport}
-	 */
-	async createShmTransport(
-		{
-			listenIp,
-			shm,
-			log,
-			appData,
-		}: ShmTransportOptions
-	): Promise<ShmTransport> {
-		logger.debug('createShmTransport() [shm:%o]', shm);
+	async createShmTransport<ShmTransportAppData extends AppData = AppData>({
+		listenIp,
+		shm,
+		log,
+		appData,
+	}: ShmTransportOptions<ShmTransportAppData>): Promise<
+		ShmTransport<ShmTransportAppData>
+	> {
+		logger.debug('createShmTransport()');
 
-		if (!listenIp)
+		if (!listenIp) {
 			throw new TypeError('missing listenIp');
-		else if (appData && typeof appData !== 'object')
+		} else if (!shm) {
+			throw new TypeError('missing shm');
+		} else if (appData && typeof appData !== 'object') {
 			throw new TypeError('if given, appData must be an object');
+		}
+
+		// Normalize listenIp
+		let normalizedListenIp: { ip: string; announcedIp?: string };
 
 		if (typeof listenIp === 'string') {
-			listenIp = { ip: listenIp };
-		}
-		else if (typeof listenIp === 'object') {
-			listenIp =
-			{
+			normalizedListenIp = { ip: listenIp };
+		} else {
+			normalizedListenIp = {
 				ip: listenIp.ip,
-				announcedIp: listenIp.announcedIp || undefined
+				announcedIp: listenIp.announcedIp,
 			};
 		}
-		else {
-			throw new TypeError('wrong listenIp');
-		}
 
-		const transportId = uuidv4()
-		const internal = { ...this.#internal, transportId: transportId };
-		const reqData = {
-			transportId: transportId,
-			listenIp,
-			shm,
-			log,
-			appData
+		const transportId = utils.generateUUIDv4();
+
+		/* Build Request. */
+		// Extract shm configuration from appData.shm or use defaults
+		const shmConfig = (appData as any)?.shm || {};
+		const shmOptions = new FbsTransport.ShmOptionsT(
+			shmConfig.clientReferrer || '',
+			shm,  // The shm filename
+			shmConfig.queueAge !== undefined ? shmConfig.queueAge : 100,
+			shmConfig.testNack !== undefined ? shmConfig.testNack : 0,
+			shmConfig.reverseIt !== undefined ? shmConfig.reverseIt : 0,
+			shmConfig.shmAppData || ''
+		);
+
+		// Extract log configuration from appData.log or use defaults
+		const logConfig = (appData as any)?.log || {};
+		const logOptions = log
+			? new FbsTransport.LogOptionsT(
+					log,  // The log filename
+					logConfig.level !== undefined ? logConfig.level : 9
+				)
+			: undefined;
+
+		const baseTransportOptions = new FbsTransport.OptionsT(
+			false /* direct */,
+			undefined /* maxMessageSize */,
+			undefined /* initialAvailableOutgoingBitrate */,
+			false /* enableSctp */,
+			undefined /* numSctpStreams */,
+			undefined /* maxSctpMessageSize */,
+			undefined /* sctpSendBufferSize */,
+			false /* isDataChannel */,
+			(appData as any)?.callId,
+			(appData as any)?.peerId,
+			(appData as any)?.mirrorId,
+			(appData as any)?.streamName,
+			shmOptions,
+			logOptions,
+			new FbsTransport.ListenIpT(
+				normalizedListenIp.ip,
+				normalizedListenIp.announcedIp
+			),
+			(appData as any)?.clientReferrer ?? null,
+			(appData as any)?.producerStats ?? false
+		);
+
+		const shmTransportOptions = new FbsShmTransport.ShmTransportOptionsT(
+			baseTransportOptions,
+			new FbsTransport.ListenIpT(
+				normalizedListenIp.ip,
+				normalizedListenIp.announcedIp
+			),
+			true /* rtcpMux */,
+			false /* comedia */,
+			false /* multiSource */
+		);
+
+		const requestOffset = new FbsRouter.CreateShmTransportRequestT(
+			transportId,
+			shmTransportOptions
+		).pack(this.#channel.bufferBuilder);
+
+		const response = await this.#channel.request(
+			FbsRequest.Method.ROUTER_CREATE_SHMTRANSPORT,
+			FbsRequest.Body.Router_CreateShmTransportRequest,
+			requestOffset,
+			this.#internal.routerId
+		);
+
+		/* Decode Response. */
+		const data = new FbsShmTransport.DumpResponse();
+
+		response.body(data);
+
+		// Parse dump response to extract shm data
+		const shmTransportData = {
+			shm: {
+				name: data.streamName() || '',
+				log: data.logName() || '',
+			},
 		};
 
-		/*
-		data = {
-			...,
-			shm: {
-				clientReferrer: "...",
-				name: "...",
-				queueAge: ...,
-				...
-				shmAppData: "..."
-			}
-		}
-		*/
-		const data =
-			await this.#channel.request('router.createShmTransport', this.#internal.routerId, reqData);
-
-		if (data.shm === undefined || typeof data.shm !== 'object'
-			|| data.shm.name === undefined || typeof data.shm.name !== 'string') {
-			logger.error('cannot create ShmTransport object with data:%o', data);
-			throw new Error('cannot create ShmTransport object');
-		}
-		else {
-			logger.debug('router.createShmTransport returned data: %o', data);
-		}
-
-		const transport = new ShmTransport(
-			{
-				internal,
-				data,
-				channel: this.#channel,
-				payloadChannel: this.#payloadChannel,
-				appData,
-				getRouterRtpCapabilities: () => this.#data.rtpCapabilities,
-				getProducerById: (producerId: string) => this.#producers.get(producerId),
-				getDataProducerById: (dataProducerId: string) => (
-					this.#dataProducers.get(dataProducerId)
-				)
-			});
-
+		const transport: ShmTransport<ShmTransportAppData> = new ShmTransportImpl({
+			internal: {
+				...this.#internal,
+				transportId: transportId,
+			},
+			data: shmTransportData,
+			channel: this.#channel,
+			appData,
+			getRouterRtpCapabilities: (): RtpCapabilities =>
+				this.#data.rtpCapabilities,
+			getProducerById: (producerId: string): Producer | undefined =>
+				this.#producers.get(producerId),
+			getDataProducerById: (
+				dataProducerId: string
+			): DataProducer | undefined => this.#dataProducers.get(dataProducerId),
+		});
 
 		this.#transports.set(transport.id, transport);
 		transport.on('@close', () => this.#transports.delete(transport.id));
-		transport.on('@newproducer', (producer) => this.#producers.set(producer.id, producer));
-		transport.on('@producerclose', (producer) => this.#producers.delete(producer.id));
-		transport.on('@newdataproducer', (dataProducer) => (
+		transport.on('@listenserverclose', () =>
+			this.#transports.delete(transport.id)
+		);
+		transport.on('@newproducer', (producer: Producer) =>
+			this.#producers.set(producer.id, producer)
+		);
+		transport.on('@producerclose', (producer: Producer) =>
+			this.#producers.delete(producer.id)
+		);
+		transport.on('@newdataproducer', (dataProducer: DataProducer) =>
 			this.#dataProducers.set(dataProducer.id, dataProducer)
-		));
-		transport.on('@dataproducerclose', (dataProducer) => (
+		);
+		transport.on('@dataproducerclose', (dataProducer: DataProducer) =>
 			this.#dataProducers.delete(dataProducer.id)
-		));
+		);
 
 		// Emit observer event.
 		this.#observer.safeEmit('newtransport', transport);
@@ -819,34 +1115,51 @@ export class Router<RouterAppData extends AppData = AppData>
 		return transport;
 	}
 
-	/**
-	 * Pipes the given Producer or DataProducer into another Router in same host.
-	 */
-	async pipeToRouter(
-		{
-			producerId,
-			dataProducerId,
-			router,
-			listenIp = '127.0.0.1',
-			enableSctp = true,
-			numSctpStreams = { OS: 1024, MIS: 1024 },
-			enableRtx = false,
-			enableSrtp = false
-		}: PipeToRouterOptions
-	): Promise<PipeToRouterResult> {
+	async pipeToRouter({
+		producerId,
+		dataProducerId,
+		router,
+		keepId = true,
+		listenInfo,
+		listenIp,
+		enableSctp = true,
+		numSctpStreams = { OS: 1024, MIS: 1024 },
+		enableRtx = false,
+		enableSrtp = false,
+	}: PipeToRouterOptions): Promise<PipeToRouterResult> {
 		logger.debug('pipeToRouter()');
 
-		if (!producerId && !dataProducerId) {
+		if (!listenInfo && !listenIp) {
+			listenInfo = {
+				protocol: 'udp',
+				ip: '127.0.0.1',
+			};
+		}
+
+		if (listenInfo && listenIp) {
+			throw new TypeError('only one of listenInfo and listenIp must be given');
+		} else if (!producerId && !dataProducerId) {
 			throw new TypeError('missing producerId or dataProducerId');
-		}
-		else if (producerId && dataProducerId) {
+		} else if (producerId && dataProducerId) {
 			throw new TypeError('just producerId or dataProducerId can be given');
-		}
-		else if (!router) {
+		} else if (!router) {
 			throw new TypeError('Router not found');
-		}
-		else if (router === this) {
+		} else if (router === this) {
 			throw new TypeError('cannot use this Router as destination');
+		}
+
+		// Convert deprecated TransportListenIps to TransportListenInfos.
+		if (listenIp) {
+			// Normalize IP string to TransportListenIp object.
+			if (typeof listenIp === 'string') {
+				listenIp = { ip: listenIp };
+			}
+
+			listenInfo = {
+				protocol: 'udp',
+				ip: listenIp.ip,
+				announcedAddress: listenIp.announcedIp,
+			};
 		}
 
 		let producer: Producer | undefined;
@@ -858,8 +1171,7 @@ export class Router<RouterAppData extends AppData = AppData>
 			if (!producer) {
 				throw new TypeError('Producer not found');
 			}
-		}
-		else if (dataProducerId) {
+		} else if (dataProducerId) {
 			dataProducer = this.#dataProducers.get(dataProducerId);
 
 			if (!dataProducer) {
@@ -876,62 +1188,69 @@ export class Router<RouterAppData extends AppData = AppData>
 
 		if (pipeTransportPairPromise) {
 			pipeTransportPair = await pipeTransportPairPromise;
-			localPipeTransport = pipeTransportPair[this.id];
-			remotePipeTransport = pipeTransportPair[router.id];
-		}
-		else {
+			localPipeTransport = pipeTransportPair[this.id]!;
+			remotePipeTransport = pipeTransportPair[router.id]!;
+		} else {
 			pipeTransportPairPromise = new Promise((resolve, reject) => {
-				Promise.all(
-					[
-						this.createPipeTransport(
-							{ listenIp, enableSctp, numSctpStreams, enableRtx, enableSrtp }),
-						router.createPipeTransport(
-							{ listenIp, enableSctp, numSctpStreams, enableRtx, enableSrtp })
-					])
-					.then((pipeTransports) => {
+				Promise.all([
+					this.createPipeTransport({
+						listenInfo: listenInfo!,
+						enableSctp,
+						numSctpStreams,
+						enableRtx,
+						enableSrtp,
+					}),
+					router.createPipeTransport({
+						listenInfo: listenInfo!,
+						enableSctp,
+						numSctpStreams,
+						enableRtx,
+						enableSrtp,
+					}),
+				])
+					.then(pipeTransports => {
 						localPipeTransport = pipeTransports[0];
 						remotePipeTransport = pipeTransports[1];
 					})
 					.then(() => {
-						return Promise.all(
-							[
-								localPipeTransport.connect(
-									{
-										ip: remotePipeTransport.tuple.localIp,
-										port: remotePipeTransport.tuple.localPort,
-										srtpParameters: remotePipeTransport.srtpParameters
-									}),
-								remotePipeTransport.connect(
-									{
-										ip: localPipeTransport.tuple.localIp,
-										port: localPipeTransport.tuple.localPort,
-										srtpParameters: localPipeTransport.srtpParameters
-									})
-							]);
+						return Promise.all([
+							localPipeTransport.connect({
+								ip: remotePipeTransport.tuple.localAddress,
+								port: remotePipeTransport.tuple.localPort,
+								srtpParameters: remotePipeTransport.srtpParameters,
+							}),
+							remotePipeTransport.connect({
+								ip: localPipeTransport.tuple.localAddress,
+								port: localPipeTransport.tuple.localPort,
+								srtpParameters: localPipeTransport.srtpParameters,
+							}),
+						]);
 					})
 					.then(() => {
 						localPipeTransport.observer.on('close', () => {
 							remotePipeTransport.close();
 							this.#mapRouterPairPipeTransportPairPromise.delete(
-								pipeTransportPairKey);
+								pipeTransportPairKey
+							);
 						});
 
 						remotePipeTransport.observer.on('close', () => {
 							localPipeTransport.close();
 							this.#mapRouterPairPipeTransportPairPromise.delete(
-								pipeTransportPairKey);
+								pipeTransportPairKey
+							);
 						});
 
-						resolve(
-							{
-								[this.id]: localPipeTransport,
-								[router.id]: remotePipeTransport
-							});
+						resolve({
+							[this.id]: localPipeTransport,
+							[router.id]: remotePipeTransport,
+						});
 					})
-					.catch((error) => {
+					.catch(error => {
 						logger.error(
-							'pipeToRouter() | error creating PipeTransport pair:%o',
-							error);
+							'pipeToRouter() | error creating PipeTransport pair:',
+							error
+						);
 
 						if (localPipeTransport) {
 							localPipeTransport.close();
@@ -941,12 +1260,14 @@ export class Router<RouterAppData extends AppData = AppData>
 							remotePipeTransport.close();
 						}
 
-						reject(error);
+						reject(error instanceof Error ? error : new Error(String(error)));
 					});
 			});
 
 			this.#mapRouterPairPipeTransportPairPromise.set(
-				pipeTransportPairKey, pipeTransportPairPromise);
+				pipeTransportPairKey,
+				pipeTransportPairPromise
+			);
 
 			router.addPipeTransportPair(this.id, pipeTransportPairPromise);
 
@@ -958,19 +1279,18 @@ export class Router<RouterAppData extends AppData = AppData>
 			let pipeProducer: Producer | undefined;
 
 			try {
-				pipeConsumer = await localPipeTransport!.consume(
-					{
-						producerId: producerId!
-					});
+				pipeConsumer = await localPipeTransport!.consume({
+					producerId: producerId!,
+				});
 
-				pipeProducer = await remotePipeTransport!.produce(
-					{
-						id: producer.id,
-						kind: pipeConsumer!.kind,
-						rtpParameters: pipeConsumer!.rtpParameters,
-						paused: pipeConsumer!.producerPaused,
-						appData: producer.appData
-					});
+				pipeProducer = await remotePipeTransport!.produce({
+					// If requested, generate a new id for the pipeProducer.
+					id: keepId ? producer.id : utils.generateUUIDv4(),
+					kind: pipeConsumer.kind,
+					rtpParameters: pipeConsumer.rtpParameters,
+					paused: pipeConsumer.producerPaused,
+					appData: producer.appData,
+				});
 
 				// Ensure that the producer has not been closed in the meanwhile.
 				if (producer.closed) {
@@ -982,26 +1302,25 @@ export class Router<RouterAppData extends AppData = AppData>
 				if (pipeProducer.paused !== producer.paused) {
 					if (producer.paused) {
 						await pipeProducer.pause();
-					}
-					else {
+					} else {
 						await pipeProducer.resume();
 					}
 				}
 
 				// Pipe events from the pipe Consumer to the pipe Producer.
-				pipeConsumer!.observer.on('close', () => pipeProducer!.close());
-				pipeConsumer!.observer.on('pause', () => pipeProducer!.pause());
-				pipeConsumer!.observer.on('resume', () => pipeProducer!.resume());
+				pipeConsumer.observer.on('close', () => pipeProducer!.close());
+				pipeConsumer.observer.on('pause', () => void pipeProducer!.pause());
+				pipeConsumer.observer.on('resume', () => void pipeProducer!.resume());
 
 				// Pipe events from the pipe Producer to the pipe Consumer.
 				pipeProducer.observer.on('close', () => pipeConsumer!.close());
 
 				return { pipeConsumer, pipeProducer };
-			}
-			catch (error) {
+			} catch (error) {
 				logger.error(
-					'pipeToRouter() | error creating pipe Consumer/Producer pair:%o',
-					error);
+					'pipeToRouter() | error creating pipe Consumer/Producer pair:',
+					error as Error
+				);
 
 				if (pipeConsumer) {
 					pipeConsumer.close();
@@ -1013,25 +1332,23 @@ export class Router<RouterAppData extends AppData = AppData>
 
 				throw error;
 			}
-		}
-		else if (dataProducer) {
+		} else if (dataProducer) {
 			let pipeDataConsumer: DataConsumer | undefined;
 			let pipeDataProducer: DataProducer | undefined;
 
 			try {
-				pipeDataConsumer = await localPipeTransport!.consumeData(
-					{
-						dataProducerId: dataProducerId!
-					});
+				pipeDataConsumer = await localPipeTransport!.consumeData({
+					dataProducerId: dataProducerId!,
+				});
 
-				pipeDataProducer = await remotePipeTransport!.produceData(
-					{
-						id: dataProducer.id,
-						sctpStreamParameters: pipeDataConsumer!.sctpStreamParameters,
-						label: pipeDataConsumer!.label,
-						protocol: pipeDataConsumer!.protocol,
-						appData: dataProducer.appData
-					});
+				pipeDataProducer = await remotePipeTransport!.produceData({
+					// If requested, generate a new id for the pipeDataProducer.
+					id: keepId ? dataProducer.id : utils.generateUUIDv4(),
+					sctpStreamParameters: pipeDataConsumer.sctpStreamParameters,
+					label: pipeDataConsumer.label,
+					protocol: pipeDataConsumer.protocol,
+					appData: dataProducer.appData,
+				});
 
 				// Ensure that the dataProducer has not been closed in the meanwhile.
 				if (dataProducer.closed) {
@@ -1039,102 +1356,108 @@ export class Router<RouterAppData extends AppData = AppData>
 				}
 
 				// Pipe events from the pipe DataConsumer to the pipe DataProducer.
-				pipeDataConsumer!.observer.on('close', () => pipeDataProducer!.close());
+				pipeDataConsumer.observer.on('close', () => pipeDataProducer!.close());
 
 				// Pipe events from the pipe DataProducer to the pipe DataConsumer.
 				pipeDataProducer.observer.on('close', () => pipeDataConsumer!.close());
 
 				return { pipeDataConsumer, pipeDataProducer };
-			}
-			catch (error) {
+			} catch (error) {
 				logger.error(
-					'pipeToRouter() | error creating pipe DataConsumer/DataProducer pair:%o',
-					error);
+					'pipeToRouter() | error creating pipe DataConsumer/DataProducer pair:',
+					error as Error
+				);
 
-				if (pipeDataConsumer) {
-					pipeDataConsumer.close();
-				}
-
-				if (pipeDataProducer) {
-					pipeDataProducer.close();
-				}
+				pipeDataConsumer?.close();
+				pipeDataProducer?.close();
 
 				throw error;
 			}
-		}
-		else {
+		} else {
+			// NOTE: This cannot happen since it's guaranteed that producer or
+			// dataProducer exists, but TypeScript is not that smart.
 			throw new Error('internal error');
 		}
 	}
 
-	/**
-	 * @private
-	 */
 	addPipeTransportPair(
 		pipeTransportPairKey: string,
 		pipeTransportPairPromise: Promise<PipeTransportPair>
 	): void {
 		if (this.#mapRouterPairPipeTransportPairPromise.has(pipeTransportPairKey)) {
 			throw new Error(
-				'given pipeTransportPairKey already exists in this Router');
+				'given pipeTransportPairKey already exists in this Router'
+			);
 		}
 
 		this.#mapRouterPairPipeTransportPairPromise.set(
-			pipeTransportPairKey, pipeTransportPairPromise);
+			pipeTransportPairKey,
+			pipeTransportPairPromise
+		);
 
 		pipeTransportPairPromise
-			.then((pipeTransportPair) => {
-				const localPipeTransport = pipeTransportPair[this.id];
+			.then(pipeTransportPair => {
+				const localPipeTransport = pipeTransportPair[this.id]!;
 
 				// NOTE: No need to do any other cleanup here since that is done by the
 				// Router calling this method on us.
 				localPipeTransport.observer.on('close', () => {
 					this.#mapRouterPairPipeTransportPairPromise.delete(
-						pipeTransportPairKey);
+						pipeTransportPairKey
+					);
 				});
 			})
 			.catch(() => {
 				this.#mapRouterPairPipeTransportPairPromise.delete(
-					pipeTransportPairKey);
+					pipeTransportPairKey
+				);
 			});
 	}
 
-	/**
-	 * Create an ActiveSpeakerObserver
-	 */
-	async createActiveSpeakerObserver<ActiveSpeakerObserverAppData extends AppData = AppData>(
-		{
-			interval = 300,
-			appData
-		}: ActiveSpeakerObserverOptions<ActiveSpeakerObserverAppData> = {}
-	): Promise<ActiveSpeakerObserver<ActiveSpeakerObserverAppData>> {
+	async createActiveSpeakerObserver<
+		ActiveSpeakerObserverAppData extends AppData = AppData,
+	>({
+		interval = 300,
+		appData,
+	}: ActiveSpeakerObserverOptions<ActiveSpeakerObserverAppData> = {}): Promise<
+		ActiveSpeakerObserver<ActiveSpeakerObserverAppData>
+	> {
 		logger.debug('createActiveSpeakerObserver()');
 
-		if (appData && typeof appData !== 'object') {
+		if (typeof interval !== 'number') {
+			throw new TypeError('if given, interval must be an number');
+		} else if (appData && typeof appData !== 'object') {
 			throw new TypeError('if given, appData must be an object');
 		}
 
-		const reqData =
-		{
-			rtpObserverId: uuidv4(),
-			interval
-		};
+		const rtpObserverId = utils.generateUUIDv4();
 
-		await this.#channel.request('router.createActiveSpeakerObserver', this.#internal.routerId, reqData);
+		/* Build Request. */
+		const activeRtpObserverOptions =
+			new FbsActiveSpeakerObserver.ActiveSpeakerObserverOptionsT(interval);
 
-		const activeSpeakerObserver = new ActiveSpeakerObserver<ActiveSpeakerObserverAppData>(
-			{
-				internal:
-				{
+		const requestOffset = new FbsRouter.CreateActiveSpeakerObserverRequestT(
+			rtpObserverId,
+			activeRtpObserverOptions
+		).pack(this.#channel.bufferBuilder);
+
+		await this.#channel.request(
+			FbsRequest.Method.ROUTER_CREATE_ACTIVESPEAKEROBSERVER,
+			FbsRequest.Body.Router_CreateActiveSpeakerObserverRequest,
+			requestOffset,
+			this.#internal.routerId
+		);
+
+		const activeSpeakerObserver: ActiveSpeakerObserver<ActiveSpeakerObserverAppData> =
+			new ActiveSpeakerObserverImpl({
+				internal: {
 					...this.#internal,
-					rtpObserverId: reqData.rtpObserverId
+					rtpObserverId: rtpObserverId,
 				},
 				channel: this.#channel,
-				payloadChannel: this.#payloadChannel,
 				appData,
-				getProducerById: (producerId: string): Producer | undefined => (
-					this.#producers.get(producerId)
-				)
+				getProducerById: (producerId: string): Producer | undefined =>
+					this.#producers.get(producerId),
 			});
 
 		this.#rtpObservers.set(activeSpeakerObserver.id, activeSpeakerObserver);
@@ -1148,46 +1471,66 @@ export class Router<RouterAppData extends AppData = AppData>
 		return activeSpeakerObserver;
 	}
 
-	/**
-	 * Create an AudioLevelObserver.
-	 */
-	async createAudioLevelObserver<AudioLevelObserverAppData extends AppData = AppData>(
-		{
-			maxEntries = 1,
-			threshold = -80,
-			interval = 1000,
-			appData
-		}: AudioLevelObserverOptions<AudioLevelObserverAppData> = {}
-	): Promise<AudioLevelObserver<AudioLevelObserverAppData>> {
+	async createAudioLevelObserver<
+		AudioLevelObserverAppData extends AppData = AppData,
+	>({
+		maxEntries = 1,
+		threshold = -80,
+		interval = 1000,
+		appData,
+	}: AudioLevelObserverOptions<AudioLevelObserverAppData> = {}): Promise<
+		AudioLevelObserver<AudioLevelObserverAppData>
+	> {
 		logger.debug('createAudioLevelObserver()');
 
-		if (appData && typeof appData !== 'object') {
+		if (typeof maxEntries !== 'number' || maxEntries <= 0) {
+			throw new TypeError('if given, maxEntries must be a positive number');
+		} else if (
+			typeof threshold !== 'number' ||
+			threshold < -127 ||
+			threshold > 0
+		) {
+			throw new TypeError(
+				'if given, threshole must be a negative number greater than -127'
+			);
+		} else if (typeof interval !== 'number') {
+			throw new TypeError('if given, interval must be an number');
+		} else if (appData && typeof appData !== 'object') {
 			throw new TypeError('if given, appData must be an object');
 		}
 
-		const reqData =
-		{
-			rtpObserverId: uuidv4(),
-			maxEntries,
-			threshold,
-			interval
-		};
+		const rtpObserverId = utils.generateUUIDv4();
 
-		await this.#channel.request('router.createAudioLevelObserver', this.#internal.routerId, reqData);
+		/* Build Request. */
+		const audioLevelObserverOptions =
+			new FbsAudioLevelObserver.AudioLevelObserverOptionsT(
+				maxEntries,
+				threshold,
+				interval
+			);
 
-		const audioLevelObserver = new AudioLevelObserver<AudioLevelObserverAppData>(
-			{
-				internal:
-				{
+		const requestOffset = new FbsRouter.CreateAudioLevelObserverRequestT(
+			rtpObserverId,
+			audioLevelObserverOptions
+		).pack(this.#channel.bufferBuilder);
+
+		await this.#channel.request(
+			FbsRequest.Method.ROUTER_CREATE_AUDIOLEVELOBSERVER,
+			FbsRequest.Body.Router_CreateAudioLevelObserverRequest,
+			requestOffset,
+			this.#internal.routerId
+		);
+
+		const audioLevelObserver: AudioLevelObserver<AudioLevelObserverAppData> =
+			new AudioLevelObserverImpl({
+				internal: {
 					...this.#internal,
-					rtpObserverId: reqData.rtpObserverId
+					rtpObserverId: rtpObserverId,
 				},
 				channel: this.#channel,
-				payloadChannel: this.#payloadChannel,
 				appData,
-				getProducerById: (producerId: string): Producer | undefined => (
-					this.#producers.get(producerId)
-				)
+				getProducerById: (producerId: string): Producer | undefined =>
+					this.#producers.get(producerId),
 			});
 
 		this.#rtpObservers.set(audioLevelObserver.id, audioLevelObserver);
@@ -1201,35 +1544,85 @@ export class Router<RouterAppData extends AppData = AppData>
 		return audioLevelObserver;
 	}
 
-	/**
-	 * Check whether the given RTP capabilities can consume the given Producer.
-	 */
-	canConsume(
-		{
-			producerId,
-			rtpCapabilities
-		}:
-			{
-				producerId: string;
-				rtpCapabilities: RtpCapabilities;
-			}
-	): boolean {
+	canConsume({
+		producerId,
+		rtpCapabilities,
+	}: {
+		producerId: string;
+		rtpCapabilities: RtpCapabilities;
+	}): boolean {
 		const producer = this.#producers.get(producerId);
 
 		if (!producer) {
-			logger.error(
-				'canConsume() | Producer with id "%s" not found', producerId);
+			logger.error(`canConsume() | Producer with id "${producerId}" not found`);
 
 			return false;
 		}
 
+		// Clone given RTP capabilities to not modify input data.
+		const clonedRtpCapabilities = utils.clone<RtpCapabilities>(rtpCapabilities);
+
 		try {
-			return ortc.canConsume(producer.consumableRtpParameters, rtpCapabilities);
-		}
-		catch (error) {
-			logger.error('canConsume() | unexpected error: %s', String(error));
+			return ortc.canConsume(
+				producer.consumableRtpParameters,
+				clonedRtpCapabilities
+			);
+		} catch (error) {
+			logger.error(`canConsume() | unexpected error: ${error}`);
 
 			return false;
 		}
 	}
+
+	updateMediaCodecs(mediaCodecs: RouterRtpCodecCapability[]): void {
+		logger.debug('updateMediaCodecs()');
+
+		// Clone given media codecs to not modify input data.
+		const clonedMediaCodecs = utils.clone<
+			RouterRtpCodecCapability[] | undefined
+		>(mediaCodecs);
+
+		// This may throw.
+		const rtpCapabilities =
+			ortc.generateRouterRtpCapabilities(clonedMediaCodecs);
+
+		this.#data.rtpCapabilities = rtpCapabilities;
+	}
+
+	private handleListenerError(): void {
+		this.on('listenererror', (eventName, error) => {
+			logger.error(
+				`event listener threw an error [eventName:${eventName}]:`,
+				error
+			);
+		});
+	}
+}
+
+function parseRouterDumpResponse(binary: FbsRouter.DumpResponse): RouterDump {
+	return {
+		id: binary.id()!,
+		transportIds: fbsUtils.parseVector(binary, 'transportIds'),
+		rtpObserverIds: fbsUtils.parseVector(binary, 'rtpObserverIds'),
+		mapProducerIdConsumerIds: fbsUtils.parseStringStringArrayVector(
+			binary,
+			'mapProducerIdConsumerIds'
+		),
+		mapConsumerIdProducerId: fbsUtils.parseStringStringVector(
+			binary,
+			'mapConsumerIdProducerId'
+		),
+		mapProducerIdObserverIds: fbsUtils.parseStringStringArrayVector(
+			binary,
+			'mapProducerIdObserverIds'
+		),
+		mapDataProducerIdDataConsumerIds: fbsUtils.parseStringStringArrayVector(
+			binary,
+			'mapDataProducerIdDataConsumerIds'
+		),
+		mapDataConsumerIdDataProducerId: fbsUtils.parseStringStringVector(
+			binary,
+			'mapDataConsumerIdDataProducerId'
+		),
+	};
 }

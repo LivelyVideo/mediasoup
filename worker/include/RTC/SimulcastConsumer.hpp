@@ -1,11 +1,12 @@
 #ifndef MS_RTC_SIMULCAST_CONSUMER_HPP
 #define MS_RTC_SIMULCAST_CONSUMER_HPP
 
-#include "Lively.hpp"
+#include "FBS/consumer.h"
 #include "RTC/Codecs/PayloadDescriptorHandler.hpp"
 #include "RTC/Consumer.hpp"
 #include "RTC/SeqManager.hpp"
 #include "RTC/Shared.hpp"
+#include <map>
 
 namespace RTC
 {
@@ -17,20 +18,23 @@ namespace RTC
 		  const std::string& id,
 		  const std::string& producerId,
 		  RTC::Consumer::Listener* listener,
-		  json& data,
-			Lively::AppData* appData = nullptr);
+		  const FBS::Transport::ConsumeRequest* data,
+		  Lively::AppData* appData = nullptr);
 		~SimulcastConsumer() override;
 
 	public:
-		void FillJson(json& jsonObject) const override;
-		void FillJsonStats(json& jsonArray) const override;
-		void FillJsonScore(json& jsonObject) const override;
-		RTC::Consumer::Layers GetPreferredLayers() const override
+		flatbuffers::Offset<FBS::Consumer::DumpResponse> FillBuffer(
+		  flatbuffers::FlatBufferBuilder& builder) const;
+		flatbuffers::Offset<FBS::Consumer::GetStatsResponse> FillBufferStats(
+		  flatbuffers::FlatBufferBuilder& builder) override;
+		flatbuffers::Offset<FBS::Consumer::ConsumerScore> FillBufferScore(
+		  flatbuffers::FlatBufferBuilder& builder) const override;
+		VideoLayers GetPreferredLayers() const override
 		{
-			RTC::Consumer::Layers layers;
+			VideoLayers layers;
 
-			layers.spatial  = this->preferredSpatialLayer;
-			layers.temporal = this->preferredTemporalLayer;
+			layers.spatial  = this->preferredLayers.spatial;
+			layers.temporal = this->preferredLayers.temporal;
 
 			return layers;
 		}
@@ -61,7 +65,7 @@ namespace RTC
 		uint32_t IncreaseLayer(uint32_t bitrate, bool considerLoss) override;
 		void ApplyLayers() override;
 		uint32_t GetDesiredBitrate() const override;
-		void SendRtpPacket(RTC::RtpPacket* packet, std::shared_ptr<RTC::RtpPacket>& sharedPacket) override;
+		void SendRtpPacket(RTC::RtpPacket* packet, RTC::SharedRtpPacket& sharedPacket) override;
 		bool GetRtcp(RTC::RTCP::CompoundPacket* packet, uint64_t nowMs) override;
 		const std::vector<RTC::RtpStreamSend*>& GetRtpStreams() const override
 		{
@@ -74,6 +78,7 @@ namespace RTC
 		void ReceiveRtcpXrReceiverReferenceTime(RTC::RTCP::ReceiverReferenceTime* report) override;
 		uint32_t GetTransmissionRate(uint64_t nowMs) override;
 		float GetRtt() const override;
+		void FillBinLogStats(Lively::StatsBinLog* log) override;
 
 		/* Methods inherited from Channel::ChannelSocket::RequestHandler. */
 	public:
@@ -89,7 +94,7 @@ namespace RTC
 		void RequestKeyFrameForTargetSpatialLayer();
 		void RequestKeyFrameForCurrentSpatialLayer();
 		void MayChangeLayers(bool force = false);
-		bool RecalculateTargetLayers(int16_t& newTargetSpatialLayer, int16_t& newTargetTemporalLayer) const;
+		bool RecalculateTargetLayers(VideoLayers& newTargetLayers) const;
 		void UpdateTargetLayers(int16_t newTargetSpatialLayer, int16_t newTargetTemporalLayer);
 		bool CanSwitchToSpatialLayer(int16_t spatialLayer) const;
 		void EmitScore() const;
@@ -102,12 +107,11 @@ namespace RTC
 		void OnRtpStreamScore(RTC::RtpStream* rtpStream, uint8_t score, uint8_t previousScore) override;
 		void OnRtpStreamRetransmitRtpPacket(RTC::RtpStreamSend* rtpStream, RTC::RtpPacket* packet) override;
 
-	public:
-		void FillBinLogStats(Lively::StatsBinLog* log) override;
-
 	private:
 		// Allocated by this.
 		RTC::RtpStreamSend* rtpStream{ nullptr };
+		// Binary logging member
+		Lively::CallStatsRecordCtx* rtpStreamBinLogRecord{ nullptr };
 		// Others.
 		absl::flat_hash_map<uint32_t, int16_t> mapMappedSsrcSpatialLayer;
 		std::vector<RTC::RtpStreamSend*> rtpStreams;
@@ -115,20 +119,15 @@ namespace RTC
 		bool syncRequired{ false };
 		int16_t spatialLayerToSync{ -1 };
 		bool lastSentPacketHasMarker{ false };
-		RTC::SeqManager<uint16_t> rtpSeqManager;
-		int16_t preferredSpatialLayer{ -1 };
-		int16_t preferredTemporalLayer{ -1 };
-		int16_t provisionalTargetSpatialLayer{ -1 };
-		int16_t provisionalTargetTemporalLayer{ -1 };
-		int16_t targetSpatialLayer{ -1 };
-		int16_t targetTemporalLayer{ -1 };
+		std::unique_ptr<RTC::SeqManager<uint16_t>> rtpSeqManager;
+		VideoLayers preferredLayers;
+		VideoLayers provisionalTargetLayers;
+		VideoLayers targetLayers;
 		int16_t currentSpatialLayer{ -1 };
 		uint16_t snReferenceSpatialLayer{ 0 };
 		bool checkingForOldPacketsInSpatialLayer{ false };
 		std::unique_ptr<RTC::Codecs::EncodingContext> encodingContext;
 		uint64_t lastBweDowngradeAtMs{ 0u }; // Last time we moved to lower spatial layer due to BWE.
-		// bin log
-		Lively::CallStatsRecordCtx* rtpStreamBinLogRecord;
 	};
 } // namespace RTC
 

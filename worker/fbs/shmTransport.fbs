@@ -1,0 +1,53 @@
+include "transport.fbs";
+
+namespace FBS.ShmTransport;
+
+// Lively-specific SHM writer status
+enum ShmWriterStatus: uint8 {
+    NOTSET = 0,
+    INITIALIZING,
+    READY,
+    CLOSED,
+    ERROR
+}
+
+// Lively-specific SHM transport options
+table ShmTransportOptions {
+    base: FBS.Transport.Options (required);
+    listen_ip: FBS.Transport.ListenIp (required);
+    rtcp_mux: bool = true;
+    comedia: bool = false;
+    multi_source: bool = false;
+}
+
+// Lively-specific SHM transport dump
+table DumpResponse {
+    base: FBS.Transport.Dump (required);
+
+    // SHM-specific fields
+    stream_name: string;
+    log_name: string;
+    shm_writer_status: ShmWriterStatus;
+    max_queue_pkt_delay_ms: uint64;
+    test_nack_ms: uint64;
+
+    // ListenIp configuration
+    listen_ip: string;
+    announced_ip: string;
+
+    // Transport flags
+    rtcp_mux: bool;
+    comedia: bool;
+    multi_source: bool;
+}
+
+// Lively-specific SHM transport stats
+table GetStatsResponse {
+    base: FBS.Transport.Stats (required);
+
+    // SHM-specific stats
+    stream_name: string;
+    shm_writer_status: ShmWriterStatus;
+    video_queue_size: uint32;
+    max_queue_pkt_delay_ms: uint64;
+}

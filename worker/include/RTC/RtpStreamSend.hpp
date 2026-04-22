@@ -1,10 +1,10 @@
 #ifndef MS_RTC_RTP_STREAM_SEND_HPP
 #define MS_RTC_RTP_STREAM_SEND_HPP
 
-#include "LivelyBinLogs.hpp"
 #include "RTC/RateCalculator.hpp"
 #include "RTC/RtpRetransmissionBuffer.hpp"
 #include "RTC/RtpStream.hpp"
+#include "RTC/SharedRtpPacket.hpp"
 
 namespace RTC
 {
@@ -15,6 +15,14 @@ namespace RTC
 		const static uint32_t MaxRetransmissionDelayForVideoMs;
 		// Maximum retransmission buffer size for audio (ms).
 		const static uint32_t MaxRetransmissionDelayForAudioMs;
+
+	public:
+		enum class ReceivePacketResult
+		{
+			DISCARDED               = 0,
+			ACCEPTED_AND_NOT_STORED = 1,
+			ACCEPTED_AND_STORED
+		};
 
 	public:
 		class Listener : public RTC::RtpStream::Listener
@@ -29,51 +37,10 @@ namespace RTC
 		  RTC::RtpStreamSend::Listener* listener, RTC::RtpStream::Params& params, std::string& mid);
 		~RtpStreamSend() override;
 
-		void FillStats(
-		  size_t& packetsCount,
-		  size_t& bytesCount,
-		  size_t& framesCount,
-		  uint32_t& packetsLost,
-		  size_t& packetsDiscarded,
-		  size_t& packetsRetransmitted,
-		  size_t& packetsRepaired,
-		  size_t& nackCount,
-		  size_t& nackPacketCount,
-		  size_t& kfCount,
-		  float& rtt,
-		  uint32_t& maxPacketTs) override
-		{
-			packetsCount         = this->transmissionCounter.GetPacketCount();
-			bytesCount           = this->transmissionCounter.GetBytes();
-			framesCount          = this->transmissionCounter.GetFrameCount();
-			packetsLost          = this->packetsLost;
-			packetsDiscarded     = this->packetsDiscarded;
-			packetsRetransmitted = this->packetsRetransmitted;
-			packetsRepaired      = this->packetsRepaired;
-			nackCount            = this->nackCount;
-			nackPacketCount      = this->nackPacketCount;
-			kfCount              = this->pliCount + this->firCount;
-			rtt                  = this->rtt;
-
-			// convert RTP time to unix timestamp
-			// in ms using the RTCP sender report
-			uint32_t clock_rate = this->GetClockRate();
-			if (!clock_rate)
-			{
-				maxPacketTs = 0xFFFFFFFF;
-			}
-			else
-			{
-				int delta_rtp = ((int)this->maxPacketTs - (int)this->lastSenderReportTs);
-				delta_rtp     = delta_rtp * 1000 / (int)clock_rate;
-
-				maxPacketTs = (uint32_t)((int)this->lastSenderReportNtpMs + delta_rtp);
-			}
-		}
-
-		void FillJsonStats(json& jsonObject) override;
+		flatbuffers::Offset<FBS::RtpStream::Stats> FillBufferStats(
+		  flatbuffers::FlatBufferBuilder& builder) override;
 		void SetRtx(uint8_t payloadType, uint32_t ssrc) override;
-		bool ReceivePacket(RTC::RtpPacket* packet, std::shared_ptr<RTC::RtpPacket>& sharedPacket);
+		ReceivePacketResult ReceivePacket(RTC::RtpPacket* packet, const RTC::SharedRtpPacket& sharedPacket);
 		void ReceiveNack(RTC::RTCP::FeedbackRtpNackPacket* nackPacket);
 		void ReceiveKeyFrameRequest(RTC::RTCP::FeedbackPs::MessageType messageType);
 		void ReceiveRtcpReceiverReport(RTC::RTCP::ReceiverReport* report);
@@ -94,13 +61,17 @@ namespace RTC
 		uint32_t GetLayerBitrate(uint64_t nowMs, uint8_t spatialLayer, uint8_t temporalLayer) override;
 
 	private:
-		void StorePacket(RTC::RtpPacket* packet, std::shared_ptr<RTC::RtpPacket>& sharedPacket);
+		bool StorePacket(RTC::RtpPacket* packet, const RTC::SharedRtpPacket& sharedPacket);
 		void FillRetransmissionContainer(uint16_t seq, uint16_t bitmask);
 		void UpdateScore(RTC::RTCP::ReceiverReport* report);
 
 		/* Pure virtual methods inherited from RTC::RtpStream. */
 	public:
 		void UserOnSequenceNumberReset() override;
+		void FillStats(size_t& packetsCount, size_t& bytesCount, size_t& framesCount,
+		               uint32_t& packetsLost, size_t& packetsDiscarded, size_t& packetsRetransmitted,
+		               size_t& packetsRepaired, size_t& nackCount, size_t& nackPacketCount,
+		               size_t& kfCount, float& rtt, uint32_t& maxPacketTs) override;
 
 	private:
 		// Packets lost at last interval for score calculation.

@@ -3,7 +3,7 @@
 #include "RTC/RtpPacket.hpp"
 #include "RTC/RtpStream.hpp"
 #include "RTC/RtpStreamRecv.hpp"
-#include <catch2/catch.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include <vector>
 
 using namespace RTC;
@@ -86,7 +86,9 @@ SCENARIO("receive RTP packets and trigger NACK", "[rtp][rtpstream]")
 								for (size_t i{ 1 }; i < MaxRequestedPackets; ++i)
 								{
 									if ((bitmask & 1) != 0)
+									{
 										this->nackedSeqNumbers.push_back(firstSeq + i);
+									}
 
 									bitmask >>= 1;
 								}
@@ -126,10 +128,12 @@ SCENARIO("receive RTP packets and trigger NACK", "[rtp][rtpstream]")
 	};
 	// clang-format on
 
-	RtpPacket* packet = RtpPacket::Parse(buffer, sizeof(buffer));
+	std::unique_ptr<RtpPacket> packet{ RtpPacket::Parse(buffer, sizeof(buffer)) };
 
 	if (!packet)
+	{
 		FAIL("not a RTP packet");
+	}
 
 	RtpStream::Params params;
 
@@ -145,25 +149,25 @@ SCENARIO("receive RTP packets and trigger NACK", "[rtp][rtpstream]")
 		RtpStreamRecv rtpStream(&listener, params, SendNackDelay, UseRtpInactivityCheck);
 
 		packet->SetSequenceNumber(1);
-		rtpStream.ReceivePacket(packet);
+		rtpStream.ReceivePacket(packet.get());
 
 		packet->SetSequenceNumber(3);
 		listener.shouldTriggerNack = true;
 		listener.shouldTriggerPLI  = false;
 		listener.shouldTriggerFIR  = false;
-		rtpStream.ReceivePacket(packet);
+		rtpStream.ReceivePacket(packet.get());
 
 		REQUIRE(listener.nackedSeqNumbers.size() == 1);
 		REQUIRE(listener.nackedSeqNumbers[0] == 2);
 		listener.nackedSeqNumbers.clear();
 
 		packet->SetSequenceNumber(2);
-		rtpStream.ReceivePacket(packet);
+		rtpStream.ReceivePacket(packet.get());
 
 		REQUIRE(listener.nackedSeqNumbers.size() == 0);
 
 		packet->SetSequenceNumber(4);
-		rtpStream.ReceivePacket(packet);
+		rtpStream.ReceivePacket(packet.get());
 
 		REQUIRE(listener.nackedSeqNumbers.size() == 0);
 	}
@@ -174,13 +178,13 @@ SCENARIO("receive RTP packets and trigger NACK", "[rtp][rtpstream]")
 		RtpStreamRecv rtpStream(&listener, params, SendNackDelay, UseRtpInactivityCheck);
 
 		packet->SetSequenceNumber(0xfffe);
-		rtpStream.ReceivePacket(packet);
+		rtpStream.ReceivePacket(packet.get());
 
 		packet->SetSequenceNumber(1);
 		listener.shouldTriggerNack = true;
 		listener.shouldTriggerPLI  = false;
 		listener.shouldTriggerFIR  = false;
-		rtpStream.ReceivePacket(packet);
+		rtpStream.ReceivePacket(packet.get());
 
 		REQUIRE(listener.nackedSeqNumbers.size() == 2);
 		REQUIRE(listener.nackedSeqNumbers[0] == 0xffff);
@@ -194,18 +198,16 @@ SCENARIO("receive RTP packets and trigger NACK", "[rtp][rtpstream]")
 		RtpStreamRecv rtpStream(&listener, params, SendNackDelay, UseRtpInactivityCheck);
 
 		packet->SetSequenceNumber(1);
-		rtpStream.ReceivePacket(packet);
+		rtpStream.ReceivePacket(packet.get());
 
 		// Seq different is bigger than MaxNackPackets in NackGenerator, so it
 		// triggers a key frame.
 		packet->SetSequenceNumber(1003);
 		listener.shouldTriggerPLI = true;
 		listener.shouldTriggerFIR = false;
-		rtpStream.ReceivePacket(packet);
+		rtpStream.ReceivePacket(packet.get());
 	}
 
 	// Must run the loop to wait for UV timers and close them.
 	DepLibUV::RunLoop();
-
-	delete packet;
 }

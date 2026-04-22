@@ -97,7 +97,7 @@ namespace RTC
 
 				virtual bool AddDeltas(
 				  const uint8_t* data, size_t len, std::vector<int16_t>& deltas, size_t& offset) = 0;
-				virtual void Dump() const                                                        = 0;
+				virtual void Dump(int indentation = 0) const                                     = 0;
 				virtual uint16_t GetCount() const                                                = 0;
 				virtual uint16_t GetReceivedStatusCount() const                                  = 0;
 				virtual void FillResults(
@@ -121,7 +121,7 @@ namespace RTC
 				{
 					return this->status;
 				}
-				void Dump() const override;
+				void Dump(int indentation = 0) const override;
 				uint16_t GetCount() const override
 				{
 					return this->count;
@@ -149,7 +149,7 @@ namespace RTC
 			public:
 				bool AddDeltas(
 				  const uint8_t* data, size_t len, std::vector<int16_t>& deltas, size_t& offset) override;
-				void Dump() const override;
+				void Dump(int indentation = 0) const override;
 				uint16_t GetCount() const override
 				{
 					return this->statuses.size();
@@ -176,7 +176,7 @@ namespace RTC
 			public:
 				bool AddDeltas(
 				  const uint8_t* data, size_t len, std::vector<int16_t>& deltas, size_t& offset) override;
-				void Dump() const override;
+				void Dump(int indentation = 0) const override;
 				uint16_t GetCount() const override
 				{
 					return this->statuses.size();
@@ -209,13 +209,18 @@ namespace RTC
 			{
 			}
 			FeedbackRtpTransportPacket(CommonHeader* commonHeader, size_t availableLen);
-			~FeedbackRtpTransportPacket();
+			~FeedbackRtpTransportPacket() override;
 
 		public:
+			bool IsBaseSet() const
+			{
+				return this->baseSet;
+			}
+			void SetBase(uint16_t sequenceNumber, uint64_t timestamp);
 			AddPacketResult AddPacket(uint16_t sequenceNumber, uint64_t timestamp, size_t maxRtcpPacketLen);
 			// Just for locally generated packets.
 			void Finish();
-			bool IsFull()
+			bool IsFull() const
 			{
 				// NOTE: Since AddPendingChunks() is called at the end, we cannot track
 				// the exact ongoing value of packetStatusCount. Hence, let's reserve 7
@@ -224,7 +229,7 @@ namespace RTC
 			}
 			bool IsSerializable() const
 			{
-				return this->deltas.size() > 0;
+				return !this->deltas.empty();
 			}
 			bool IsCorrect() const // Just for locally generated packets.
 			{
@@ -288,12 +293,14 @@ namespace RTC
 
 			/* Pure virtual methods inherited from Packet. */
 		public:
-			void Dump() const override;
+			void Dump(int indentation = 0) const override;
 			size_t Serialize(uint8_t* buffer) override;
 			size_t GetSize() const override
 			{
 				if (this->size)
+				{
 					return this->size;
+				}
 
 				// Fixed packet size.
 				size_t size = FeedbackRtpPacket::GetSize();
@@ -315,6 +322,8 @@ namespace RTC
 			void AddPendingChunks();
 
 		private:
+			// Whether baseSequenceNumber has been set.
+			bool baseSet{ false };
 			uint16_t baseSequenceNumber{ 0u };
 			// 24 bits signed integer.
 			int32_t referenceTime{ 0 };

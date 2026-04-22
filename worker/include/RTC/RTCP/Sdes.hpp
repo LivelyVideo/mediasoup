@@ -50,7 +50,7 @@ namespace RTC
 			SdesItem(SdesItem::Type type, size_t len, const char* value);
 			~SdesItem() = default;
 
-			void Dump() const;
+			void Dump(int indentation = 0) const;
 			size_t Serialize(uint8_t* buffer);
 			size_t GetSize() const
 			{
@@ -109,7 +109,7 @@ namespace RTC
 				}
 			}
 
-			void Dump() const;
+			void Dump(int indentation = 0) const;
 			void Serialize();
 			size_t Serialize(uint8_t* buffer);
 			size_t GetSize() const
@@ -188,7 +188,9 @@ namespace RTC
 				auto it = std::find(this->chunks.begin(), this->chunks.end(), chunk);
 
 				if (it != this->chunks.end())
+				{
 					this->chunks.erase(it);
+				}
 			}
 			Iterator Begin()
 			{
@@ -201,7 +203,7 @@ namespace RTC
 
 			/* Pure virtual methods inherited from Packet. */
 		public:
-			void Dump() const override;
+			void Dump(int indentation = 0) const override;
 			size_t Serialize(uint8_t* buffer) override;
 			size_t GetCount() const override
 			{
@@ -212,7 +214,7 @@ namespace RTC
 				// A serialized packet can contain a maximum of 31 chunks.
 				// If number of chunks exceeds 31 then the required number of packets
 				// will be serialized which will take the size calculated below.
-				size_t size = Packet::CommonHeaderSize * ((this->GetCount() / MaxChunksPerPacket) + 1);
+				size_t size = Packet::CommonHeaderSize * ((this->GetCount() / (MaxChunksPerPacket + 1)) + 1);
 
 				for (auto* chunk : this->chunks)
 				{

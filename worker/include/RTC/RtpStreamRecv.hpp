@@ -5,15 +5,14 @@
 #include "RTC/RTCP/XrDelaySinceLastRr.hpp"
 #include "RTC/RateCalculator.hpp"
 #include "RTC/RtpStream.hpp"
-#include "handles/Timer.hpp"
-#include "LivelyBinLogs.hpp"
+#include "handles/TimerHandle.hpp"
 #include <vector>
 
 namespace RTC
 {
 	class RtpStreamRecv : public RTC::RtpStream,
 	                      public RTC::NackGenerator::Listener,
-	                      public Timer::Listener
+	                      public TimerHandle::Listener
 	{
 	public:
 		class Listener : public RTC::RtpStream::Listener
@@ -48,38 +47,10 @@ namespace RTC
 		  RTC::RtpStream::Params& params,
 		  unsigned int sendNackDelayMs,
 		  bool useRtpInactivityCheck);
-		~RtpStreamRecv();
+		~RtpStreamRecv() override;
 
-		void FillStats(size_t& packetsCount, size_t& bytesCount, size_t& framesCount, uint32_t& packetsLost, size_t& packetsDiscarded,
-		 							 size_t& packetsRetransmitted, size_t& packetsRepaired, size_t& nackCount,
-									 size_t& nackPacketCount, size_t& kfCount, float& rtt, uint32_t& maxPacketTs) override
-		{
-			packetsCount = this->mediaTransmissionCounter.GetPacketCount();
-			bytesCount = this->mediaTransmissionCounter.GetBytes();
-			framesCount = this->mediaTransmissionCounter.GetFrameCount();
-			packetsLost = this->packetsLost;
-			packetsDiscarded = this->packetsDiscarded;
-			packetsRetransmitted = this->packetsRetransmitted;
-			packetsRepaired = this->packetsRepaired;
-			nackCount = this->nackCount;
-			nackPacketCount = this->nackPacketCount;
-			kfCount = this->pliCount + this->firCount;
-			rtt = this->rtt;
-
-			// convert RTP time to unix timestamp
-			// in ms using the RTCP sender report
-			uint32_t clock_rate = this->GetClockRate();
-			if (!clock_rate) {
-				maxPacketTs = 0xFFFFFFFF;
-			} else {
-				int delta_rtp = ((int)this->maxPacketTs - (int)this->lastSenderReportTs);
-				delta_rtp = delta_rtp * 1000 / (int)clock_rate;
-
-				maxPacketTs = (uint32_t)((int)this->lastSenderReportNtpMs + delta_rtp);
-			}
-		}
-
-		void FillJsonStats(json& jsonObject) override;
+		flatbuffers::Offset<FBS::RtpStream::Stats> FillBufferStats(
+		  flatbuffers::FlatBufferBuilder& builder) override;
 		bool ReceivePacket(RTC::RtpPacket* packet);
 		bool ReceiveRtxPacket(RTC::RtpPacket* packet);
 		RTC::RTCP::ReceiverReport* GetRtcpReceiverReport();
@@ -110,19 +81,15 @@ namespace RTC
 		{
 			return this->useRtpInactivityCheck;
 		}
-		uint32_t GetJitter()
+		// Lively-specific: video resolution tracking for producer stats (RND-568)
+		void SetWidthAndHeight(uint16_t width, uint16_t height)
 		{
-			return this->jitter;
+			this->width = width;
+			this->height = height;
 		}
-
-		// Added by Amir Pauker 02/27/2024 RND-568
-        void SetWidthAndHeight(uint16_t width, uint16_t height) {
-            this->width = width;
-            this->height = height;
-        }
-		uint16_t GetWidth() const {return this->width;}
-		uint16_t GetHeight() const {return this->height;}
-		size_t GetFrameCount() {return this->mediaTransmissionCounter.GetFrameCount();}
+		uint16_t GetWidth() const { return this->width; }
+		uint16_t GetHeight() const { return this->height; }
+		size_t GetFrameCount() { return this->mediaTransmissionCounter.GetFrameCount(); }
 
 	private:
 		void CalculateJitter(uint32_t rtpTimestamp);
@@ -131,10 +98,14 @@ namespace RTC
 		/* Pure virtual methods inherited from RTC::RtpStream. */
 	public:
 		void UserOnSequenceNumberReset() override;
+		void FillStats(size_t& packetsCount, size_t& bytesCount, size_t& framesCount,
+		               uint32_t& packetsLost, size_t& packetsDiscarded, size_t& packetsRetransmitted,
+		               size_t& packetsRepaired, size_t& nackCount, size_t& nackPacketCount,
+		               size_t& kfCount, float& rtt, uint32_t& maxPacketTs) override;
 
-		/* Pure virtual methods inherited from Timer. */
+		/* Pure virtual methods inherited from TimerHandle. */
 	protected:
-		void OnTimer(Timer* timer) override;
+		void OnTimer(TimerHandle* timer) override;
 
 		/* Pure virtual methods inherited from RTC::NackGenerator. */
 	protected:
@@ -167,17 +138,17 @@ namespace RTC
 		uint8_t firSeqNumber{ 0u };
 		uint32_t reportedPacketLost{ 0u };
 		std::unique_ptr<RTC::NackGenerator> nackGenerator;
-		Timer* inactivityCheckPeriodicTimer{ nullptr };
+		TimerHandle* inactivityCheckPeriodicTimer{ nullptr };
 		bool inactive{ false };
 		// Valid media + valid RTX.
 		TransmissionCounter transmissionCounter;
 		// Just valid media.
 		RTC::RtpDataCounter mediaTransmissionCounter;
-
-		// Added by Amir Pauker 02/27/2024 RND-568
-		uint16_t width{0};
-		uint16_t height{0};
-
+		// Template dependency structure for Dependency Descriptor.
+		std::unique_ptr<RTC::Codecs::DependencyDescriptor::TemplateDependencyStructure> templateDependencyStructure;
+		// Lively-specific: video resolution tracking (RND-568)
+		uint16_t width{ 0 };
+		uint16_t height{ 0 };
 	};
 } // namespace RTC
 

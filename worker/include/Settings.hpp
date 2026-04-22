@@ -44,6 +44,7 @@ public:
 		std::string dtlsCertificateFile;
 		std::string dtlsPrivateKeyFile;
 		std::string libwebrtcFieldTrials{ "WebRTC-Bwe-AlrLimitedBackoff/Enabled/" };
+		bool liburingDisabled{ false };
 	};
 
 public:
@@ -64,8 +65,8 @@ public:
 	thread_local static struct Configuration configuration;
 
 private:
-	static std::map<std::string, LogDevLevel> string2LogDevLevel;
-	static std::map<LogDevLevel, std::string> logDevLevel2String;
+	static absl::flat_hash_map<std::string, LogDevLevel> string2LogDevLevel;
+	static absl::flat_hash_map<LogDevLevel, std::string> logDevLevel2String;
 	static absl::flat_hash_map<std::string, LogLevel> string2LogLevel;
 	static absl::flat_hash_map<LogLevel, std::string> logLevel2String;
 };

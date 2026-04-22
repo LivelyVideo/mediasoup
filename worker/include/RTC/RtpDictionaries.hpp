@@ -2,13 +2,11 @@
 #define MS_RTC_RTP_DICTIONARIES_HPP
 
 #include "common.hpp"
+#include "FBS/rtpParameters.h"
 #include "RTC/Parameters.hpp"
 #include <absl/container/flat_hash_map.h>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
-
-using json = nlohmann::json;
 
 namespace RTC
 {
@@ -17,19 +15,9 @@ namespace RTC
 	public:
 		enum class Kind : uint8_t
 		{
-			ALL = 0,
 			AUDIO,
 			VIDEO
 		};
-
-	public:
-		static Kind GetKind(std::string& str);
-		static Kind GetKind(std::string&& str);
-		static const std::string& GetString(Kind kind);
-
-	private:
-		static absl::flat_hash_map<std::string, Kind> string2Kind;
-		static absl::flat_hash_map<Kind, std::string> kind2String;
 	};
 
 	class RtpCodecMimeType
@@ -37,7 +25,6 @@ namespace RTC
 	public:
 		enum class Type : uint8_t
 		{
-			UNSET = 0,
 			AUDIO,
 			VIDEO
 		};
@@ -45,7 +32,6 @@ namespace RTC
 	public:
 		enum class Subtype : uint16_t
 		{
-			UNSET = 0,
 			// Audio codecs:
 			OPUS = 100,
 			// Multi-channel Opus.
@@ -60,9 +46,7 @@ namespace RTC
 			VP8 = 200,
 			VP9,
 			H264,
-			H264_SVC,
-			X_H264UC,
-			H265,
+			AV1,
 			// Complementary codecs:
 			CN = 300,
 			TELEPHONE_EVENT,
@@ -118,8 +102,8 @@ namespace RTC
 		}
 
 	public:
-		Type type{ Type::UNSET };
-		Subtype subtype{ Subtype::UNSET };
+		Type type;
+		Subtype subtype;
 
 	private:
 		std::string mimeType;
@@ -130,34 +114,33 @@ namespace RTC
 	public:
 		enum class Type : uint8_t
 		{
-			UNKNOWN                = 0,
 			MID                    = 1,
 			RTP_STREAM_ID          = 2,
 			REPAIRED_RTP_STREAM_ID = 3,
 			ABS_SEND_TIME          = 4,
 			TRANSPORT_WIDE_CC_01   = 5,
-			FRAME_MARKING_07       = 6, // NOTE: Remove once RFC.
-			FRAME_MARKING          = 7,
-			SSRC_AUDIO_LEVEL       = 10,
-			VIDEO_ORIENTATION      = 11,
-			TOFFSET                = 12,
-			ABS_CAPTURE_TIME       = 13,
+			SSRC_AUDIO_LEVEL       = 6,
+			DEPENDENCY_DESCRIPTOR  = 7,
+			VIDEO_ORIENTATION      = 8,
+			TIME_OFFSET            = 9,
+			ABS_CAPTURE_TIME       = 10,
+			PLAYOUT_DELAY          = 11,
+			MEDIASOUP_PACKET_ID    = 12
 		};
 
-	private:
-		static absl::flat_hash_map<std::string, Type> string2Type;
-
 	public:
-		static Type GetType(std::string& uri);
+		static RtpHeaderExtensionUri::Type TypeFromFbs(FBS::RtpParameters::RtpHeaderExtensionUri uri);
+		static FBS::RtpParameters::RtpHeaderExtensionUri TypeToFbs(RtpHeaderExtensionUri::Type uri);
 	};
 
 	class RtcpFeedback
 	{
 	public:
 		RtcpFeedback() = default;
-		explicit RtcpFeedback(json& data);
+		explicit RtcpFeedback(const FBS::RtpParameters::RtcpFeedback* data);
 
-		void FillJson(json& jsonObject) const;
+		flatbuffers::Offset<FBS::RtpParameters::RtcpFeedback> FillBuffer(
+		  flatbuffers::FlatBufferBuilder& builder) const;
 
 	public:
 		std::string type;
@@ -168,12 +151,13 @@ namespace RTC
 	{
 	public:
 		RtpCodecParameters() = default;
-		explicit RtpCodecParameters(json& data);
+		explicit RtpCodecParameters(const FBS::RtpParameters::RtpCodecParameters* data);
 
-		void FillJson(json& jsonObject) const;
+		flatbuffers::Offset<FBS::RtpParameters::RtpCodecParameters> FillBuffer(
+		  flatbuffers::FlatBufferBuilder& builder) const;
 
 	private:
-		void CheckCodec();
+		void CheckCodec() const;
 
 	public:
 		RtpCodecMimeType mimeType;
@@ -188,9 +172,9 @@ namespace RTC
 	{
 	public:
 		RtpRtxParameters() = default;
-		explicit RtpRtxParameters(json& data);
+		explicit RtpRtxParameters(const FBS::RtpParameters::Rtx* data);
 
-		void FillJson(json& jsonObject) const;
+		flatbuffers::Offset<FBS::RtpParameters::Rtx> FillBuffer(flatbuffers::FlatBufferBuilder& builder) const;
 
 	public:
 		uint32_t ssrc{ 0u };
@@ -200,9 +184,10 @@ namespace RTC
 	{
 	public:
 		RtpEncodingParameters() = default;
-		explicit RtpEncodingParameters(json& data);
+		explicit RtpEncodingParameters(const FBS::RtpParameters::RtpEncodingParameters* data);
 
-		void FillJson(json& jsonObject) const;
+		flatbuffers::Offset<FBS::RtpParameters::RtpEncodingParameters> FillBuffer(
+		  flatbuffers::FlatBufferBuilder& builder) const;
 
 	public:
 		uint32_t ssrc{ 0u };
@@ -214,7 +199,7 @@ namespace RTC
 		uint32_t maxBitrate{ 0u };
 		double maxFramerate{ 0 };
 		bool dtx{ false };
-		std::string scalabilityMode;
+		std::string scalabilityMode{ "S1T1" };
 		uint8_t spatialLayers{ 1u };
 		uint8_t temporalLayers{ 1u };
 		bool ksvc{ false };
@@ -224,12 +209,12 @@ namespace RTC
 	{
 	public:
 		RtpHeaderExtensionParameters() = default;
-		explicit RtpHeaderExtensionParameters(json& data);
+		explicit RtpHeaderExtensionParameters(const FBS::RtpParameters::RtpHeaderExtensionParameters* data);
 
-		void FillJson(json& jsonObject) const;
+		flatbuffers::Offset<FBS::RtpParameters::RtpHeaderExtensionParameters> FillBuffer(
+		  flatbuffers::FlatBufferBuilder& builder) const;
 
 	public:
-		std::string uri;
 		RtpHeaderExtensionUri::Type type;
 		uint8_t id{ 0u };
 		bool encrypt{ false };
@@ -240,13 +225,13 @@ namespace RTC
 	{
 	public:
 		RtcpParameters() = default;
-		explicit RtcpParameters(json& data);
+		explicit RtcpParameters(const FBS::RtpParameters::RtcpParameters* data);
 
-		void FillJson(json& jsonObject) const;
+		flatbuffers::Offset<FBS::RtpParameters::RtcpParameters> FillBuffer(
+		  flatbuffers::FlatBufferBuilder& builder) const;
 
 	public:
 		std::string cname;
-		uint32_t ssrc{ 0u };
 		bool reducedSize{ true };
 	};
 
@@ -255,7 +240,6 @@ namespace RTC
 	public:
 		enum class Type : uint8_t
 		{
-			NONE = 0,
 			SIMPLE,
 			SIMULCAST,
 			SVC,
@@ -264,20 +248,19 @@ namespace RTC
 		};
 
 	public:
-		static Type GetType(const RtpParameters& rtpParameters);
-		static Type GetType(std::string& str);
-		static Type GetType(std::string&& str);
+		static std::optional<Type> GetType(const RtpParameters& rtpParameters);
 		static std::string& GetTypeString(Type type);
+		static FBS::RtpParameters::Type TypeToFbs(Type type);
 
 	private:
-		static absl::flat_hash_map<std::string, Type> string2Type;
 		static absl::flat_hash_map<Type, std::string> type2String;
 
 	public:
 		RtpParameters() = default;
-		explicit RtpParameters(json& data);
+		explicit RtpParameters(const FBS::RtpParameters::RtpParameters* data);
 
-		void FillJson(json& jsonObject) const;
+		flatbuffers::Offset<FBS::RtpParameters::RtpParameters> FillBuffer(
+		  flatbuffers::FlatBufferBuilder& builder) const;
 		const RTC::RtpCodecParameters* GetCodecForEncoding(RtpEncodingParameters& encoding) const;
 		const RTC::RtpCodecParameters* GetRtxCodecForEncoding(RtpEncodingParameters& encoding) const;
 
@@ -292,7 +275,7 @@ namespace RTC
 		std::vector<RtpEncodingParameters> encodings;
 		std::vector<RtpHeaderExtensionParameters> headerExtensions;
 		RtcpParameters rtcp;
-		bool hasRtcp{ false };
+		std::string msid;
 	};
 } // namespace RTC
 

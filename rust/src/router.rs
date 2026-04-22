@@ -28,7 +28,6 @@ use crate::data_consumer::{DataConsumer, DataConsumerId, DataConsumerOptions};
 use crate::data_producer::{
     DataProducer, DataProducerId, DataProducerOptions, NonClosingDataProducer, WeakDataProducer,
 };
-use crate::data_structures::{AppData, ListenIp};
 use crate::direct_transport::{DirectTransport, DirectTransportOptions};
 use crate::messages::{
     RouterCloseRequest, RouterCreateActiveSpeakerObserverData,
@@ -36,7 +35,9 @@ use crate::messages::{
     RouterCreateAudioLevelObserverRequest, RouterCreateDirectTransportData,
     RouterCreateDirectTransportRequest, RouterCreatePipeTransportData,
     RouterCreatePipeTransportRequest, RouterCreatePlainTransportData,
-    RouterCreatePlainTransportRequest, RouterCreateWebrtcTransportRequest, RouterDumpRequest,
+    RouterCreatePlainTransportRequest, RouterCreateWebRtcTransportRequest,
+    RouterCreateWebRtcTransportWithServerRequest, RouterCreateWebrtcTransportData,
+    RouterDumpRequest,
 };
 use crate::pipe_transport::{
     PipeTransport, PipeTransportOptions, PipeTransportRemoteParameters, WeakPipeTransport,
@@ -44,14 +45,12 @@ use crate::pipe_transport::{
 use crate::plain_transport::{PlainTransport, PlainTransportOptions};
 use crate::producer::{PipedProducer, Producer, ProducerId, ProducerOptions, WeakProducer};
 use crate::rtp_observer::{RtpObserver, RtpObserverId};
-use crate::rtp_parameters::{RtpCapabilities, RtpCapabilitiesFinalized, RtpCodecCapability};
-use crate::sctp_parameters::NumSctpStreams;
 use crate::transport::{
     ConsumeDataError, ConsumeError, ProduceDataError, ProduceError, Transport, TransportGeneric,
     TransportId,
 };
 use crate::webrtc_transport::{WebRtcTransport, WebRtcTransportListen, WebRtcTransportOptions};
-use crate::worker::{Channel, PayloadChannel, RequestError, Worker};
+use crate::worker::{Channel, RequestError, Worker};
 use crate::{ortc, uuid_based_wrapper_type};
 use async_executor::Executor;
 use async_lock::Mutex as AsyncMutex;
@@ -59,12 +58,18 @@ use event_listener_primitives::{Bag, BagOnce, HandlerId};
 use futures_lite::future;
 use hash_hasher::{HashedMap, HashedSet};
 use log::{debug, error};
+use mediasoup_types::data_structures::{AppData, ListenInfo, Protocol};
+use mediasoup_types::rtp_parameters::{
+    RtpCapabilities, RtpCapabilitiesFinalized, RtpCodecCapability,
+};
+use mediasoup_types::sctp_parameters::NumSctpStreams;
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::net::{IpAddr, Ipv4Addr};
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex as SyncMutex;
 use std::sync::{Arc, Weak};
 use thiserror::Error;
 
@@ -114,10 +119,17 @@ impl Default for RouterOptions {
 pub struct PipeToRouterOptions {
     /// Target Router instance.
     pub router: Router,
+    /// Whether the `id` of the returned Producer or DataProducer should be the
+    /// same than the `id` of the original Producer or DataProducer. Default true.
+    ///
+    /// # Note
+    /// If set to true, then the origin router and target router cannot be in the
+    /// same worker.
+    pub keep_id: bool,
     /// IP used in the PipeTransport pair.
     ///
-    /// Default `127.0.0.1`.
-    listen_ip: ListenIp,
+    /// Default `{ protocol: 'udp', ip: '127.0.0.1' }`.
+    listen_info: ListenInfo,
     /// Create a SCTP association.
     ///
     /// Default `true`.
@@ -140,9 +152,17 @@ impl PipeToRouterOptions {
     pub fn new(router: Router) -> Self {
         Self {
             router,
-            listen_ip: ListenIp {
+            keep_id: true,
+            listen_info: ListenInfo {
+                protocol: Protocol::Udp,
                 ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-                announced_ip: None,
+                announced_address: None,
+                expose_internal_ip: false,
+                port: None,
+                port_range: None,
+                flags: None,
+                send_buffer_size: None,
+                recv_buffer_size: None,
             },
             enable_sctp: true,
             num_sctp_streams: NumSctpStreams::default(),
@@ -170,7 +190,7 @@ pub struct PipeProducerToRouterPair {
 }
 
 /// Error that caused [`Router::pipe_producer_to_router()`] to fail.
-#[derive(Debug, Error, Eq, PartialEq)]
+#[derive(Debug, Error)]
 pub enum PipeProducerToRouterError {
     /// Destination router must be different
     #[error("Destination router must be different")]
@@ -261,6 +281,14 @@ impl From<ProduceDataError> for PipeDataProducerToRouterError {
     fn from(error: ProduceDataError) -> Self {
         PipeDataProducerToRouterError::ProduceFailed(error)
     }
+}
+
+/// Error that caused [`Router::update_media_codecs`] to fail.
+#[derive(Debug, Error)]
+pub enum UpdateMediaCodecsError {
+    /// RTP capabilities generation error
+    #[error("RTP capabilities generation error: {0}")]
+    FailedRtpCapabilitiesGeneration(ortc::RtpCapabilitiesError),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -365,9 +393,8 @@ struct Handlers {
 struct Inner {
     id: RouterId,
     executor: Arc<Executor<'static>>,
-    rtp_capabilities: RtpCapabilitiesFinalized,
+    rtp_capabilities: SyncMutex<RtpCapabilitiesFinalized>,
     channel: Channel,
-    payload_channel: PayloadChannel,
     handlers: Arc<Handlers>,
     app_data: AppData,
     producers: Arc<RwLock<HashedMap<ProducerId, WeakProducer>>>,
@@ -397,10 +424,17 @@ impl Inner {
             {
                 let channel = self.channel.clone();
                 let request = RouterCloseRequest { router_id: self.id };
+
                 self.executor
                     .spawn(async move {
-                        if let Err(error) = channel.request("", request).await {
-                            error!("router closing failed on drop: {}", error);
+                        match channel.request("", request).await {
+                            Err(RequestError::ChannelClosed) => {
+                                debug!("router closing failed on drop: Channel already closed");
+                            }
+                            Err(error) => {
+                                error!("router closing failed on drop: {}", error);
+                            }
+                            Ok(_) => {}
                         }
                     })
                     .detach();
@@ -441,7 +475,6 @@ impl Router {
         id: RouterId,
         executor: Arc<Executor<'static>>,
         channel: Channel,
-        payload_channel: PayloadChannel,
         rtp_capabilities: RtpCapabilitiesFinalized,
         app_data: AppData,
         worker: Worker,
@@ -471,9 +504,8 @@ impl Router {
         let inner = Arc::new(Inner {
             id,
             executor,
-            rtp_capabilities,
+            rtp_capabilities: SyncMutex::new(rtp_capabilities),
             channel,
-            payload_channel,
             handlers,
             producers,
             data_producers,
@@ -521,8 +553,8 @@ impl Router {
     /// * See also how to [filter these RTP capabilities](https://mediasoup.org/documentation/v3/tricks/#rtp-capabilities-filtering)
     ///   before using them into a client.
     #[must_use]
-    pub fn rtp_capabilities(&self) -> &RtpCapabilitiesFinalized {
-        &self.inner.rtp_capabilities
+    pub fn rtp_capabilities(&self) -> RtpCapabilitiesFinalized {
+        self.inner.rtp_capabilities.lock().unwrap().clone()
     }
 
     /// Dump Router.
@@ -576,7 +608,6 @@ impl Router {
             transport_id,
             Arc::clone(&self.inner.executor),
             self.inner.channel.clone(),
-            self.inner.payload_channel.clone(),
             direct_transport_options.app_data,
             self.clone(),
         );
@@ -601,10 +632,17 @@ impl Router {
     ///
     /// # async fn f(router: Router) -> Result<(), Box<dyn std::error::Error>> {
     /// let transport = router
-    ///     .create_webrtc_transport(WebRtcTransportOptions::new(TransportListenIps::new(
-    ///         ListenIp {
+    ///     .create_webrtc_transport(WebRtcTransportOptions::new(WebRtcTransportListenInfos::new(
+    ///         ListenInfo {
+    ///             protocol: Protocol::Udp,
     ///             ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-    ///             announced_ip: Some("9.9.9.1".parse().unwrap()),
+    ///             announced_address: Some("9.9.9.1".to_string()),
+    ///             expose_internal_ip: false,
+    ///             port: None,
+    ///             port_range: None,
+    ///             flags: None,
+    ///             send_buffer_size: None,
+    ///             recv_buffer_size: None,
     ///         },
     ///     )))
     ///     .await?;
@@ -621,23 +659,41 @@ impl Router {
 
         let _buffer_guard = self.inner.channel.buffer_messages_for(transport_id.into());
 
-        let data = self
-            .inner
-            .channel
-            .request(
-                self.inner.id,
-                RouterCreateWebrtcTransportRequest::from_options(
-                    transport_id,
-                    &webrtc_transport_options,
-                ),
-            )
-            .await?;
+        let data = match webrtc_transport_options.listen {
+            WebRtcTransportListen::Individual { listen_infos: _ } => {
+                self.inner
+                    .channel
+                    .request(
+                        self.inner.id,
+                        RouterCreateWebRtcTransportRequest {
+                            data: RouterCreateWebrtcTransportData::from_options(
+                                transport_id,
+                                &webrtc_transport_options,
+                            ),
+                        },
+                    )
+                    .await?
+            }
+            WebRtcTransportListen::Server { webrtc_server: _ } => {
+                self.inner
+                    .channel
+                    .request(
+                        self.inner.id,
+                        RouterCreateWebRtcTransportWithServerRequest {
+                            data: RouterCreateWebrtcTransportData::from_options(
+                                transport_id,
+                                &webrtc_transport_options,
+                            ),
+                        },
+                    )
+                    .await?
+            }
+        };
 
         let transport = WebRtcTransport::new(
             transport_id,
             Arc::clone(&self.inner.executor),
             self.inner.channel.clone(),
-            self.inner.payload_channel.clone(),
             data,
             webrtc_transport_options.app_data,
             self.clone(),
@@ -667,9 +723,16 @@ impl Router {
     ///
     /// # async fn f(router: Router) -> Result<(), Box<dyn std::error::Error>> {
     /// let transport = router
-    ///     .create_pipe_transport(PipeTransportOptions::new(ListenIp {
+    ///     .create_pipe_transport(PipeTransportOptions::new(ListenInfo {
+    ///         protocol: Protocol::Udp,
     ///         ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-    ///         announced_ip: Some("9.9.9.1".parse().unwrap()),
+    ///         announced_address: Some("9.9.9.1".to_string()),
+    ///         expose_internal_ip: false,
+    ///         port: None,
+    ///         port_range: None,
+    ///         flags: None,
+    ///         send_buffer_size: None,
+    ///         recv_buffer_size: None,
     ///     }))
     ///     .await?;
     /// # Ok(())
@@ -703,7 +766,6 @@ impl Router {
             transport_id,
             Arc::clone(&self.inner.executor),
             self.inner.channel.clone(),
-            self.inner.payload_channel.clone(),
             data,
             pipe_transport_options.app_data,
             self.clone(),
@@ -729,9 +791,16 @@ impl Router {
     ///
     /// # async fn f(router: Router) -> Result<(), Box<dyn std::error::Error>> {
     /// let transport = router
-    ///     .create_plain_transport(PlainTransportOptions::new(ListenIp {
+    ///     .create_plain_transport(PlainTransportOptions::new(ListenInfo {
+    ///         protocol: Protocol::Udp,
     ///         ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-    ///         announced_ip: Some("9.9.9.1".parse().unwrap()),
+    ///         announced_address: Some("9.9.9.1".to_string()),
+    ///         expose_internal_ip: false,
+    ///         port: None,
+    ///         port_range: None,
+    ///         flags: None,
+    ///         send_buffer_size: None,
+    ///         recv_buffer_size: None,
     ///     }))
     ///     .await?;
     /// # Ok(())
@@ -765,7 +834,6 @@ impl Router {
             transport_id,
             Arc::clone(&self.inner.executor),
             self.inner.channel.clone(),
-            self.inner.payload_channel.clone(),
             data,
             plain_transport_options.app_data,
             self.clone(),
@@ -908,7 +976,7 @@ impl Router {
     /// # Example
     /// ```rust
     /// use mediasoup::prelude::*;
-    /// use mediasoup::rtp_parameters::RtpCodecParameters;
+    /// use mediasoup_types::rtp_parameters::RtpCodecParameters;
     /// use std::net::{IpAddr, Ipv4Addr};
     /// use std::num::{NonZeroU32, NonZeroU8};
     ///
@@ -935,10 +1003,17 @@ impl Router {
     ///
     /// // Produce in router1.
     /// let transport1 = router1
-    ///     .create_webrtc_transport(WebRtcTransportOptions::new(TransportListenIps::new(
-    ///         ListenIp {
+    ///     .create_webrtc_transport(WebRtcTransportOptions::new(WebRtcTransportListenInfos::new(
+    ///         ListenInfo {
+    ///             protocol: Protocol::Udp,
     ///             ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-    ///             announced_ip: Some("9.9.9.1".parse().unwrap()),
+    ///             announced_address: Some("9.9.9.1".to_string()),
+    ///             expose_internal_ip: false,
+    ///             port: None,
+    ///             port_range: None,
+    ///             flags: None,
+    ///             send_buffer_size: None,
+    ///             recv_buffer_size: None,
     ///         },
     ///     )))
     ///     .await?;
@@ -973,10 +1048,17 @@ impl Router {
     ///
     /// // Consume producer1 from router2.
     /// let transport2 = router2
-    ///     .create_webrtc_transport(WebRtcTransportOptions::new(TransportListenIps::new(
-    ///         ListenIp {
+    ///     .create_webrtc_transport(WebRtcTransportOptions::new(WebRtcTransportListenInfos::new(
+    ///         ListenInfo {
+    ///             protocol: Protocol::Udp,
     ///             ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-    ///             announced_ip: Some("9.9.9.1".parse().unwrap()),
+    ///             announced_address: Some("9.9.9.1".to_string()),
+    ///             expose_internal_ip: false,
+    ///             port: None,
+    ///             port_range: None,
+    ///             flags: None,
+    ///             send_buffer_size: None,
+    ///             recv_buffer_size: None,
     ///         },
     ///     )))
     ///     .await?;
@@ -1009,7 +1091,13 @@ impl Router {
     ) -> Result<PipeProducerToRouterPair, PipeProducerToRouterError> {
         debug!("pipe_producer_to_router()");
 
-        if pipe_to_router_options.router.id() == self.id() {
+        let PipeToRouterOptions {
+            ref router,
+            keep_id,
+            ..
+        } = pipe_to_router_options;
+
+        if keep_id && router.id() == self.id() {
             return Err(PipeProducerToRouterError::SameRouter);
         }
 
@@ -1042,7 +1130,12 @@ impl Router {
             .remote
             .produce({
                 let mut producer_options = ProducerOptions::new_pipe_transport(
-                    producer_id,
+                    // Generate a new id for the pipeProducer if requested.
+                    if keep_id {
+                        producer_id
+                    } else {
+                        ProducerId::new()
+                    },
                     pipe_consumer.kind(),
                     pipe_consumer.rtp_parameters().clone(),
                 );
@@ -1154,10 +1247,17 @@ impl Router {
     /// // Produce in router1.
     /// let transport1 = router1
     ///     .create_webrtc_transport({
-    ///         let mut options = WebRtcTransportOptions::new(TransportListenIps::new(
-    ///             ListenIp {
+    ///         let mut options = WebRtcTransportOptions::new(WebRtcTransportListenInfos::new(
+    ///             ListenInfo {
+    ///                 protocol: Protocol::Udp,
     ///                 ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-    ///                 announced_ip: Some("9.9.9.1".parse().unwrap()),
+    ///                 announced_address: Some("9.9.9.1".to_string()),
+    ///                 expose_internal_ip: false,
+    ///                 port: None,
+    ///                 port_range: None,
+    ///                 flags: None,
+    ///                 send_buffer_size: None,
+    ///                 recv_buffer_size: None,
     ///             },
     ///         ));
     ///         options.enable_sctp = true;
@@ -1181,10 +1281,17 @@ impl Router {
     /// // Consume data_producer1 from router2.
     /// let transport2 = router2
     ///     .create_webrtc_transport({
-    ///         let mut options = WebRtcTransportOptions::new(TransportListenIps::new(
-    ///             ListenIp {
+    ///         let mut options = WebRtcTransportOptions::new(WebRtcTransportListenInfos::new(
+    ///             ListenInfo {
+    ///                 protocol: Protocol::Udp,
     ///                 ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-    ///                 announced_ip: Some("9.9.9.1".parse().unwrap()),
+    ///                 announced_address: Some("9.9.9.1".to_string()),
+    ///                 expose_internal_ip: false,
+    ///                 port: None,
+    ///                 port_range: None,
+    ///                 flags: None,
+    ///                 send_buffer_size: None,
+    ///                 recv_buffer_size: None,
     ///             },
     ///         ));
     ///         options.enable_sctp = true;
@@ -1205,7 +1312,13 @@ impl Router {
     ) -> Result<PipeDataProducerToRouterPair, PipeDataProducerToRouterError> {
         debug!("pipe_data_producer_to_router()");
 
-        if pipe_to_router_options.router.id() == self.id() {
+        let PipeToRouterOptions {
+            ref router,
+            keep_id,
+            ..
+        } = pipe_to_router_options;
+
+        if keep_id && router.id() == self.id() {
             return Err(PipeDataProducerToRouterError::SameRouter);
         }
 
@@ -1237,12 +1350,21 @@ impl Router {
             .remote
             .produce_data({
                 let mut producer_options = DataProducerOptions::new_pipe_transport(
-                    data_producer_id,
+                    // Generate a new id for the pipeDataProducer if requested.
+                    if keep_id {
+                        data_producer_id
+                    } else {
+                        DataProducerId::new()
+                    },
                     // We've created `DataConsumer` with SCTP above, so this should never panic
                     pipe_data_consumer.sctp_stream_parameters().unwrap(),
                 );
-                producer_options.label = pipe_data_consumer.label().clone();
-                producer_options.protocol = pipe_data_consumer.protocol().clone();
+                producer_options
+                    .label
+                    .clone_from(pipe_data_consumer.label());
+                producer_options
+                    .protocol
+                    .clone_from(pipe_data_consumer.protocol());
                 producer_options.app_data = data_producer.app_data().clone();
 
                 producer_options
@@ -1319,6 +1441,23 @@ impl Router {
             );
             false
         }
+    }
+
+    /// Update the Router media codecs. Once called, the return value of
+    /// router.rtp_capabilities() changes.
+    pub fn update_media_codecs(
+        &mut self,
+        media_codecs: Vec<RtpCodecCapability>,
+    ) -> Result<(), UpdateMediaCodecsError> {
+        debug!("update_media_codecs()");
+
+        let rtp_capabilities = ortc::generate_router_rtp_capabilities(media_codecs)
+            .map_err(UpdateMediaCodecsError::FailedRtpCapabilitiesGeneration)?;
+
+        let mut locked = self.inner.rtp_capabilities.lock().unwrap();
+        *locked = rtp_capabilities;
+
+        Ok(())
     }
 
     /// Callback is called when a new transport is created.
@@ -1400,7 +1539,8 @@ impl Router {
     ) -> Result<PipeTransportPair, RequestError> {
         let PipeToRouterOptions {
             router,
-            listen_ip,
+            keep_id: _,
+            listen_info,
             enable_sctp,
             num_sctp_streams,
             enable_rtx,
@@ -1415,7 +1555,7 @@ impl Router {
             enable_rtx,
             enable_srtp,
             app_data: AppData::default(),
-            ..PipeTransportOptions::new(listen_ip)
+            ..PipeTransportOptions::new(listen_info)
         };
         let local_pipe_transport_fut = self.create_pipe_transport(transport_options.clone());
 
@@ -1428,7 +1568,7 @@ impl Router {
             let tuple = remote_pipe_transport.tuple();
 
             PipeTransportRemoteParameters {
-                ip: tuple.local_ip(),
+                ip: tuple.local_address().parse::<IpAddr>().unwrap(),
                 port: tuple.local_port(),
                 srtp_parameters: remote_pipe_transport.srtp_parameters(),
             }
@@ -1438,7 +1578,7 @@ impl Router {
             let tuple = local_pipe_transport.tuple();
 
             PipeTransportRemoteParameters {
-                ip: tuple.local_ip(),
+                ip: tuple.local_address().parse::<IpAddr>().unwrap(),
                 port: tuple.local_port(),
                 srtp_parameters: local_pipe_transport.srtp_parameters(),
             }

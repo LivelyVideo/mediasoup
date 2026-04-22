@@ -6,7 +6,8 @@
 #include <cstddef>    // size_t
 #include <cstdint>    // uint8_t, etc
 #include <functional> // std::function
-#include <memory>     // std::addressof()
+#include <memory>     // std::addressof(), std::unique_ptr(), etc
+#include <optional>
 #ifdef _WIN32
 #include <winsock2.h>
 // Avoid uv/win.h: error C2628 'intptr_t' followed by 'int' is illegal.
@@ -21,6 +22,16 @@ typedef SSIZE_T ssize_t;
 #include <arpa/inet.h>  // htonl(), htons(), ntohl(), ntohs()
 #include <netinet/in.h> // sockaddr_in, sockaddr_in6
 #include <sys/socket.h> // struct sockaddr, struct sockaddr_storage, AF_INET, AF_INET6
+#endif
+
+// This is a macro to silence false warnings in GCC in switch() blocks with FBS
+// types.
+#if defined(__GNUC__) && !defined(__clang__)
+#define NO_DEFAULT_GCC()                                                                           \
+	default:                                                                                         \
+		__builtin_unreachable()
+#else
+#define NO_DEFAULT_GCC()
 #endif
 
 using ChannelReadCtx    = void*;
@@ -40,29 +51,5 @@ using ChannelReadFn = ChannelReadFreeFn (*)(
 using ChannelWriteCtx = void*;
 using ChannelWriteFn =
   void (*)(const uint8_t* /* message */, uint32_t /* messageLen */, ChannelWriteCtx /* ctx */);
-
-using PayloadChannelReadCtx    = void*;
-using PayloadChannelReadFreeFn = void (*)(uint8_t*, uint32_t, size_t);
-// Returns `PayloadChannelReadFree` on successful read that must be used to free
-// `message` and `payload`.
-using PayloadChannelReadFn = PayloadChannelReadFreeFn (*)(
-  uint8_t** /* message */,
-  uint32_t* /* messageLen */,
-  size_t* /* messageCtx */,
-  uint8_t** /* payload */,
-  uint32_t* /* payloadLen */,
-  size_t* /* payloadCapacity */,
-  // This is `uv_async_t` handle that can be called later with `uv_async_send()`
-  // when there is more data to read.
-  const void* /* handle */,
-  PayloadChannelReadCtx /* ctx */);
-
-using PayloadChannelWriteCtx = void*;
-using PayloadChannelWriteFn  = void (*)(
-  const uint8_t* /* message */,
-  uint32_t /* messageLen */,
-  const uint8_t* /* payload */,
-  uint32_t /* payloadLen */,
-  ChannelWriteCtx /* ctx */);
 
 #endif

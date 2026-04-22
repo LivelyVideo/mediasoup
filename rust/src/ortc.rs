@@ -1,16 +1,21 @@
-use crate::rtp_parameters::{
+use crate::fbs::{ToFbs, TryFromFbs};
+use crate::supported_rtp_capabilities;
+use mediasoup_sys::fbs::rtp_parameters;
+use mediasoup_types::rtp_parameters::{
     MediaKind, MimeType, MimeTypeAudio, MimeTypeVideo, RtcpFeedback, RtcpParameters,
     RtpCapabilities, RtpCapabilitiesFinalized, RtpCodecCapability, RtpCodecCapabilityFinalized,
     RtpCodecParameters, RtpCodecParametersParameters, RtpCodecParametersParametersValue,
     RtpEncodingParameters, RtpEncodingParametersRtx, RtpHeaderExtensionDirection,
     RtpHeaderExtensionParameters, RtpHeaderExtensionUri, RtpParameters,
 };
-use crate::scalability_modes::ScalabilityMode;
-use crate::supported_rtp_capabilities;
+use mediasoup_types::scalability_modes::ScalabilityMode;
+use once_cell::sync::Lazy;
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
+use std::error::Error;
 use std::mem;
 use std::num::{NonZeroU32, NonZeroU8};
 use std::ops::Deref;
@@ -23,6 +28,21 @@ const DYNAMIC_PAYLOAD_TYPES: &[u8] = &[
     100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118,
     119, 120, 121, 122, 123, 124, 125, 126, 127, 96, 97, 98, 99,
 ];
+
+// TODO: Remove this if we switch to 'sendrecv' in Dependency-Descriptor header
+// extension.
+//
+// This is an object where we store some objects we may later need.
+struct Cache {
+    pub dependency_descriptor_header_extension_parameters_for_pipe_consumer:
+        Option<RtpHeaderExtensionParameters>,
+}
+
+static CACHE: Lazy<Mutex<Cache>> = Lazy::new(|| {
+    Mutex::new(Cache {
+        dependency_descriptor_header_extension_parameters_for_pipe_consumer: None,
+    })
+});
 
 #[doc(hidden)]
 #[derive(Debug, Default, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Deserialize, Serialize)]
@@ -50,6 +70,69 @@ pub struct RtpMappingEncoding {
 pub struct RtpMapping {
     pub codecs: Vec<RtpMappingCodec>,
     pub encodings: Vec<RtpMappingEncoding>,
+}
+
+impl<'a> TryFromFbs<'a> for RtpMapping {
+    type FbsType = rtp_parameters::RtpMappingRef<'a>;
+    type Error = Box<dyn Error + Send + Sync>;
+
+    fn try_from_fbs(mapping: Self::FbsType) -> Result<Self, Self::Error> {
+        Ok(Self {
+            codecs: mapping
+                .codecs()?
+                .iter()
+                .map(|mapping| {
+                    Ok(RtpMappingCodec {
+                        payload_type: mapping?.payload_type()?,
+                        mapped_payload_type: mapping?.mapped_payload_type()?,
+                    })
+                })
+                .collect::<Result<Vec<_>, Box<dyn Error + Send + Sync>>>()?,
+            encodings: mapping
+                .encodings()?
+                .iter()
+                .map(|mapping| {
+                    Ok(RtpMappingEncoding {
+                        rid: mapping?.rid()?.map(|rid| rid.to_string()),
+                        ssrc: mapping?.ssrc()?,
+                        scalability_mode: mapping?
+                            .scalability_mode()?
+                            .map(|maybe_scalability_mode| maybe_scalability_mode.parse())
+                            .transpose()?
+                            .unwrap_or_default(),
+                        mapped_ssrc: mapping?.mapped_ssrc()?,
+                    })
+                })
+                .collect::<Result<Vec<_>, Box<dyn Error + Send + Sync>>>()?,
+        })
+    }
+}
+
+impl ToFbs for RtpMapping {
+    type FbsType = rtp_parameters::RtpMapping;
+
+    fn to_fbs(&self) -> Self::FbsType {
+        rtp_parameters::RtpMapping {
+            codecs: self
+                .codecs
+                .iter()
+                .map(|mapping| rtp_parameters::CodecMapping {
+                    payload_type: mapping.payload_type,
+                    mapped_payload_type: mapping.mapped_payload_type,
+                })
+                .collect(),
+            encodings: self
+                .encodings
+                .iter()
+                .map(|mapping| rtp_parameters::EncodingMapping {
+                    rid: mapping.rid.clone().map(|rid| rid.to_string()),
+                    ssrc: mapping.ssrc,
+                    scalability_mode: Some(mapping.scalability_mode.to_string()),
+                    mapped_ssrc: mapping.mapped_ssrc,
+                })
+                .collect(),
+        }
+    }
 }
 
 /// Error caused by invalid RTP parameters.
@@ -311,6 +394,29 @@ pub(crate) fn generate_router_rtp_capabilities(
         } else {
             // Append to the codec list.
             caps.codecs.push(codec_finalized);
+        }
+    }
+
+    // TODO: Remove this if we switch to 'sendrecv' in Dependency-Descriptor header
+    // extension.
+    //
+    // We need to create and store this Dependency-Descriptor header extension to
+    // leter be used by `getPipeConsumerRtpParameters()` function.
+    let dependency_descriptor_header_extension_for_pipe_consumer =
+        caps.header_extensions.iter().find(|ext| {
+            ext.uri == RtpHeaderExtensionUri::DependencyDescriptor
+                && ext.direction != RtpHeaderExtensionDirection::SendRecv
+        });
+
+    if let Some(dependency_descriptor) = dependency_descriptor_header_extension_for_pipe_consumer {
+        if dependency_descriptor.direction != RtpHeaderExtensionDirection::SendRecv {
+            let mut cache = CACHE.lock();
+            cache.dependency_descriptor_header_extension_parameters_for_pipe_consumer =
+                Some(RtpHeaderExtensionParameters {
+                    uri: dependency_descriptor.uri,
+                    id: dependency_descriptor.preferred_id,
+                    encrypt: dependency_descriptor.preferred_encrypt,
+                });
         }
     }
 
@@ -603,8 +709,9 @@ pub(crate) fn get_consumable_rtp_parameters(
     consumable_params.rtcp = RtcpParameters {
         cname: params.rtcp.cname.clone(),
         reduced_size: true,
-        mux: Some(true),
     };
+
+    consumable_params.msid.clone_from(&params.msid);
 
     consumable_params
 }
@@ -622,7 +729,7 @@ pub(crate) fn can_consume(
         if caps
             .codecs
             .iter()
-            .any(|cap_codec| match_codecs(cap_codec.deref().into(), codec.into(), true).is_ok())
+            .any(|cap_codec| match_codecs(cap_codec.into(), codec.into(), true).is_ok())
         {
             matching_codecs.push(codec);
         }
@@ -630,7 +737,7 @@ pub(crate) fn can_consume(
 
     // Ensure there is at least one media codec.
     Ok(matching_codecs
-        .get(0)
+        .first()
         .map(|codec| !codec.is_rtx())
         .unwrap_or_default())
 }
@@ -648,6 +755,7 @@ pub(crate) fn get_consumer_rtp_parameters(
 ) -> Result<RtpParameters, ConsumerRtpParametersError> {
     let mut consumer_params = RtpParameters {
         rtcp: consumable_rtp_parameters.rtcp.clone(),
+        msid: consumable_rtp_parameters.msid.clone(),
         ..RtpParameters::default()
     };
 
@@ -782,7 +890,7 @@ pub(crate) fn get_consumer_rtp_parameters(
         // (assume all encodings have the same value).
         let mut scalability_mode = consumable_rtp_parameters
             .encodings
-            .get(0)
+            .first()
             .map(|encoding| encoding.scalability_mode.clone())
             .unwrap_or_default();
 
@@ -828,6 +936,7 @@ pub(crate) fn get_pipe_consumer_rtp_parameters(
         header_extensions: vec![],
         encodings: vec![],
         rtcp: consumable_rtp_parameters.rtcp.clone(),
+        msid: consumable_rtp_parameters.msid.clone(),
     };
 
     for codec in &consumable_rtp_parameters.codecs {
@@ -859,6 +968,23 @@ pub(crate) fn get_pipe_consumer_rtp_parameters(
         })
         .cloned()
         .collect();
+
+    // TODO: Remove this if we switch to 'sendrecv' in Dependency-Descriptor header
+    // extension.
+    //
+    // We need to add Dependency-Descriptor header extension manually since it's
+    // 'recvonly' so it's not present in received `consumableRtpParameters`.
+    let cache = CACHE.lock();
+    if let Some(dependency_descriptor) =
+        &cache.dependency_descriptor_header_extension_parameters_for_pipe_consumer
+    {
+        consumer_params
+            .header_extensions
+            .push(dependency_descriptor.clone());
+
+        // Sort header extensions by ID.
+        consumer_params.header_extensions.sort_by_key(|ext| ext.id);
+    }
 
     for ((encoding, ssrc), rtx_ssrc) in consumable_rtp_parameters
         .encodings
@@ -1011,7 +1137,7 @@ fn match_codecs(
                 return Err(());
             }
         }
-        MimeType::Video(MimeTypeVideo::H264 | MimeTypeVideo::H264Svc) => {
+        MimeType::Video(MimeTypeVideo::H264) => {
             if strict {
                 let packetization_mode_a = codec_a
                     .parameters

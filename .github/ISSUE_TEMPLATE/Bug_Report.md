@@ -4,7 +4,7 @@ about: Report a bug in mediasoup
 labels: bug
 ---
 
-## Bug Report
+# Bug Report
 
 **IMPORTANT:** We primarily use GitHub as an issue tracker. Just open an issue here if you have encountered a bug in mediasoup.
 
@@ -16,15 +16,12 @@ If you got a crash in mediasoup, please try to provide a core dump into the issu
 
 https://mediasoup.org/support/#crashes-in-mediasoup-get-a-core-dump
 
-
-### Your environment
+## Your environment
 
 - Operating system:
-- Node version:
-- npm version:
 - gcc/clang version:
-- mediasoup version:
+- mediasoup (Node) version:
+- mediasoup (Rust) version:
 - mediasoup-client version:
 
-
-### Issue description
+## Issue description

@@ -3,7 +3,6 @@
 
 #include "RTC/RTCP/Feedback.hpp"
 #include "Logger.hpp"
-#include "Utils.hpp"
 #include "RTC/RTCP/FeedbackPsAfb.hpp"
 #include "RTC/RTCP/FeedbackPsFir.hpp"
 #include "RTC/RTCP/FeedbackPsLei.hpp"
@@ -34,7 +33,9 @@ namespace RTC
 			auto it = FeedbackPacket<T>::type2String.find(type);
 
 			if (it == FeedbackPacket<T>::type2String.end())
+			{
 				return Unknown;
+			}
 
 			return it->second;
 		}
@@ -82,13 +83,13 @@ namespace RTC
 		}
 
 		template<typename T>
-		void FeedbackPacket<T>::Dump() const
+		void FeedbackPacket<T>::Dump(int indentation) const
 		{
 			MS_TRACE();
 
-			MS_DUMP("  sender ssrc : %" PRIu32, GetSenderSsrc());
-			MS_DUMP("  media ssrc  : %" PRIu32, GetMediaSsrc());
-			MS_DUMP("  size        : %zu", this->GetSize());
+			MS_DUMP_CLEAN(indentation, "  sender ssrc: %" PRIu32, GetSenderSsrc());
+			MS_DUMP_CLEAN(indentation, "  media ssrc: %" PRIu32, GetMediaSsrc());
+			MS_DUMP_CLEAN(indentation, "  size: %zu", this->GetSize());
 		}
 
 		/* Specialization for Ps class. */

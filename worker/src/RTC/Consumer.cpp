@@ -5,10 +5,6 @@
 #include "DepLibUV.hpp"
 #include "Logger.hpp"
 #include "MediaSoupErrors.hpp"
-#include <iterator> // std::ostream_iterator
-#include <sstream>  // std::ostringstream
-
-#include "LivelyAppDataToJson.hpp"
 
 namespace RTC
 {
@@ -19,80 +15,75 @@ namespace RTC
 	  const std::string& id,
 	  const std::string& producerId,
 	  Listener* listener,
-	  json& data,
+	  const FBS::Transport::ConsumeRequest* data,
 	  RTC::RtpParameters::Type type,
-		Lively::AppData* appData)
-	  : id(id), producerId(producerId), shared(shared), listener(listener), type(type)
+	  Lively::AppData* appData)
+	  : id(id), producerId(producerId), shared(shared), listener(listener),
+	    kind(RTC::Media::Kind(data->kind())), type(type)
 	{
 		MS_TRACE();
 
-		auto jsonKindIt = data.find("kind");
-
-		if (jsonKindIt == data.end() || !jsonKindIt->is_string())
-			MS_THROW_TYPE_ERROR("missing kind");
-
-		// This may throw.
-		this->kind = RTC::Media::GetKind(jsonKindIt->get<std::string>());
-
-		if (this->kind == RTC::Media::Kind::ALL)
-			MS_THROW_TYPE_ERROR("invalid empty kind");
-
-		// appData: read from Transport, otherwise try reading from "appData" included into request
+		// Lively-specific: Extract appData for logging
+		// Priority 1: Use appData from Transport (passed as parameter)
 		if (appData)
 		{
-			lively = *appData;
+			this->lively = *appData;
 		}
+		// Priority 2: Extract from FlatBuffers ConsumeRequest if not provided
 		else
 		{
-			auto jsonAppDataIt = data.find("appData");
-			
-			if (jsonAppDataIt != data.end() && jsonAppDataIt->is_object())
+			if (data->callId())
 			{
-				try {
-					lively = jsonAppDataIt->get<Lively::AppData>();
-				}
-				catch (const std::exception& e) {
-					MS_WARN_TAG(rtp, "%s\t%s", e.what(), (*jsonAppDataIt).dump().c_str());
-				}
+				this->lively.callId.assign(data->callId()->str());
+			}
+			if (data->peerId())
+			{
+				this->lively.peerId.assign(data->peerId()->str());
+			}
+			if (data->mirrorId())
+			{
+				this->lively.mirrorId.assign(data->mirrorId()->str());
+			}
+			if (data->streamName())
+			{
+				this->lively.streamName.assign(data->streamName()->str());
 			}
 		}
 
-		lively.id = producerId;
-		this->appData = lively.ToStr();
-
-		auto jsonRtpParametersIt = data.find("rtpParameters");
-
-		if (jsonRtpParametersIt == data.end() || !jsonRtpParametersIt->is_object())
-			MS_THROW_TYPE_ERROR("missing rtpParameters");
+		this->lively.id = producerId;  // Override id to be producerId
+		this->appData = this->lively.ToStr();
 
 		// This may throw.
-		this->rtpParameters = RTC::RtpParameters(*jsonRtpParametersIt);
+		this->rtpParameters = RTC::RtpParameters(data->rtpParameters());
 
 		if (this->rtpParameters.encodings.empty())
+		{
 			MS_THROW_TYPE_ERROR("empty rtpParameters.encodings");
+		}
 
 		// All encodings must have SSRCs.
 		for (auto& encoding : this->rtpParameters.encodings)
 		{
 			if (encoding.ssrc == 0)
+			{
 				MS_THROW_TYPE_ERROR("invalid encoding in rtpParameters (missing ssrc)");
+			}
 			else if (encoding.hasRtx && encoding.rtx.ssrc == 0)
+			{
 				MS_THROW_TYPE_ERROR("invalid encoding in rtpParameters (missing rtx.ssrc)");
+			}
 		}
 
-		auto jsonConsumableRtpEncodingsIt = data.find("consumableRtpEncodings");
-
-		if (jsonConsumableRtpEncodingsIt == data.end() || !jsonConsumableRtpEncodingsIt->is_array())
-			MS_THROW_TYPE_ERROR("missing consumableRtpEncodings");
-
-		if (jsonConsumableRtpEncodingsIt->empty())
-			MS_THROW_TYPE_ERROR("empty consumableRtpEncodings");
-
-		this->consumableRtpEncodings.reserve(jsonConsumableRtpEncodingsIt->size());
-
-		for (size_t i{ 0 }; i < jsonConsumableRtpEncodingsIt->size(); ++i)
+		if (data->consumableRtpEncodings()->size() == 0)
 		{
-			auto& entry = (*jsonConsumableRtpEncodingsIt)[i];
+			MS_THROW_TYPE_ERROR("empty consumableRtpEncodings");
+		}
+
+		this->consumableRtpEncodings.reserve(data->consumableRtpEncodings()->size());
+
+		for (size_t i{ 0 }; i < data->consumableRtpEncodings()->size(); ++i)
+		{
+			const auto* entry = data->consumableRtpEncodings()->Get(i);
 
 			// This may throw due the constructor of RTC::RtpEncodingParameters.
 			this->consumableRtpEncodings.emplace_back(entry);
@@ -101,7 +92,9 @@ namespace RTC
 			auto& encoding = this->consumableRtpEncodings[i];
 
 			if (encoding.ssrc == 0u)
+			{
 				MS_THROW_TYPE_ERROR("wrong encoding in consumableRtpEncodings (missing ssrc)");
+			}
 		}
 
 		// Fill RTP header extension ids and their mapped values.
@@ -109,7 +102,9 @@ namespace RTC
 		for (auto& exten : this->rtpParameters.headerExtensions)
 		{
 			if (exten.id == 0u)
+			{
 				MS_THROW_TYPE_ERROR("RTP extension id cannot be 0");
+			}
 
 			if (this->rtpHeaderExtensionIds.ssrcAudioLevel == 0u && exten.type == RTC::RtpHeaderExtensionUri::Type::SSRC_AUDIO_LEVEL)
 			{
@@ -119,6 +114,11 @@ namespace RTC
 			if (this->rtpHeaderExtensionIds.videoOrientation == 0u && exten.type == RTC::RtpHeaderExtensionUri::Type::VIDEO_ORIENTATION)
 			{
 				this->rtpHeaderExtensionIds.videoOrientation = exten.id;
+			}
+
+			if (this->rtpHeaderExtensionIds.playoutDelay == 0u && exten.type == RTC::RtpHeaderExtensionUri::Type::PLAYOUT_DELAY)
+			{
+				this->rtpHeaderExtensionIds.playoutDelay = exten.id;
 			}
 
 			if (this->rtpHeaderExtensionIds.absSendTime == 0u && exten.type == RTC::RtpHeaderExtensionUri::Type::ABS_SEND_TIME)
@@ -147,16 +147,16 @@ namespace RTC
 			}
 		}
 
-		auto jsonPausedIt = data.find("paused");
-
-		if (jsonPausedIt != data.end() && jsonPausedIt->is_boolean())
-			this->paused = jsonPausedIt->get<bool>();
+		// paused is set to false by default.
+		this->paused = data->paused();
 
 		// Fill supported codec payload types.
 		for (auto& codec : this->rtpParameters.codecs)
 		{
 			if (codec.mimeType.IsMediaCodec())
+			{
 				this->supportedCodecPayloadTypes[codec.payloadType] = true;
+			}
 		}
 
 		// Fill media SSRCs vector.
@@ -169,14 +169,20 @@ namespace RTC
 		for (auto& encoding : this->rtpParameters.encodings)
 		{
 			if (encoding.hasRtx)
+			{
 				this->rtxSsrcs.push_back(encoding.rtx.ssrc);
+			}
 		}
 
 		// Set the RTCP report generation interval.
 		if (this->kind == RTC::Media::Kind::AUDIO)
+		{
 			this->maxRtcpInterval = RTC::RTCP::MaxAudioIntervalMs;
+		}
 		else
+		{
 			this->maxRtcpInterval = RTC::RTCP::MaxVideoIntervalMs;
+		}
 	}
 
 	Consumer::~Consumer()
@@ -184,119 +190,96 @@ namespace RTC
 		MS_TRACE();
 	}
 
-	void Consumer::FillJson(json& jsonObject) const
+	flatbuffers::Offset<FBS::Consumer::BaseConsumerDump> Consumer::FillBuffer(
+	  flatbuffers::FlatBufferBuilder& builder) const
 	{
 		MS_TRACE();
 
-		// Add id.
-		jsonObject["id"] = this->id;
-
-		// Add producerId.
-		jsonObject["producerId"] = this->producerId;
-
-		// Add kind.
-		jsonObject["kind"] = RTC::Media::GetString(this->kind);
-
 		// Add rtpParameters.
-		this->rtpParameters.FillJson(jsonObject["rtpParameters"]);
-
-		// Add type.
-		jsonObject["type"] = RTC::RtpParameters::GetTypeString(this->type);
+		auto rtpParameters = this->rtpParameters.FillBuffer(builder);
 
 		// Add consumableRtpEncodings.
-		jsonObject["consumableRtpEncodings"] = json::array();
-		auto jsonConsumableRtpEncodingsIt    = jsonObject.find("consumableRtpEncodings");
+		std::vector<flatbuffers::Offset<FBS::RtpParameters::RtpEncodingParameters>> consumableRtpEncodings;
+		consumableRtpEncodings.reserve(this->consumableRtpEncodings.size());
 
-		for (size_t i{ 0 }; i < this->consumableRtpEncodings.size(); ++i)
+		for (const auto& encoding : this->consumableRtpEncodings)
 		{
-			jsonConsumableRtpEncodingsIt->emplace_back(json::value_t::object);
-
-			auto& jsonEntry      = (*jsonConsumableRtpEncodingsIt)[i];
-			const auto& encoding = this->consumableRtpEncodings[i];
-
-			encoding.FillJson(jsonEntry);
+			consumableRtpEncodings.emplace_back(encoding.FillBuffer(builder));
 		}
 
 		// Add supportedCodecPayloadTypes.
-		jsonObject["supportedCodecPayloadTypes"] = json::array();
+		std::vector<uint8_t> supportedCodecPayloadTypes;
 
 		for (auto i = 0; i < 128; ++i)
 		{
 			if (this->supportedCodecPayloadTypes[i])
-				jsonObject["supportedCodecPayloadTypes"].push_back(i);
+			{
+				supportedCodecPayloadTypes.push_back(i);
+			}
 		}
-
-		// Add paused.
-		jsonObject["paused"] = this->paused;
-
-		// Add producerPaused.
-		jsonObject["producerPaused"] = this->producerPaused;
-
-		// Add priority.
-		jsonObject["priority"] = this->priority;
 
 		// Add traceEventTypes.
-		std::vector<std::string> traceEventTypes;
-		std::ostringstream traceEventTypesStream;
+		std::vector<FBS::Consumer::TraceEventType> traceEventTypes;
 
 		if (this->traceEventTypes.rtp)
-			traceEventTypes.emplace_back("rtp");
-		if (this->traceEventTypes.keyframe)
-			traceEventTypes.emplace_back("keyframe");
-		if (this->traceEventTypes.nack)
-			traceEventTypes.emplace_back("nack");
-		if (this->traceEventTypes.pli)
-			traceEventTypes.emplace_back("pli");
-		if (this->traceEventTypes.fir)
-			traceEventTypes.emplace_back("fir");
-
-		if (!traceEventTypes.empty())
 		{
-			std::copy(
-			  traceEventTypes.begin(),
-			  traceEventTypes.end() - 1,
-			  std::ostream_iterator<std::string>(traceEventTypesStream, ","));
-			traceEventTypesStream << traceEventTypes.back();
+			traceEventTypes.emplace_back(FBS::Consumer::TraceEventType::RTP);
+		}
+		if (this->traceEventTypes.keyframe)
+		{
+			traceEventTypes.emplace_back(FBS::Consumer::TraceEventType::KEYFRAME);
+		}
+		if (this->traceEventTypes.nack)
+		{
+			traceEventTypes.emplace_back(FBS::Consumer::TraceEventType::NACK);
+		}
+		if (this->traceEventTypes.pli)
+		{
+			traceEventTypes.emplace_back(FBS::Consumer::TraceEventType::PLI);
+		}
+		if (this->traceEventTypes.fir)
+		{
+			traceEventTypes.emplace_back(FBS::Consumer::TraceEventType::FIR);
 		}
 
-		jsonObject["traceEventTypes"] = traceEventTypesStream.str();
+		return FBS::Consumer::CreateBaseConsumerDumpDirect(
+		  builder,
+		  this->id.c_str(),
+		  RTC::RtpParameters::TypeToFbs(this->type),
+		  this->producerId.c_str(),
+		  this->kind == RTC::Media::Kind::AUDIO ? FBS::RtpParameters::MediaKind::AUDIO
+		                                        : FBS::RtpParameters::MediaKind::VIDEO,
+		  rtpParameters,
+		  &consumableRtpEncodings,
+		  &supportedCodecPayloadTypes,
+		  &traceEventTypes,
+		  this->paused,
+		  this->producerPaused,
+		  this->priority);
 	}
 
 	void Consumer::HandleRequest(Channel::ChannelRequest* request)
 	{
 		MS_TRACE();
 
-		switch (request->methodId)
+		switch (request->method)
 		{
-			case Channel::ChannelRequest::MethodId::CONSUMER_DUMP:
+			case Channel::ChannelRequest::Method::CONSUMER_GET_STATS:
 			{
-				json data = json::object();
+				auto responseOffset = FillBufferStats(request->GetBufferBuilder());
 
-				FillJson(data);
-
-				request->Accept(data);
+				request->Accept(FBS::Response::Body::Consumer_GetStatsResponse, responseOffset);
 
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::CONSUMER_GET_STATS:
-			{
-				json data = json::array();
-
-				FillJsonStats(data);
-
-				request->Accept(data);
-
-				break;
-			}
-
-			case Channel::ChannelRequest::MethodId::CONSUMER_PAUSE:
+			case Channel::ChannelRequest::Method::CONSUMER_PAUSE:
 			{
 				if (this->paused)
 				{
 					request->Accept();
 
-					return;
+					break;
 				}
 
 				const bool wasActive = IsActive();
@@ -306,20 +289,22 @@ namespace RTC
 				MS_DEBUG_DEV("Consumer paused [consumerId:%s]", this->id.c_str());
 
 				if (wasActive)
+				{
 					UserOnPaused();
+				}
 
 				request->Accept();
 
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::CONSUMER_RESUME:
+			case Channel::ChannelRequest::Method::CONSUMER_RESUME:
 			{
 				if (!this->paused)
 				{
 					request->Accept();
 
-					return;
+					break;
 				}
 
 				this->paused = false;
@@ -327,64 +312,76 @@ namespace RTC
 				MS_DEBUG_DEV("Consumer resumed [consumerId:%s]", this->id.c_str());
 
 				if (IsActive())
+				{
 					UserOnResumed();
+				}
 
 				request->Accept();
 
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::CONSUMER_SET_PRIORITY:
+			case Channel::ChannelRequest::Method::CONSUMER_SET_PRIORITY:
 			{
-				auto jsonPriorityIt = request->data.find("priority");
+				const auto* body = request->data->body_as<FBS::Consumer::SetPriorityRequest>();
 
-				if (jsonPriorityIt == request->data.end() || !jsonPriorityIt->is_number())
-					MS_THROW_TYPE_ERROR("wrong priority (not a number)");
-
-				auto priority = jsonPriorityIt->get<uint8_t>();
-
-				if (priority < 1u)
+				if (body->priority() < 1u)
+				{
 					MS_THROW_TYPE_ERROR("wrong priority (must be higher than 0)");
+				}
 
-				this->priority = priority;
+				this->priority = body->priority();
 
-				json data = json::object();
+				auto responseOffset =
+				  FBS::Consumer::CreateSetPriorityResponse(request->GetBufferBuilder(), this->priority);
 
-				data["priority"] = this->priority;
-
-				request->Accept(data);
+				request->Accept(FBS::Response::Body::Consumer_SetPriorityResponse, responseOffset);
 
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::CONSUMER_ENABLE_TRACE_EVENT:
+			case Channel::ChannelRequest::Method::CONSUMER_ENABLE_TRACE_EVENT:
 			{
-				auto jsonTypesIt = request->data.find("types");
-
-				// Disable all if no entries.
-				if (jsonTypesIt == request->data.end() || !jsonTypesIt->is_array())
-					MS_THROW_TYPE_ERROR("wrong types (not an array)");
+				const auto* body = request->data->body_as<FBS::Consumer::EnableTraceEventRequest>();
 
 				// Reset traceEventTypes.
 				struct TraceEventTypes newTraceEventTypes;
 
-				for (const auto& type : *jsonTypesIt)
+				for (const auto& type : *body->events())
 				{
-					if (!type.is_string())
-						MS_THROW_TYPE_ERROR("wrong type (not a string)");
+					switch (type)
+					{
+						case FBS::Consumer::TraceEventType::KEYFRAME:
+						{
+							newTraceEventTypes.keyframe = true;
 
-					const std::string typeStr = type.get<std::string>();
+							break;
+						}
+						case FBS::Consumer::TraceEventType::FIR:
+						{
+							newTraceEventTypes.fir = true;
 
-					if (typeStr == "rtp")
-						newTraceEventTypes.rtp = true;
-					else if (typeStr == "keyframe")
-						newTraceEventTypes.keyframe = true;
-					else if (typeStr == "nack")
-						newTraceEventTypes.nack = true;
-					else if (typeStr == "pli")
-						newTraceEventTypes.pli = true;
-					else if (typeStr == "fir")
-						newTraceEventTypes.fir = true;
+							break;
+						}
+						case FBS::Consumer::TraceEventType::NACK:
+						{
+							newTraceEventTypes.nack = true;
+
+							break;
+						}
+						case FBS::Consumer::TraceEventType::PLI:
+						{
+							newTraceEventTypes.pli = true;
+
+							break;
+						}
+						case FBS::Consumer::TraceEventType::RTP:
+						{
+							newTraceEventTypes.rtp = true;
+
+							break;
+						}
+					}
 				}
 
 				this->traceEventTypes = newTraceEventTypes;
@@ -396,7 +393,7 @@ namespace RTC
 
 			default:
 			{
-				MS_THROW_ERROR("unknown method '%s'", request->method.c_str());
+				MS_THROW_ERROR("unknown method '%s'", request->methodCStr);
 			}
 		}
 	}
@@ -406,7 +403,9 @@ namespace RTC
 		MS_TRACE();
 
 		if (this->transportConnected)
+		{
 			return;
+		}
 
 		this->transportConnected = true;
 
@@ -420,7 +419,9 @@ namespace RTC
 		MS_TRACE();
 
 		if (!this->transportConnected)
+		{
 			return;
+		}
 
 		this->transportConnected = false;
 
@@ -434,7 +435,9 @@ namespace RTC
 		MS_TRACE();
 
 		if (this->producerPaused)
+		{
 			return;
+		}
 
 		const bool wasActive = IsActive();
 
@@ -443,9 +446,11 @@ namespace RTC
 		MS_WARN_TAG_LIVELYAPP(rtp, this->appData, "Producer paused");
 
 		if (wasActive)
+		{
 			UserOnPaused();
+		}
 
-		this->shared->channelNotifier->Emit(this->id, "producerpause");
+		this->shared->channelNotifier->Emit(this->id, FBS::Notification::Event::CONSUMER_PRODUCER_PAUSE);
 	}
 
 	void Consumer::ProducerResumed()
@@ -453,16 +458,20 @@ namespace RTC
 		MS_TRACE();
 
 		if (!this->producerPaused)
+		{
 			return;
+		}
 
 		this->producerPaused = false;
 
 		MS_WARN_TAG_LIVELYAPP(rtp, this->appData, "Producer resumed");
 
 		if (IsActive())
+		{
 			UserOnResumed();
+		}
 
-		this->shared->channelNotifier->Emit(this->id, "producerresume");
+		this->shared->channelNotifier->Emit(this->id, FBS::Notification::Event::CONSUMER_PRODUCER_RESUME);
 	}
 
 	void Consumer::ProducerRtpStreamScores(const std::vector<uint8_t>* scores)
@@ -483,7 +492,7 @@ namespace RTC
 
 		MS_WARN_TAG_LIVELYAPP(rtp, this->appData, "Producer closed");
 
-		this->shared->channelNotifier->Emit(this->id, "producerclose");
+		this->shared->channelNotifier->Emit(this->id, FBS::Notification::Event::CONSUMER_PRODUCER_CLOSE);
 
 		this->listener->OnConsumerProducerClosed(this);
 	}
@@ -494,33 +503,35 @@ namespace RTC
 
 		if (this->traceEventTypes.keyframe && packet->IsKeyFrame())
 		{
-			json data = json::object();
+			auto rtpPacketDump = packet->FillBuffer(this->shared->channelNotifier->GetBufferBuilder());
+			auto traceInfo     = FBS::Consumer::CreateKeyFrameTraceInfo(
+        this->shared->channelNotifier->GetBufferBuilder(), rtpPacketDump, isRtx);
 
-			data["type"]      = "keyframe";
-			data["timestamp"] = DepLibUV::GetTimeMs();
-			data["direction"] = "out";
+			auto notification = FBS::Consumer::CreateTraceNotification(
+			  this->shared->channelNotifier->GetBufferBuilder(),
+			  FBS::Consumer::TraceEventType::KEYFRAME,
+			  DepLibUV::GetTimeMs(),
+			  FBS::Common::TraceDirection::DIRECTION_OUT,
+			  FBS::Consumer::TraceInfo::KeyFrameTraceInfo,
+			  traceInfo.Union());
 
-			packet->FillJson(data["info"]);
-
-			if (isRtx)
-				data["info"]["isRtx"] = true;
-
-			this->shared->channelNotifier->Emit(this->id, "trace", data);
+			EmitTraceEvent(notification);
 		}
 		else if (this->traceEventTypes.rtp)
 		{
-			json data = json::object();
+			auto rtpPacketDump = packet->FillBuffer(this->shared->channelNotifier->GetBufferBuilder());
+			auto traceInfo     = FBS::Consumer::CreateRtpTraceInfo(
+        this->shared->channelNotifier->GetBufferBuilder(), rtpPacketDump, isRtx);
 
-			data["type"]      = "rtp";
-			data["timestamp"] = DepLibUV::GetTimeMs();
-			data["direction"] = "out";
+			auto notification = FBS::Consumer::CreateTraceNotification(
+			  this->shared->channelNotifier->GetBufferBuilder(),
+			  FBS::Consumer::TraceEventType::RTP,
+			  DepLibUV::GetTimeMs(),
+			  FBS::Common::TraceDirection::DIRECTION_OUT,
+			  FBS::Consumer::TraceInfo::RtpTraceInfo,
+			  traceInfo.Union());
 
-			packet->FillJson(data["info"]);
-
-			if (isRtx)
-				data["info"]["isRtx"] = true;
-
-			this->shared->channelNotifier->Emit(this->id, "trace", data);
+			EmitTraceEvent(notification);
 		}
 	}
 
@@ -529,16 +540,22 @@ namespace RTC
 		MS_TRACE();
 
 		if (!this->traceEventTypes.pli)
+		{
 			return;
+		}
 
-		json data = json::object();
+		auto traceInfo =
+		  FBS::Consumer::CreatePliTraceInfo(this->shared->channelNotifier->GetBufferBuilder(), ssrc);
 
-		data["type"]         = "pli";
-		data["timestamp"]    = DepLibUV::GetTimeMs();
-		data["direction"]    = "in";
-		data["info"]["ssrc"] = ssrc;
+		auto notification = FBS::Consumer::CreateTraceNotification(
+		  this->shared->channelNotifier->GetBufferBuilder(),
+		  FBS::Consumer::TraceEventType::PLI,
+		  DepLibUV::GetTimeMs(),
+		  FBS::Common::TraceDirection::DIRECTION_IN,
+		  FBS::Consumer::TraceInfo::PliTraceInfo,
+		  traceInfo.Union());
 
-		this->shared->channelNotifier->Emit(this->id, "trace", data);
+		EmitTraceEvent(notification);
 	}
 
 	void Consumer::EmitTraceEventFirType(uint32_t ssrc) const
@@ -546,16 +563,22 @@ namespace RTC
 		MS_TRACE();
 
 		if (!this->traceEventTypes.fir)
+		{
 			return;
+		}
 
-		json data = json::object();
+		auto traceInfo =
+		  FBS::Consumer::CreateFirTraceInfo(this->shared->channelNotifier->GetBufferBuilder(), ssrc);
 
-		data["type"]         = "fir";
-		data["timestamp"]    = DepLibUV::GetTimeMs();
-		data["direction"]    = "in";
-		data["info"]["ssrc"] = ssrc;
+		auto notification = FBS::Consumer::CreateTraceNotification(
+		  this->shared->channelNotifier->GetBufferBuilder(),
+		  FBS::Consumer::TraceEventType::FIR,
+		  DepLibUV::GetTimeMs(),
+		  FBS::Common::TraceDirection::DIRECTION_IN,
+		  FBS::Consumer::TraceInfo::FirTraceInfo,
+		  traceInfo.Union());
 
-		this->shared->channelNotifier->Emit(this->id, "trace", data);
+		EmitTraceEvent(notification);
 	}
 
 	void Consumer::EmitTraceEventNackType() const
@@ -563,15 +586,27 @@ namespace RTC
 		MS_TRACE();
 
 		if (!this->traceEventTypes.nack)
+		{
 			return;
+		}
 
-		json data = json::object();
+		auto notification = FBS::Consumer::CreateTraceNotification(
+		  this->shared->channelNotifier->GetBufferBuilder(),
+		  FBS::Consumer::TraceEventType::NACK,
+		  DepLibUV::GetTimeMs(),
+		  FBS::Common::TraceDirection::DIRECTION_IN);
 
-		data["type"]      = "nack";
-		data["timestamp"] = DepLibUV::GetTimeMs();
-		data["direction"] = "in";
-		data["info"]      = json::object();
+		EmitTraceEvent(notification);
+	}
 
-		this->shared->channelNotifier->Emit(this->id, "trace", data);
+	void Consumer::EmitTraceEvent(flatbuffers::Offset<FBS::Consumer::TraceNotification>& notification) const
+	{
+		MS_TRACE();
+
+		this->shared->channelNotifier->Emit(
+		  this->id,
+		  FBS::Notification::Event::CONSUMER_TRACE,
+		  FBS::Notification::Body::Consumer_TraceNotification,
+		  notification);
 	}
 } // namespace RTC

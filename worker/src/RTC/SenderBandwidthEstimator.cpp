@@ -4,7 +4,7 @@
 #include "RTC/SenderBandwidthEstimator.hpp"
 #include "DepLibUV.hpp"
 #include "Logger.hpp"
-#include <limits>
+#include <algorithm> // std::max, std::min
 
 namespace RTC
 {
@@ -47,7 +47,7 @@ namespace RTC
 		this->cummulativeResult.Reset();
 	}
 
-	void SenderBandwidthEstimator::RtpPacketSent(SentInfo& sentInfo)
+	void SenderBandwidthEstimator::RtpPacketSent(const SentInfo& sentInfo)
 	{
 		MS_TRACE();
 
@@ -88,12 +88,16 @@ namespace RTC
 
 		// Drop ongoing cummulative result if too old.
 		if (elapsedMs > 1000u)
+		{
 			this->cummulativeResult.Reset();
+		}
 
 		for (auto& result : feedback->GetPacketResults())
 		{
 			if (!result.received)
+			{
 				continue;
+			}
 
 			const uint16_t wideSeq = result.sequenceNumber;
 			auto it                = this->sentInfos.find(wideSeq);
@@ -237,17 +241,10 @@ namespace RTC
 		}
 		else
 		{
-			if (sentAtMs < this->firstPacketSentAtMs)
-				this->firstPacketSentAtMs = sentAtMs;
-
-			if (receivedAtMs < this->firstPacketReceivedAtMs)
-				this->firstPacketReceivedAtMs = receivedAtMs;
-
-			if (sentAtMs > this->lastPacketSentAtMs)
-				this->lastPacketSentAtMs = sentAtMs;
-
-			if (receivedAtMs > this->lastPacketReceivedAtMs)
-				this->lastPacketReceivedAtMs = receivedAtMs;
+			this->firstPacketSentAtMs     = std::min(sentAtMs, this->firstPacketSentAtMs);
+			this->firstPacketReceivedAtMs = std::min(receivedAtMs, this->firstPacketReceivedAtMs);
+			this->lastPacketSentAtMs      = std::max(sentAtMs, this->lastPacketSentAtMs);
+			this->lastPacketReceivedAtMs  = std::max(receivedAtMs, this->lastPacketReceivedAtMs);
 		}
 
 		this->numPackets++;

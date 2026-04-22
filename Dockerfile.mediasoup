@@ -1,36 +1,41 @@
-#ARG BASE_URL=golang:1.18-buster
-ARG BASE_URL=debian:12.2
+# Use the exact same Node.js version as the SFU runtime (node:22-bookworm)
+# This ensures C++ ABI compatibility between build and runtime
+#FROM node:22.21.1-bookworm AS base
+ARG BASE_URL=node:22.21.1-bookworm
 FROM $BASE_URL AS base
 
-ARG XCODE2_BUILD=false
+# Install system dependencies and build tools
 RUN apt update && \
   apt -y upgrade && \
-  apt install -y build-essential autoconf vim wget curl libtool libtool-bin gpp less libpcre3-dev libz-dev&& \
+  apt install -y build-essential autoconf vim wget curl libtool libtool-bin gpp less libpcre3-dev libz-dev && \
   apt -y upgrade python3 && \
-  apt install -y python3-pip supervisor && \
+  apt install -y python3-pip pipx supervisor && \
   ln -s /usr/bin/python3 /usr/local/bin/python3
 
+# Install Python build tools using pipx (isolated from system Python)
+#RUN pipx install ninja && \
+#  pipx install meson && \
+#  pipx ensurepath
 RUN apt install pipx -y && \
   pipx install ninja && \
   pipx ensurepath && \
   pipx install meson && \
   pipx ensurepath
 
-RUN apt-get install -y ca-certificates curl gnupg && \
-  mkdir -p /etc/apt/keyrings && \
-  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
-  export NODE_MAJOR=20 && \
-  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
-  apt-get update && \
-  apt-get install nodejs -y
+# Add pipx bin directory to PATH
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Node.js is already installed from the base image (v22.21.1)
+# No additional Node.js installation needed
 
 RUN mkdir -p /root/build/mediasoup /mediasoup/build
-ENV BUILD_DIR /root/build/mediasoup
-ENV MS_BUILD /mediasoup/build
+ENV BUILD_DIR=/root/build/mediasoup
+ENV MS_BUILD=/mediasoup/build
 
 COPY worker ${MS_BUILD}/worker
 COPY node ${MS_BUILD}/node
 COPY package.json ${MS_BUILD}/package.json
+COPY tsconfig.json ${MS_BUILD}/tsconfig.json
 COPY npm-scripts.mjs ${MS_BUILD}/npm-scripts.mjs
 
 RUN if [ "$XCODE2_BUILD" = "true" ]; then \
@@ -42,7 +47,28 @@ RUN if [ "$XCODE2_BUILD" = "true" ]; then \
 ARG MEDIASOUP_BUILDTYPE_ARG=Release
 ENV MEDIASOUP_BUILDTYPE=${MEDIASOUP_BUILDTYPE_ARG}
 
+# Create symlink so npm-scripts.mjs can find flatc in the expected location
+# Remove any existing build directory first (may have been copied from source)
+RUN mkdir -p ${MS_BUILD}/worker/out/${MEDIASOUP_BUILDTYPE} && \
+  rm -rf ${MS_BUILD}/worker/out/${MEDIASOUP_BUILDTYPE}/build && \
+  ln -s ${BUILD_DIR} ${MS_BUILD}/worker/out/${MEDIASOUP_BUILDTYPE}/build
+
+# Create directory structure for meson/ninja and symlink to system-installed binaries
+# This prevents tasks.py from installing broken pip versions
+RUN mkdir -p ${MS_BUILD}/worker/out/pip_meson_ninja/bin && \
+  ln -sf $(which meson) ${MS_BUILD}/worker/out/pip_meson_ninja/bin/meson && \
+  ln -sf $(which ninja) ${MS_BUILD}/worker/out/pip_meson_ninja/bin/ninja
+
+# Disable liburing to avoid initialization crashes in Docker containers
+# io_uring syscalls are often blocked by Docker's default seccomp profile
+ENV MEDIASOUP_BUILDTYPE=${MEDIASOUP_BUILDTYPE_ARG}
+ENV MESON_ARGS="-Dms_disable_liburing=true"
+
+# Force cache invalidation: increment this number to force npm rebuild execution
+ARG CACHE_BUST=lv12
+
 RUN \
   cd ${MS_BUILD} && \
   npm install && \
+  npm rebuild && \
   npm run typescript:build

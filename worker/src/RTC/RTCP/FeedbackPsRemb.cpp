@@ -32,7 +32,9 @@ namespace RTC
 			std::unique_ptr<FeedbackPsRembPacket> packet(new FeedbackPsRembPacket(commonHeader, len));
 
 			if (!packet->IsCorrect())
+			{
 				return nullptr;
+			}
 
 			return packet.release();
 		}
@@ -139,18 +141,18 @@ namespace RTC
 			return offset;
 		}
 
-		void FeedbackPsRembPacket::Dump() const
+		void FeedbackPsRembPacket::Dump(int indentation) const
 		{
 			MS_TRACE();
 
-			MS_DUMP("<FeedbackPsRembPacket>");
+			MS_DUMP_CLEAN(indentation, "<FeedbackPsRembPacket>");
 			FeedbackPsPacket::Dump();
-			MS_DUMP("  bitrate (bps) : %" PRIu64, this->bitrate);
+			MS_DUMP_CLEAN(indentation, "  bitrate (bps): %" PRIu64, this->bitrate);
 			for (auto ssrc : this->ssrcs)
 			{
-				MS_DUMP("  ssrc          : %" PRIu32, ssrc);
+				MS_DUMP_CLEAN(indentation, "  ssrc: %" PRIu32, ssrc);
 			}
-			MS_DUMP("</FeedbackPsRembPacket>");
+			MS_DUMP_CLEAN(indentation, "</FeedbackPsRembPacket>");
 		}
 	} // namespace RTCP
 } // namespace RTC

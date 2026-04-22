@@ -18,29 +18,26 @@ namespace RTC
 	public:
 		struct SeqLowerThan
 		{
-			bool operator()(const T lhs, const T rhs) const;
+			bool operator()(T lhs, T rhs) const;
 		};
 
 		struct SeqHigherThan
 		{
-			bool operator()(const T lhs, const T rhs) const;
+			bool operator()(T lhs, T rhs) const;
 		};
 
-	private:
-		static const SeqLowerThan isSeqLowerThan;
-		static const SeqHigherThan isSeqHigherThan;
-
 	public:
-		static bool IsSeqLowerThan(const T lhs, const T rhs);
-		static bool IsSeqHigherThan(const T lhs, const T rhs);
+		static bool IsSeqHigherThan(T lhs, T rhs);
+		static bool IsSeqLowerThan(T lhs, T rhs);
 
 	public:
 		SeqManager() = default;
+		SeqManager(T initialOutput);
 
 	public:
 		void Sync(T input);
 		void Drop(T input);
-		bool Input(const T input, T& output);
+		bool Input(T input, T& output);
 		T GetMaxInput() const;
 		T GetMaxOutput() const;
 
@@ -50,9 +47,12 @@ namespace RTC
 	private:
 		// Whether at least a sequence number has been inserted.
 		bool started{ false };
+		T initialOutput{ 0 };
 		T base{ 0 };
 		T maxOutput{ 0 };
 		T maxInput{ 0 };
+		T maxDropped{ 0 };
+		T maxForwarded{ 0 };
 		std::set<T, SeqLowerThan> dropped;
 	};
 } // namespace RTC

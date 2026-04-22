@@ -52,7 +52,7 @@ namespace RTC
 			static const size_t CommonHeaderSize{ 4 };
 			static bool IsRtcp(const uint8_t* data, size_t len)
 			{
-				auto header = const_cast<CommonHeader*>(reinterpret_cast<const CommonHeader*>(data));
+				auto* header = const_cast<CommonHeader*>(reinterpret_cast<const CommonHeader*>(data));
 
 				// clang-format off
 				return (
@@ -99,8 +99,8 @@ namespace RTC
 			}
 
 		public:
-			virtual void Dump() const                 = 0;
-			virtual size_t Serialize(uint8_t* buffer) = 0;
+			virtual void Dump(int indentation = 0) const = 0;
+			virtual size_t Serialize(uint8_t* buffer)    = 0;
 			virtual Type GetType() const
 			{
 				return this->type;

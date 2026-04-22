@@ -2,13 +2,21 @@
 // #define MS_LOG_DEV_LEVEL 3
 
 #include "RTC/PipeConsumer.hpp"
-#include "DepLibUV.hpp"
 #include "Logger.hpp"
 #include "MediaSoupErrors.hpp"
+#include "Utils.hpp"
 #include "RTC/Codecs/Tools.hpp"
+#ifdef MS_RTC_LOGGER_RTP
+#include "RTC/RtcLogger.hpp"
+#endif
+#include <limits> // std::numeric_limits
 
 namespace RTC
 {
+	/* Static. */
+
+	static constexpr size_t TargetLayerRetransmissionBufferSize{ 15u };
+
 	/* Instance methods. */
 
 	PipeConsumer::PipeConsumer(
@@ -16,15 +24,17 @@ namespace RTC
 	  const std::string& id,
 	  const std::string& producerId,
 	  RTC::Consumer::Listener* listener,
-	  json& data,
-		Lively::AppData* appData)
+	  const FBS::Transport::ConsumeRequest* data,
+	  Lively::AppData* appData)
 	  : RTC::Consumer::Consumer(shared, id, producerId, listener, data, RTC::RtpParameters::Type::PIPE, appData)
 	{
 		MS_TRACE();
 
 		// Ensure there are as many encodings as consumable encodings.
 		if (this->rtpParameters.encodings.size() != this->consumableRtpEncodings.size())
+		{
 			MS_THROW_TYPE_ERROR("number of rtpParameters.encodings and consumableRtpEncodings do not match");
+		}
 
 		auto& encoding         = this->rtpParameters.encodings[0];
 		const auto* mediaCodec = this->rtpParameters.GetCodecForEncoding(encoding);
@@ -38,8 +48,7 @@ namespace RTC
 		this->shared->channelMessageRegistrator->RegisterHandler(
 		  this->id,
 		  /*channelRequestHandler*/ this,
-		  /*payloadChannelRequestHandler*/ nullptr,
-		  /*payloadChannelNotificationHandler*/ nullptr);
+		  /*channelNotificationHandler*/ nullptr);
 	}
 
 	PipeConsumer::~PipeConsumer()
@@ -52,113 +61,102 @@ namespace RTC
 		{
 			delete rtpStream;
 		}
+
 		this->rtpStreams.clear();
+		// Cleanup binary log records
+		this->rtpStreamBinLogRecords.clear();
 		this->mapMappedSsrcSsrc.clear();
 		this->mapSsrcRtpStream.clear();
-		this->rtpStreamBinLogRecords.clear();
+		this->mapRtpStreamSyncRequired.clear();
+		this->mapRtpStreamRtpSeqManager.clear();
+		this->mapRtpStreamTargetLayerRetransmissionBuffer.clear();
 	}
 
-	void PipeConsumer::FillJson(json& jsonObject) const
+	flatbuffers::Offset<FBS::Consumer::DumpResponse> PipeConsumer::FillBuffer(
+	  flatbuffers::FlatBufferBuilder& builder) const
 	{
 		MS_TRACE();
 
 		// Call the parent method.
-		RTC::Consumer::FillJson(jsonObject);
+		auto base = RTC::Consumer::FillBuffer(builder);
 
 		// Add rtpStreams.
-		jsonObject["rtpStreams"] = json::array();
-		auto jsonRtpStreamsIt    = jsonObject.find("rtpStreams");
+		std::vector<flatbuffers::Offset<FBS::RtpStream::Dump>> rtpStreams;
+		rtpStreams.reserve(this->rtpStreams.size());
 
-		for (auto* rtpStream : this->rtpStreams)
+		for (const auto* rtpStream : this->rtpStreams)
 		{
-			jsonRtpStreamsIt->emplace_back(json::value_t::object);
-
-			auto& jsonEntry = (*jsonRtpStreamsIt)[jsonRtpStreamsIt->size() - 1];
-
-			rtpStream->FillJson(jsonEntry);
+			rtpStreams.emplace_back(rtpStream->FillBuffer(builder));
 		}
+
+		auto dump = FBS::Consumer::CreateConsumerDumpDirect(builder, base, &rtpStreams);
+
+		return FBS::Consumer::CreateDumpResponse(builder, dump);
 	}
 
-	void PipeConsumer::FillJsonStats(json& jsonArray) const
+	flatbuffers::Offset<FBS::Consumer::GetStatsResponse> PipeConsumer::FillBufferStats(
+	  flatbuffers::FlatBufferBuilder& builder)
 	{
 		MS_TRACE();
+
+		std::vector<flatbuffers::Offset<FBS::RtpStream::Stats>> rtpStreams;
+		rtpStreams.reserve(this->rtpStreams.size());
 
 		// Add stats of our send streams.
 		for (auto* rtpStream : this->rtpStreams)
 		{
-			jsonArray.emplace_back(json::value_t::object);
-
-			auto& jsonEntry = jsonArray[jsonArray.size() - 1];
-
-			rtpStream->FillJsonStats(jsonEntry);
+			rtpStreams.emplace_back(rtpStream->FillBufferStats(builder));
 		}
+
+		return FBS::Consumer::CreateGetStatsResponseDirect(builder, &rtpStreams);
 	}
 
-	void PipeConsumer::FillBinLogStats(Lively::StatsBinLog* log)
-	{
-		MS_TRACE();
-		
-		// modified by Amir Pauker on 06/11/2024 as part of the
-		// Saas project. The pipe between SFU and transcode should
-		// not generate binary logs since otherwise they are
-		// counted toward the project billing invoice
-		return;
-
-//		if (Settings::configuration.logBinStatsDisabled)
-//			return;
-//
-//		if (this->rtpStreams.size() != 1)
-//		{
-//			MS_WARN_TAG_LIVELYAPP(rtp, this->appData, "found %zu streams in %s, skipping bin stats", this->rtpStreams.size(), this->id.c_str());
-//			return;
-//		}
-//
-//		for (auto* rtpStream : this->rtpStreams)
-//		{
-//			if (!rtpStream)
-//				continue;
-//
-//			Lively::CallStatsRecordCtx* ctx = this->rtpStreamBinLogRecords.at(rtpStream);
-//			if (!ctx)
-//				continue;
-//
-//			ctx->AddStatsRecord(log, rtpStream, IsActive());
-//		}
-	}
-
-	void PipeConsumer::FillJsonScore(json& jsonObject) const
+	flatbuffers::Offset<FBS::Consumer::ConsumerScore> PipeConsumer::FillBufferScore(
+	  flatbuffers::FlatBufferBuilder& builder) const
 	{
 		MS_TRACE();
 
 		MS_ASSERT(this->producerRtpStreamScores, "producerRtpStreamScores not set");
 
 		// NOTE: Hardcoded values in PipeTransport.
-		jsonObject["score"]          = 10;
-		jsonObject["producerScore"]  = 10;
-		jsonObject["producerScores"] = *this->producerRtpStreamScores;
+		return FBS::Consumer::CreateConsumerScoreDirect(builder, 10, 10, this->producerRtpStreamScores);
 	}
 
 	void PipeConsumer::HandleRequest(Channel::ChannelRequest* request)
 	{
 		MS_TRACE();
 
-		switch (request->methodId)
+		switch (request->method)
 		{
-			case Channel::ChannelRequest::MethodId::CONSUMER_REQUEST_KEY_FRAME:
+			case Channel::ChannelRequest::Method::CONSUMER_DUMP:
+			{
+				auto dumpOffset = FillBuffer(request->GetBufferBuilder());
+
+				request->Accept(FBS::Response::Body::Consumer_DumpResponse, dumpOffset);
+
+				break;
+			}
+
+			case Channel::ChannelRequest::Method::CONSUMER_REQUEST_KEY_FRAME:
 			{
 				if (IsActive())
+				{
 					RequestKeyFrame();
+				}
 
 				request->Accept();
 
 				break;
 			}
 
-			case Channel::ChannelRequest::MethodId::CONSUMER_SET_PREFERRED_LAYERS:
+			case Channel::ChannelRequest::Method::CONSUMER_SET_PREFERRED_LAYERS:
 			{
-				// Do nothing.
+				// Accept with empty preferred layers object.
 
-				request->Accept();
+				auto responseOffset =
+				  FBS::Consumer::CreateSetPreferredLayersResponse(request->GetBufferBuilder());
+
+				request->Accept(FBS::Response::Body::Consumer_SetPreferredLayersResponse, responseOffset);
 
 				break;
 			}
@@ -237,42 +235,77 @@ namespace RTC
 		return 0u;
 	}
 
-	void PipeConsumer::SendRtpPacket(RTC::RtpPacket* packet, std::shared_ptr<RTC::RtpPacket>& sharedPacket)
+	void PipeConsumer::SendRtpPacket(RTC::RtpPacket* packet, RTC::SharedRtpPacket& sharedPacket)
 	{
 		MS_TRACE();
 
+#ifdef MS_RTC_LOGGER_RTP
 		packet->logger.consumerId = this->id;
+#endif
+
+		auto ssrc           = this->mapMappedSsrcSsrc.at(packet->GetSsrc());
+		auto* rtpStream     = this->mapSsrcRtpStream.at(ssrc);
+		auto& syncRequired  = this->mapRtpStreamSyncRequired.at(rtpStream);
+		auto& rtpSeqManager = this->mapRtpStreamRtpSeqManager.at(rtpStream);
+		auto& targetLayerRetransmissionBuffer =
+		  this->mapRtpStreamTargetLayerRetransmissionBuffer.at(rtpStream);
 
 		if (!IsActive())
 		{
-			packet->logger.Dropped(RtcLogger::RtpPacket::DropReason::CONSUMER_INACTIVE);
+#ifdef MS_RTC_LOGGER_RTP
+			packet->logger.Discarded(RtcLogger::RtpPacket::DiscardReason::CONSUMER_INACTIVE);
+#endif
+
+			rtpSeqManager->Drop(packet->GetSequenceNumber());
+
+			return;
+		}
+
+		// If we need to sync, support key frames and this is not a key frame,
+		// ignore the packet.
+		if (syncRequired && this->keyFrameSupported && !packet->IsKeyFrame())
+		{
+#ifdef MS_RTC_LOGGER_RTP
+			packet->logger.Discarded(RtcLogger::RtpPacket::DiscardReason::NOT_A_KEYFRAME);
+#endif
+
+			// NOTE: No need to drop the packet in the RTP sequence manager since
+			// here we are blocking all packets but the key frame that would trigger
+			// sync below.
+
+			// Store the packet for the scenario in which this packet is part of the
+			// key frame and it arrived before the first packet of the key frame.
+			StorePacketInTargetLayerRetransmissionBuffer(
+			  targetLayerRetransmissionBuffer, packet, sharedPacket);
 
 			return;
 		}
 
 		auto payloadType = packet->GetPayloadType();
 
-		// NOTE: This may happen if this Consumer supports just some codecs of those
-		// in the corresponding Producer.
+		// NOTE: This may happen if this Consumer supports just some codecs of
+		// those in the corresponding Producer.
 		if (!this->supportedCodecPayloadTypes[payloadType])
 		{
-			MS_DEBUG_DEV("payload type not supported [payloadType:%" PRIu8 "]", payloadType);
+			MS_WARN_DEV("payload type not supported [payloadType:%" PRIu8 "]", payloadType);
 
-			packet->logger.Dropped(RtcLogger::RtpPacket::DropReason::UNSUPPORTED_PAYLOAD_TYPE);
+#ifdef MS_RTC_LOGGER_RTP
+			packet->logger.Discarded(RtcLogger::RtpPacket::DiscardReason::UNSUPPORTED_PAYLOAD_TYPE);
+#endif
+
+			rtpSeqManager->Drop(packet->GetSequenceNumber());
 
 			return;
 		}
 
-		auto ssrc           = this->mapMappedSsrcSsrc.at(packet->GetSsrc());
-		auto* rtpStream     = this->mapSsrcRtpStream.at(ssrc);
-		auto& syncRequired  = this->mapRtpStreamSyncRequired.at(rtpStream);
-		auto& rtpSeqManager = this->mapRtpStreamRtpSeqManager.at(rtpStream);
-
-		// If we need to sync, support key frames and this is not a key frame, ignore
-		// the packet.
-		if (syncRequired && this->keyFrameSupported && !packet->IsKeyFrame())
+		// Packets with only padding are not forwarded.
+		if (packet->GetPayloadLength() == 0)
 		{
-			packet->logger.Dropped(RtcLogger::RtpPacket::DropReason::NOT_A_KEYFRAME);
+#ifdef MS_RTC_LOGGER_RTP
+			packet->logger.Discarded(RtcLogger::RtpPacket::DiscardReason::EMPTY_PAYLOAD);
+#endif
+
+			rtpSeqManager->Drop(packet->GetSequenceNumber());
 
 			return;
 		}
@@ -280,13 +313,27 @@ namespace RTC
 		// Whether this is the first packet after re-sync.
 		const bool isSyncPacket = syncRequired;
 
+		// Whether packets stored in the target layer retransmission buffer must be
+		// sent once this packet is sent.
+		bool sendPacketsInTargetLayerRetransmissionBuffer{ false };
+
 		// Sync sequence number and timestamp if required.
 		if (isSyncPacket)
 		{
 			if (packet->IsKeyFrame())
-				MS_DEBUG_TAG_LIVELYAPP(rtp, this->appData, "sync key frame received");
+			{
+				MS_DEBUG_TAG_LIVELYAPP(
+				  rtp,
+				  this->appData,
+				  "sync key frame received [ssrc:%" PRIu32 ", seq:%" PRIu16 ", ts:%" PRIu32 "]",
+				  packet->GetSsrc(),
+				  packet->GetSequenceNumber(),
+				  packet->GetTimestamp());
 
-			rtpSeqManager.Sync(packet->GetSequenceNumber() - 1);
+				sendPacketsInTargetLayerRetransmissionBuffer = true;
+			}
+
+			rtpSeqManager->Sync(packet->GetSequenceNumber() - 1);
 
 			syncRequired = false;
 		}
@@ -294,7 +341,7 @@ namespace RTC
 		// Update RTP seq number and timestamp.
 		uint16_t seq;
 
-		rtpSeqManager.Input(packet->GetSequenceNumber(), seq);
+		rtpSeqManager->Input(packet->GetSequenceNumber(), seq);
 
 		// Save original packet fields.
 		auto origSsrc = packet->GetSsrc();
@@ -304,13 +351,16 @@ namespace RTC
 		packet->SetSsrc(ssrc);
 		packet->SetSequenceNumber(seq);
 
+#ifdef MS_RTC_LOGGER_RTP
 		packet->logger.sendRtpTimestamp = packet->GetTimestamp();
 		packet->logger.sendSeqNumber    = seq;
+#endif
 
 		if (isSyncPacket)
 		{
 			MS_DEBUG_TAG_LIVELYAPP(
-			  rtp, this->appData,
+			  rtp,
+			  this->appData,
 			  "sending sync packet [ssrc:%" PRIu32 ", seq:%" PRIu16 ", ts:%" PRIu32
 			  "] from original [ssrc:%" PRIu32 ", seq:%" PRIu16 "]",
 			  packet->GetSsrc(),
@@ -320,8 +370,10 @@ namespace RTC
 			  origSeq);
 		}
 
-		// Process the packet.
-		if (rtpStream->ReceivePacket(packet, sharedPacket))
+		const RTC::RtpStreamSend::ReceivePacketResult result =
+		  rtpStream->ReceivePacket(packet, sharedPacket);
+
+		if (result != RTC::RtpStreamSend::ReceivePacketResult::DISCARDED)
 		{
 			// Send the packet.
 			this->listener->OnConsumerSendRtpPacket(this, packet);
@@ -341,7 +393,8 @@ namespace RTC
 		else
 		{
 			MS_WARN_TAG_LIVELYAPP(
-			  rtp, this->appData,
+			  rtp,
+			  this->appData,
 			  "failed to send packet [ssrc:%" PRIu32 ", seq:%" PRIu16 ", ts:%" PRIu32
 			  "] from original [ssrc:%" PRIu32 ", seq:%" PRIu16 "]",
 			  packet->GetSsrc(),
@@ -349,19 +402,76 @@ namespace RTC
 			  packet->GetTimestamp(),
 			  origSsrc,
 			  origSeq);
+
+#ifdef MS_RTC_LOGGER_RTP
+			packet->logger.Discarded(RtcLogger::RtpPacket::DiscardReason::SEND_RTP_STREAM_DISCARDED);
+#endif
 		}
 
 		// Restore packet fields.
 		packet->SetSsrc(origSsrc);
 		packet->SetSequenceNumber(origSeq);
+
+		// If sharedPacket doesn't have a packet inside and it has been stored we
+		// need to clone the packet into it.
+		if (!sharedPacket.HasPacket() && result == RTC::RtpStreamSend::ReceivePacketResult::ACCEPTED_AND_STORED)
+		{
+			sharedPacket.Assign(packet);
+		}
+
+		// If sent packet was the first packet of a key frame, let's send buffered
+		// packets belonging to the same key frame that arrived earlier due to
+		// packet misorder.
+		if (sendPacketsInTargetLayerRetransmissionBuffer)
+		{
+			// NOTE: Only send buffered packets if the first packet containing the
+			// key frame was sent.
+			if (result != RTC::RtpStreamSend::ReceivePacketResult::DISCARDED)
+			{
+				for (auto& kv : targetLayerRetransmissionBuffer)
+				{
+					auto& bufferedSharedPacket = kv.second;
+					auto* bufferedPacket       = bufferedSharedPacket.GetPacket();
+
+					if (bufferedPacket->GetSequenceNumber() > origSeq)
+					{
+						MS_DEBUG_DEV(
+						  "sending packet buffered in the target layer retransmission buffer [ssrc:%" PRIu32
+						  ", seq:%" PRIu16 ", ts:%" PRIu32
+						  "] after sending first packet of the key frame [ssrc:%" PRIu32 ", seq:%" PRIu16
+						  ", ts:%" PRIu32 "]",
+						  bufferedPacket->GetSsrc(),
+						  bufferedPacket->GetSequenceNumber(),
+						  bufferedPacket->GetTimestamp(),
+						  packet->GetSsrc(),
+						  packet->GetSequenceNumber(),
+						  packet->GetTimestamp());
+
+						SendRtpPacket(bufferedPacket, bufferedSharedPacket);
+
+						// Be sure that the target layer retransmission buffer has not been
+						// emptied as a result of sending this packet. If so, exit the loop.
+						if (targetLayerRetransmissionBuffer.size() == 0)
+						{
+							MS_DEBUG_DEV(
+							  "target layer retransmission buffer emptied while iterating it, exiting the loop");
+
+							break;
+						}
+					}
+				}
+			}
+
+			targetLayerRetransmissionBuffer.clear();
+		}
 	}
 
 	bool PipeConsumer::GetRtcp(RTC::RTCP::CompoundPacket* packet, uint64_t nowMs)
 	{
 		MS_TRACE();
 
-		// Special condition for PipeConsumer since this method will be called in a loop for
-		// each stream in this PipeConsumer.
+		// Special condition for PipeConsumer since this method will be called in a
+		// loop for each stream in this PipeConsumer.
 		// clang-format off
 		if (
 			nowMs != this->lastRtcpSentTime &&
@@ -374,7 +484,7 @@ namespace RTC
 
 		std::vector<RTCP::SenderReport*> senderReports;
 		std::vector<RTCP::SdesChunk*> sdesChunks;
-		std::vector<RTCP::DelaySinceLastRr*> xrReports;
+		std::vector<RTCP::DelaySinceLastRr::SsrcInfo*> delaySinceLastRrSsrcInfos;
 
 		for (auto* rtpStream : this->rtpStreams)
 		{
@@ -402,7 +512,9 @@ namespace RTC
 			auto* report = rtpStream->GetRtcpSenderReport(nowMs, producerNtpMs, producerRtpTs);
 
 			if (!report)
+			{
 				continue;
+			}
 
 #if MS_LOG_DEV_LEVEL >= 3
 			MS_DEBUG_DEV("SR-OUT [ssrc:%" PRIu32 ", ntpSec:%" PRIu32 ", ntpFrac:%" PRIu32 ", rtpTs:%" PRIu32 ", packetCount:%" PRIu32 ", octetCount:%" PRIu32 "]",
@@ -420,20 +532,19 @@ namespace RTC
 			auto* sdesChunk = rtpStream->GetRtcpSdesChunk();
 			sdesChunks.push_back(sdesChunk);
 
-			auto* dlrr = rtpStream->GetRtcpXrDelaySinceLastRr(nowMs);
+			auto* delaySinceLastRrSsrcInfo = rtpStream->GetRtcpXrDelaySinceLastRr(nowMs);
 
-			if (dlrr)
+			if (delaySinceLastRrSsrcInfo)
 			{
-				auto* report = new RTC::RTCP::DelaySinceLastRr();
-				report->AddSsrcInfo(dlrr);
-
-				xrReports.push_back(report);
+				delaySinceLastRrSsrcInfos.push_back(delaySinceLastRrSsrcInfo);
 			}
 		}
 
 		// RTCP Compound packet buffer cannot hold the data.
-		if (!packet->Add(senderReports, sdesChunks, xrReports))
+		if (!packet->Add(senderReports, sdesChunks, delaySinceLastRrSsrcInfos))
+		{
 			return false;
+		}
 
 		this->lastRtcpSentTime = nowMs;
 
@@ -445,7 +556,9 @@ namespace RTC
 		MS_TRACE();
 
 		if (!IsActive())
+		{
 			return;
+		}
 
 		for (auto* rtpStream : this->rtpStreams)
 		{
@@ -453,7 +566,9 @@ namespace RTC
 
 			// If our fraction lost is worse than the given one, update it.
 			if (fractionLost > worstRemoteFractionLost)
+			{
 				worstRemoteFractionLost = fractionLost;
+			}
 		}
 	}
 
@@ -462,7 +577,9 @@ namespace RTC
 		MS_TRACE();
 
 		if (!IsActive())
+		{
 			return;
+		}
 
 		// May emit 'trace' event.
 		EmitTraceEventNackType();
@@ -501,7 +618,9 @@ namespace RTC
 		rtpStream->ReceiveKeyFrameRequest(messageType);
 
 		if (IsActive())
+		{
 			RequestKeyFrame();
+		}
 	}
 
 	void PipeConsumer::ReceiveRtcpReceiverReport(RTC::RTCP::ReceiverReport* report)
@@ -528,7 +647,9 @@ namespace RTC
 		MS_TRACE();
 
 		if (!IsActive())
+		{
 			return 0u;
+		}
 
 		uint32_t rate{ 0u };
 
@@ -549,7 +670,9 @@ namespace RTC
 		for (auto* rtpStream : this->rtpStreams)
 		{
 			if (rtpStream->GetRtt() > rtt)
+			{
 				rtt = rtpStream->GetRtt();
+			}
 		}
 
 		return rtt;
@@ -583,6 +706,13 @@ namespace RTC
 		{
 			rtpStream->Pause();
 		}
+
+		for (auto& kv : this->mapRtpStreamTargetLayerRetransmissionBuffer)
+		{
+			auto& targetLayerRetransmissionBuffer = kv.second;
+
+			targetLayerRetransmissionBuffer.clear();
+		}
 	}
 
 	void PipeConsumer::UserOnPaused()
@@ -592,6 +722,13 @@ namespace RTC
 		for (auto* rtpStream : this->rtpStreams)
 		{
 			rtpStream->Pause();
+		}
+
+		for (auto& kv : this->mapRtpStreamTargetLayerRetransmissionBuffer)
+		{
+			auto& targetLayerRetransmissionBuffer = kv.second;
+
+			targetLayerRetransmissionBuffer.clear();
 		}
 	}
 
@@ -690,9 +827,21 @@ namespace RTC
 
 			auto* rtpStream = new RTC::RtpStreamSend(this, params, this->rtpParameters.mid);
 
+		// Initialize binary log record context for this stream
+		this->rtpStreamBinLogRecords[rtpStream] = new Lively::CallStatsRecordCtx(
+		  1,
+		  rtpStream->GetSsrc(),
+		  rtpStream->GetPayloadType(),
+		  this->kind == RTC::Media::Kind::VIDEO ? 'v' : 'a',
+		  this->lively.callId,
+		  this->id,
+		  this->producerId);
+
 			// If the Consumer is paused, tell the RtpStreamSend.
 			if (IsPaused() || IsProducerPaused())
+			{
 				rtpStream->Pause();
+			}
 
 			const auto* rtxCodec = this->rtpParameters.GetRtxCodecForEncoding(encoding);
 
@@ -710,27 +859,35 @@ namespace RTC
 			this->mapMappedSsrcSsrc[consumableEncoding.ssrc] = encoding.ssrc;
 			this->mapSsrcRtpStream[encoding.ssrc]            = rtpStream;
 			this->mapRtpStreamSyncRequired[rtpStream]        = false;
-			this->mapRtpStreamRtpSeqManager[rtpStream];
+
+			// Let's choose an initial output seq number between 1000 and 32768 to avoid
+			// libsrtp bug:
+			// https://github.com/versatica/mediasoup/issues/1437
+			const uint16_t initialOutputSeq =
+			  Utils::Crypto::GetRandomUInt(1000u, std::numeric_limits<uint16_t>::max() / 2);
+
+			this->mapRtpStreamRtpSeqManager[rtpStream].reset(
+			  new RTC::SeqManager<uint16_t>(initialOutputSeq));
+
+			this->mapRtpStreamTargetLayerRetransmissionBuffer[rtpStream];
 
 			MS_WARN_TAG_LIVELYAPP(
 				rtp,
 				this->appData,
-				"pipeConsumer call_id %s id %s", 
-				lively.callId.c_str(),
+				"pipeConsumer call_id %s id %s",
+				this->lively.callId.c_str(),
 				this->id.c_str());
-
-			// Binary log samples collection per stream
-			this->rtpStreamBinLogRecords[rtpStream] = new Lively::CallStatsRecordCtx(1, rtpStream->GetSsrc(), rtpStream->GetPayloadType(), this->kind == Media::Kind::VIDEO ? 'v': 'a', lively.callId, this->id, this->producerId);
 		}
 	}
-
 
 	void PipeConsumer::RequestKeyFrame()
 	{
 		MS_TRACE();
 
 		if (this->kind != RTC::Media::Kind::VIDEO)
+		{
 			return;
+		}
 
 		for (auto& consumableRtpEncoding : this->consumableRtpEncodings)
 		{
@@ -740,7 +897,57 @@ namespace RTC
 		}
 	}
 
-	inline void PipeConsumer::OnRtpStreamScore(
+	void PipeConsumer::StorePacketInTargetLayerRetransmissionBuffer(
+	  std::map<uint16_t, RTC::SharedRtpPacket, RTC::SeqManager<uint16_t>::SeqLowerThan>&
+	    targetLayerRetransmissionBuffer,
+	  RTC::RtpPacket* packet,
+	  RTC::SharedRtpPacket& sharedPacket)
+	{
+		MS_TRACE();
+
+		MS_DEBUG_DEV(
+		  "storing packet in target layer retransmission buffer [ssrc:%" PRIu32 ", seq:%" PRIu16
+		  ", ts:%" PRIu32 "]",
+		  packet->GetSsrc(),
+		  packet->GetSequenceNumber(),
+		  packet->GetTimestamp());
+
+		// Store original packet into the buffer. Only clone once and only if
+		// necessary.
+		if (!sharedPacket.HasPacket())
+		{
+			sharedPacket.Assign(packet);
+		}
+		// Assert that, if sharedPacket was already filled, both packet and
+		// sharedPacket are the very same RTP packet.
+		else
+		{
+			sharedPacket.AssertSamePacket(packet);
+		}
+
+		targetLayerRetransmissionBuffer[packet->GetSequenceNumber()] = sharedPacket;
+
+		if (targetLayerRetransmissionBuffer.size() > TargetLayerRetransmissionBufferSize)
+		{
+			targetLayerRetransmissionBuffer.erase(targetLayerRetransmissionBuffer.begin());
+		}
+	}
+
+	void PipeConsumer::FillBinLogStats(Lively::StatsBinLog* /*log*/)
+	{
+		MS_TRACE();
+
+		// Modified by Amir Pauker on 06/11/2024 as part of the SaaS project.
+		// The pipe between SFU and transcode should not generate binary logs
+		// since otherwise they are counted toward the project billing invoice.
+		return;
+
+		// NOTE: The original implementation would iterate through rtpStreamBinLogRecords
+		// and call AddStatsRecord() for each stream, but this is intentionally disabled
+		// to prevent double-counting for billing purposes.
+	}
+
+	void PipeConsumer::OnRtpStreamScore(
 	  RTC::RtpStream* /*rtpStream*/, uint8_t /*score*/, uint8_t /*previousScore*/)
 	{
 		MS_TRACE();
@@ -748,8 +955,7 @@ namespace RTC
 		// Do nothing.
 	}
 
-	inline void PipeConsumer::OnRtpStreamRetransmitRtpPacket(
-	  RTC::RtpStreamSend* rtpStream, RTC::RtpPacket* packet)
+	void PipeConsumer::OnRtpStreamRetransmitRtpPacket(RTC::RtpStreamSend* rtpStream, RTC::RtpPacket* packet)
 	{
 		MS_TRACE();
 

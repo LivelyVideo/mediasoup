@@ -3,10 +3,13 @@
 
 #include <nlohmann/json.hpp>
 #include "DepLibSfuShm.hpp"
+#include "FBS/transport.h"
+#include "FBS/shmTransport.h"
 #include "RTC/Transport.hpp"
 #include "RTC/TransportTuple.hpp"
 #include "RTC/UdpSocket.hpp"
 #include "RTC/RTCP/FeedbackPsRemb.hpp"
+#include "handles/TimerHandle.hpp"
 #include <string>
 
 using json = nlohmann::json;
@@ -24,15 +27,15 @@ namespace RTC
 		};
 
 	public:
-		ShmTransport(RTC::Shared* shared, const std::string& id, RTC::Transport::Listener* listener, json& data);
+		ShmTransport(RTC::Shared* shared, const std::string& id, RTC::Transport::Listener* listener, const FBS::Transport::Options* options);
 		~ShmTransport() override;
 
 	public:
-		void FillJson(json& jsonObject) const override;
-		void FillJsonStats(json& jsonArray) override;
 		void HandleRequest(Channel::ChannelRequest* request) override;
-		void HandleNotification(PayloadChannel::PayloadChannelNotification* notification) override;
+		void HandleNotification(Channel::ChannelNotification* notification) override;
 		DepLibSfuShm::ShmCtx* ShmCtx() { return &this->shmCtx; }
+		flatbuffers::Offset<FBS::ShmTransport::DumpResponse> FillBuffer(flatbuffers::FlatBufferBuilder& builder) const;
+		flatbuffers::Offset<FBS::ShmTransport::GetStatsResponse> FillBufferStats(flatbuffers::FlatBufferBuilder& builder);
 
 	private:
 		bool IsConnected() const override;
@@ -42,9 +45,9 @@ namespace RTC
 		void SendRtcpCompoundPacket(RTC::RTCP::CompoundPacket* packet) override;
 		void SendMessage(
 		  RTC::DataConsumer* dataConsumer,
-		  uint32_t ppid,
 		  const uint8_t* msg,
 		  size_t len,
+		  uint32_t ppid,
 		  onQueuedCallback* cb = nullptr) override;
 		void RecvStreamClosed(uint32_t ssrc) override;
 		void SendStreamClosed(uint32_t ssrc) override;
@@ -53,7 +56,11 @@ namespace RTC
 	public:
 		void OnConsumerNeedBitrateChange(RTC::Consumer* consumer) override;
 
-		/* Pure virtual methods inherited from RTC::UdpSocket::Listener. */
+		/* Pure virtual methods inherited from TimerHandle::Listener. */
+	public:
+		void OnTimer(TimerHandle* timer) override;
+
+	/* Pure virtual methods inherited from RTC::UdpSocket::Listener. */
 	public:
 		void OnUdpSocketPacketReceived(
 		  RTC::UdpSocket* socket, const uint8_t* data, size_t len, const struct sockaddr* remoteAddr) override;
@@ -68,12 +75,8 @@ namespace RTC
 	public:
 		std::string appData;
 
-	/* Pure virtual methods inherited from Timer. */
-	protected:
-		void OnTimer(Timer* timer) override;
-
 	private:
-		Timer* shmNoConsumeTimer{ nullptr }; // Timer to monitor 
+		TimerHandle* shmNoConsumeTimer{ nullptr }; // Timer to monitor 
 		void   OnNoConsume();                // Close shm if a consumer has not been created within 60 seconds after a call to transport's ctor 
 
 	/* Use this function to notify shm transport that a new consumer was set up and stop a timer */
@@ -89,7 +92,6 @@ namespace RTC
 		bool comedia{ false };
 		bool multiSource{ false };
 
-		bool RecvStreamMeta(json& data);
 		DepLibSfuShm::ShmCtx shmCtx; // shm writer context, needed here to begin shm initialization and correctly report transport stats
 	};
 } // namespace RTC

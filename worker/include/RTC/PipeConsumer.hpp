@@ -1,10 +1,10 @@
-#ifndef MS_RTC_PIPE_CONSUMER_HPP
-#define MS_RTC_PIPE_CONSUMER_HPP
+#ifndef MS_RTC_PIPECONSUMER_HPP
+#define MS_RTC_PIPECONSUMER_HPP
 
-#include "Lively.hpp"
 #include "RTC/Consumer.hpp"
 #include "RTC/SeqManager.hpp"
 #include "RTC/Shared.hpp"
+#include <map>
 
 namespace RTC
 {
@@ -16,14 +16,17 @@ namespace RTC
 		  const std::string& id,
 		  const std::string& producerId,
 		  RTC::Consumer::Listener* listener,
-		  json& data,
-			Lively::AppData* appData = nullptr);
+		  const FBS::Transport::ConsumeRequest* data,
+		  Lively::AppData* appData = nullptr);
 		~PipeConsumer() override;
 
 	public:
-		void FillJson(json& jsonObject) const override;
-		void FillJsonStats(json& jsonArray) const override;
-		void FillJsonScore(json& jsonObject) const override;
+		flatbuffers::Offset<FBS::Consumer::DumpResponse> FillBuffer(
+		  flatbuffers::FlatBufferBuilder& builder) const;
+		flatbuffers::Offset<FBS::Consumer::GetStatsResponse> FillBufferStats(
+		  flatbuffers::FlatBufferBuilder& builder) override;
+		flatbuffers::Offset<FBS::Consumer::ConsumerScore> FillBufferScore(
+		  flatbuffers::FlatBufferBuilder& builder) const override;
 		void ProducerRtpStream(RTC::RtpStreamRecv* rtpStream, uint32_t mappedSsrc) override;
 		void ProducerNewRtpStream(RTC::RtpStreamRecv* rtpStream, uint32_t mappedSsrc) override;
 		void ProducerRtpStreamScore(
@@ -33,7 +36,7 @@ namespace RTC
 		uint32_t IncreaseLayer(uint32_t bitrate, bool considerLoss) override;
 		void ApplyLayers() override;
 		uint32_t GetDesiredBitrate() const override;
-		void SendRtpPacket(RTC::RtpPacket* packet, std::shared_ptr<RTC::RtpPacket>& sharedPacket) override;
+		void SendRtpPacket(RTC::RtpPacket* packet, RTC::SharedRtpPacket& sharedPacket) override;
 		bool GetRtcp(RTC::RTCP::CompoundPacket* packet, uint64_t nowMs) override;
 		const std::vector<RTC::RtpStreamSend*>& GetRtpStreams() const override
 		{
@@ -46,6 +49,7 @@ namespace RTC
 		void ReceiveRtcpXrReceiverReferenceTime(RTC::RTCP::ReceiverReferenceTime* report) override;
 		uint32_t GetTransmissionRate(uint64_t nowMs) override;
 		float GetRtt() const override;
+		void FillBinLogStats(Lively::StatsBinLog* log) override;
 
 		/* Methods inherited from Channel::ChannelSocket::RequestHandler. */
 	public:
@@ -58,27 +62,36 @@ namespace RTC
 		void UserOnResumed() override;
 		void CreateRtpStreams();
 		void RequestKeyFrame();
+		void StorePacketInTargetLayerRetransmissionBuffer(
+		  std::map<uint16_t, RTC::SharedRtpPacket, RTC::SeqManager<uint16_t>::SeqLowerThan>&
+		    targetLayerRetransmissionBuffer,
+		  RTC::RtpPacket* packet,
+		  RTC::SharedRtpPacket& sharedPacket);
 
 		/* Pure virtual methods inherited from RtpStreamSend::Listener. */
 	public:
 		void OnRtpStreamScore(RTC::RtpStream* rtpStream, uint8_t score, uint8_t previousScore) override;
 		void OnRtpStreamRetransmitRtpPacket(RTC::RtpStreamSend* rtpStream, RTC::RtpPacket* packet) override;
 
-	public:
-		void FillBinLogStats(Lively::StatsBinLog* log) override;
-
 	private:
 		// Allocated by this.
 		std::vector<RTC::RtpStreamSend*> rtpStreams;
+		// Binary logging member
+		std::map<RTC::RtpStreamSend*, Lively::CallStatsRecordCtx*> rtpStreamBinLogRecords;
 		// Others.
 		absl::flat_hash_map<uint32_t, uint32_t> mapMappedSsrcSsrc;
 		absl::flat_hash_map<uint32_t, RTC::RtpStreamSend*> mapSsrcRtpStream;
 		absl::flat_hash_map<uint32_t, RTC::RtpStreamRecv*> mapMappedSsrcProducerRtpStream;
 		bool keyFrameSupported{ false };
 		absl::flat_hash_map<RTC::RtpStreamSend*, bool> mapRtpStreamSyncRequired;
-		absl::flat_hash_map<RTC::RtpStreamSend*, RTC::SeqManager<uint16_t>> mapRtpStreamRtpSeqManager;
-		// bin log
-		std::map<RTC::RtpStreamSend*, Lively::CallStatsRecordCtx*> rtpStreamBinLogRecords;
+		absl::flat_hash_map<RTC::RtpStreamSend*, std::unique_ptr<RTC::SeqManager<uint16_t>>>
+		  mapRtpStreamRtpSeqManager;
+		// Buffers to store packets that arrive earlier than the first packet of the
+		// video key frame.
+		absl::flat_hash_map<
+		  RTC::RtpStreamSend*,
+		  std::map<uint16_t, RTC::SharedRtpPacket, RTC::SeqManager<uint16_t>::SeqLowerThan>>
+		  mapRtpStreamTargetLayerRetransmissionBuffer;
 	};
 } // namespace RTC
 

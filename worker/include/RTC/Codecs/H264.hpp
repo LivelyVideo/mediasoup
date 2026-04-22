@@ -40,23 +40,17 @@ namespace RTC
 			struct PayloadDescriptor : public RTC::Codecs::PayloadDescriptor
 			{
 				/* Pure virtual methods inherited from RTC::Codecs::PayloadDescriptor. */
-				~PayloadDescriptor() = default;
+				~PayloadDescriptor() override = default;
 
-				void Dump() const override;
+				void Dump(int indentation = 0) const override;
 
-				// Fields in frame-marking extension.
-				uint8_t s : 1;          // Start of Frame.
-				uint8_t e : 1;          // End of Frame.
-				uint8_t i : 1;          // Independent Frame.
-				uint8_t d : 1;          // Discardable Frame.
-				uint8_t b : 1;          // Base Layer Sync.
-				uint8_t tid{ 0 };       // Temporal layer id.
-				uint8_t lid{ 0 };       // Spatial layer id.
-				uint8_t tl0picidx{ 0 }; // TL0PICIDX
+				// Fields in Dependency Descriptor extension.
+				bool startOfFrame{ false };
+				bool endOfFrame{ false };
+				uint8_t spatialLayer{ 0 };
+				uint8_t temporalLayer{ 0 };
+
 				// Parsed values.
-				bool hasLid{ false };
-				bool hasTid{ false };
-				bool hasTl0picidx{ false };
 				bool isKeyFrame{ false };
 
 				// Added by Amir Pauker 02/27/2024 RND-568
@@ -66,11 +60,12 @@ namespace RTC
 
 		public:
 			static H264::PayloadDescriptor* Parse(
-			  const uint8_t* data,
-			  size_t len,
-			  RTC::RtpPacket::FrameMarking* frameMarking = nullptr,
-			  uint8_t frameMarkingLen                    = 0);
-			static void ProcessRtpPacket(RTC::RtpPacket* packet);
+			  const uint8_t* data, size_t len, RTC::Codecs::DependencyDescriptor* dependencyDescriptor);
+			static bool IsKeyFrame(const uint8_t* data, size_t len);
+			static void ProcessRtpPacket(
+			  RTC::RtpPacket* packet,
+			  std::unique_ptr<RTC::Codecs::DependencyDescriptor::TemplateDependencyStructure>&
+			    templateDependencyStructure);
 
 		public:
 			class EncodingContext : public RTC::Codecs::EncodingContext
@@ -94,22 +89,33 @@ namespace RTC
 			{
 			public:
 				explicit PayloadDescriptorHandler(PayloadDescriptor* payloadDescriptor);
-				~PayloadDescriptorHandler() = default;
+				~PayloadDescriptorHandler() override = default;
 
 			public:
-				void Dump() const override
+				void Dump(int indentation = 0) const override
 				{
-					this->payloadDescriptor->Dump();
+					this->payloadDescriptor->Dump(indentation);
 				}
-				bool Process(RTC::Codecs::EncodingContext* encodingContext, uint8_t* data, bool& marker) override;
-				void Restore(uint8_t* data) override;
+				bool Process(
+				  RTC::Codecs::EncodingContext* encodingContext, RTC::RtpPacket* packet, bool& marker) override;
+				void RtpPacketCloned(RtpPacket* packet) override{};
+				std::unique_ptr<RTC::Codecs::PayloadDescriptor::Encoder> GetEncoder() const override
+				{
+					return nullptr;
+				}
+				void Encode(RtpPacket* packet, Codecs::PayloadDescriptor::Encoder* encoder) override
+				{
+				}
+				void Restore(RtpPacket* packet) override
+				{
+				}
 				uint8_t GetSpatialLayer() const override
 				{
 					return 0u;
 				}
 				uint8_t GetTemporalLayer() const override
 				{
-					return this->payloadDescriptor->tid;
+					return this->payloadDescriptor->temporalLayer;
 				}
 				bool IsKeyFrame() const override
 				{

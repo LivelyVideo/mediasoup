@@ -1,14 +1,14 @@
 use crate::data_consumer::DataConsumerOptions;
 use crate::data_producer::{DataProducer, DataProducerOptions};
-use crate::data_structures::ListenIp;
 use crate::plain_transport::PlainTransportOptions;
 use crate::router::{Router, RouterOptions};
-use crate::sctp_parameters::SctpStreamParameters;
 use crate::transport::Transport;
-use crate::webrtc_transport::{TransportListenIps, WebRtcTransportOptions};
+use crate::webrtc_transport::{WebRtcTransportListenInfos, WebRtcTransportOptions};
 use crate::worker::WorkerSettings;
 use crate::worker_manager::WorkerManager;
 use futures_lite::future;
+use mediasoup_types::data_structures::{ListenInfo, Protocol};
+use mediasoup_types::sctp_parameters::SctpStreamParameters;
 use std::env;
 use std::net::{IpAddr, Ipv4Addr};
 
@@ -36,9 +36,16 @@ async fn init() -> (Router, DataProducer) {
     let transport = router
         .create_webrtc_transport({
             let mut transport_options =
-                WebRtcTransportOptions::new(TransportListenIps::new(ListenIp {
+                WebRtcTransportOptions::new(WebRtcTransportListenInfos::new(ListenInfo {
+                    protocol: Protocol::Udp,
                     ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-                    announced_ip: None,
+                    announced_address: None,
+                    expose_internal_ip: false,
+                    port: None,
+                    port_range: None,
+                    flags: None,
+                    send_buffer_size: None,
+                    recv_buffer_size: None,
                 }));
 
             transport_options.enable_sctp = true;
@@ -65,9 +72,16 @@ fn data_producer_close_event() {
 
         let transport2 = router
             .create_plain_transport({
-                let mut transport_options = PlainTransportOptions::new(ListenIp {
+                let mut transport_options = PlainTransportOptions::new(ListenInfo {
+                    protocol: Protocol::Udp,
                     ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-                    announced_ip: None,
+                    announced_address: None,
+                    expose_internal_ip: false,
+                    port: None,
+                    port_range: None,
+                    flags: None,
+                    send_buffer_size: None,
+                    recv_buffer_size: None,
                 });
 
                 transport_options.enable_sctp = true;
@@ -114,9 +128,16 @@ fn transport_close_event() {
 
         let transport2 = router
             .create_plain_transport({
-                let mut transport_options = PlainTransportOptions::new(ListenIp {
+                let mut transport_options = PlainTransportOptions::new(ListenInfo {
+                    protocol: Protocol::Udp,
                     ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-                    announced_ip: None,
+                    announced_address: None,
+                    expose_internal_ip: false,
+                    port: None,
+                    port_range: None,
+                    flags: None,
+                    send_buffer_size: None,
+                    recv_buffer_size: None,
                 });
 
                 transport_options.enable_sctp = true;

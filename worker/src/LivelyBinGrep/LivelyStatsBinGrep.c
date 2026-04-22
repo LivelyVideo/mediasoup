@@ -18,7 +18,7 @@
 //#include <regex.h>
 
 // These defines should match LivelyBinLogs.hpp values
-#define BINLOG_FORMAT_VERSION "3b55f9"
+#define BINLOG_FORMAT_VERSION "223fac"
 
 //#define CALL_STATS_BIN_LOG_RECORDS_NUM 8
 #define CALL_STATS_BIN_LOG_PROD_REC_NUM 4
@@ -160,7 +160,7 @@ void uuidBytesToHexStr(const uint8_t* from, char* to)
 
 
 //Result is "00000000-0000-0000-0000-000000000000\0" i.e. 37 symbols string
-void 
+void
 rand_pseudo_uuid(uint8_t *dst)
 {
   uint8_t *ptr = dst;
@@ -174,7 +174,7 @@ rand_pseudo_uuid(uint8_t *dst)
   *ptr++ = '-';
   ptr = fill_with_rand_hex(ptr, 4);
   *ptr++ = '-';
-  ptr = fill_with_rand_hex(ptr, 8);
+  ptr = fill_with_rand_hex(ptr, 12);  // UUID last group is 12 hex chars, not 8
 }
 
 // Result is random 16 bytes not starting with zeros
@@ -225,6 +225,12 @@ time_alignment(
 	int                 i;
 	uint64_t            start_tm, end_tm;
 
+	// Guard against division by zero from corrupted data
+	if (sample_dur == 0)
+	{
+		return 0;
+	}
+
 #define TIME_ALIGNMENT(metric) \
 		sample.metric = (sample_in->metric > 1) ? sample_in->metric * time_align / sample_dur : sample_in->metric
 
@@ -241,6 +247,7 @@ time_alignment(
 	TIME_ALIGNMENT(kf_count);
 	TIME_ALIGNMENT(rtt);
 	TIME_ALIGNMENT(bytes_count);
+	TIME_ALIGNMENT(frames_count);
 	sample.max_pts   = sample_in->max_pts;
 
 	start_tm = record_tm;
@@ -261,13 +268,21 @@ time_alignment(
 //ms_c_00000000-0000-0000-0000-000000000000_1652210519459.123abc.bin.log
 int parse_file_name(ms_binlog_config *conf)
 {
-  #define FILENAME_LEN_MAX sizeof("/var/log/sfu/ms_p_00000000-0000-0000-0000-000000000000_00000000-0000-0000-0000-000000000000_1652210519459.123abc.bin") * 2
+  #define FILENAME_LEN_MAX sizeof("/var/log/sfu/ms_p_00000000-0000-0000-0000-000000000000_00000000-0000-0000-0000-000000000000_00000000-0000-0000-0000-000000000000_1652210519459.123abc.bin") * 2
   char tmp[FILENAME_LEN_MAX];
   char* ch;
   char* ver;
+  size_t filename_len;
+
+  filename_len = strlen(conf->filename);
+  if (filename_len >= FILENAME_LEN_MAX)
+  {
+    printf("file name too long (%zu bytes), max is %zu, exit...\n", filename_len, (size_t)FILENAME_LEN_MAX - 1);
+    return 1;
+  }
 
   memset(tmp, '\0', FILENAME_LEN_MAX);
-  memcpy(tmp, conf->filename, strlen(conf->filename));
+  memcpy(tmp, conf->filename, filename_len);
 
   memset(conf->call_id, 0, UUID_CHAR_LEN + 1);
   memset(conf->producer_id, 0, UUID_CHAR_LEN + 1);
@@ -297,24 +312,46 @@ int parse_file_name(ms_binlog_config *conf)
     return 1;
   }
 
-  ch = strtok(NULL,"_");
-  if (ch == 0 || strlen(ch) < UUID_CHAR_LEN)
-  {
-    printf("wrong file name %s, should contain uuid, exit...", conf->filename);
-    return 1;
-  }
-  memcpy(conf->call_id, ch, UUID_CHAR_LEN);
-
   if (conf->type == 'p')
   {
+    // Producer format: ms_p_<userId>_<callId>_<producerId>_<timestamp>.<version>.bin
+    // Skip userId field (first UUID after ms_p_)
     ch = strtok(NULL, "_");
     if (ch == 0 || strlen(ch) < UUID_CHAR_LEN)
     {
-      printf("wrong file name %s, should contain two uuids, exit...", conf->filename);
+      printf("wrong file name %s, should contain userId uuid, exit...", conf->filename);
       return 1;
     }
+    // userId is skipped - we don't store it
 
+    // Get callId (second UUID)
+    ch = strtok(NULL, "_");
+    if (ch == 0 || strlen(ch) < UUID_CHAR_LEN)
+    {
+      printf("wrong file name %s, should contain callId uuid, exit...", conf->filename);
+      return 1;
+    }
+    memcpy(conf->call_id, ch, UUID_CHAR_LEN);
+
+    // Get producerId (third UUID)
+    ch = strtok(NULL, "_");
+    if (ch == 0 || strlen(ch) < UUID_CHAR_LEN)
+    {
+      printf("wrong file name %s, should contain producerId uuid, exit...", conf->filename);
+      return 1;
+    }
     memcpy(conf->producer_id, ch, UUID_CHAR_LEN);
+  }
+  else
+  {
+    // Consumer format: ms_c_<callId>_<timestamp>.<version>.bin
+    ch = strtok(NULL,"_");
+    if (ch == 0 || strlen(ch) < UUID_CHAR_LEN)
+    {
+      printf("wrong file name %s, should contain callId uuid, exit...", conf->filename);
+      return 1;
+    }
+    memcpy(conf->call_id, ch, UUID_CHAR_LEN);
   }
   // now left with timestamp.version.bin let's match versions
   memset(tmp, '\0', FILENAME_LEN_MAX);
@@ -376,11 +413,11 @@ format_output(FILE* fd, ms_binlog_config *conf)
   start_ts = conf->start_ts;
   num_tm_align_rec = 1;
   
-  memset(call_id, sizeof(call_id), 0);
+  memset(call_id, 0, sizeof(call_id));
   memcpy(call_id, conf->call_id, UUID_CHAR_LEN);
 
-  memset(object_id, sizeof(object_id), 0); 
-  memset(producer_id, sizeof(producer_id), 0);
+  memset(object_id, 0, sizeof(object_id));
+  memset(producer_id, 0, sizeof(producer_id));
 
   if (conf->type == 'p')
   {
@@ -395,10 +432,14 @@ format_output(FILE* fd, ms_binlog_config *conf)
     print_headers(conf);
 
  
-  while( (num_bytes = (conf->type == 'c') 
+  while( (num_bytes = (conf->type == 'c')
                       ? fread(buf_c, sizeof(uint8_t), len, fd)
                       : fread(buf_p, sizeof(uint8_t), len, fd)) > 0 )
   {
+    // Reset pointers to beginning of buffer for each fread iteration
+    first_c = &buf_c[0];
+    first_p = &buf_p[0];
+
     num_rec = (conf->type == 'c') ? num_bytes/CONSUMER_RECORD_LEN : num_bytes/PRODUCER_RECORD_LEN;
     for (m = 0; m < num_rec; m++)
     {
