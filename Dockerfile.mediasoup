@@ -65,7 +65,7 @@ ENV MEDIASOUP_BUILDTYPE=${MEDIASOUP_BUILDTYPE_ARG}
 ENV MESON_ARGS="-Dms_disable_liburing=true"
 
 # Force cache invalidation: increment this number to force npm rebuild execution
-ARG CACHE_BUST=3.19.7-TD-2988-1
+ARG CACHE_BUST=3.19.7-lv3-2
 
 RUN \
   cd ${MS_BUILD} && \
